@@ -1,0 +1,898 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<link rel="stylesheet" href="../assets/stash-theme.css" />
+<script src="../assets/stash-theme.js"></script>
+<title>Stanford CME295 Lecture 4「LLM Training」日本語要約【講義スライド12枚付き】</title>
+<meta name="description" content="Stanford CME295 Lecture 4を公式英語字幕1,864 cues、公式スライド128ページ、講義映像の確認済みフレーム12枚から日本語で再構成。事前学習、scaling law、ZeRO、FlashAttention、mixed precision、SFT、評価、LoRA、QLoRAを網羅し、難所を一次資料で補足・補正する。" />
+<style>
+  :root {
+    --sidebar-w: 286px;
+    --content-max: 980px;
+    --radius: 14px;
+    --shadow: 0 8px 28px rgba(0,0,0,.34);
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--text); scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.85;
+  }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  strong { color: var(--text); }
+  .layout { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); min-height: 100vh; }
+  aside.sidebar {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    border-right: 1px solid var(--border); background: var(--bg-elev); padding: 24px 18px;
+  }
+  .toc-panel > summary { display: none; color: var(--text); cursor: pointer; font-weight: 700; }
+  .toc-title {
+    margin: 0 0 10px; color: var(--text-dim); font-size: 12px; font-weight: 700;
+    letter-spacing: .12em; text-transform: uppercase;
+  }
+  aside.sidebar ol { list-style: none; padding: 0; margin: 0; }
+  aside.sidebar li { margin: 2px 0; }
+  aside.sidebar a {
+    display: block; padding: 6px 10px; border-left: 2px solid transparent;
+    border-radius: 0 7px 7px 0; color: var(--text-dim); font-size: 13.5px;
+    line-height: 1.45; transition: color .15s, border-color .15s, background .15s;
+  }
+  aside.sidebar a:hover { color: var(--text); background: rgba(127,127,127,.07); text-decoration: none; }
+  aside.sidebar a.active {
+    border-left-color: var(--accent); background: rgba(127,127,127,.1);
+    color: var(--accent); font-weight: 700;
+  }
+  aside.sidebar li.lvl-3 a { padding-left: 22px; font-size: 12.5px; }
+  main { width: min(100%, var(--content-max)); margin: 0 auto; padding: 48px 28px 96px; }
+  header.page { margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+  header.page .eyebrow {
+    color: var(--accent); font-size: 13px; font-weight: 800;
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+  header.page h1 { margin: 8px 0 12px; font-size: clamp(28px, 4vw, 42px); line-height: 1.3; }
+  header.page .lead { margin: 0; color: var(--text-dim); font-size: 16px; }
+  .meta-card {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px 24px; margin: 20px 0 32px; padding: 18px 20px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-elev); font-size: 14px;
+  }
+  .meta-card dt { color: var(--text-dim); font-size: 12px; letter-spacing: .04em; }
+  .meta-card dd { margin: 0 0 7px; color: var(--text); }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border: 1px solid var(--border);
+    border-radius: 999px; background: var(--bg); color: var(--text-dim); font-size: 12px;
+  }
+  .tldr, .callout, .source-note {
+    margin: 24px 0; padding: 17px 22px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev);
+  }
+  .tldr h2 { margin: 0 0 10px; color: var(--accent); font-size: 17px; letter-spacing: .04em; }
+  .callout { border-left: 3px solid var(--accent); }
+  .callout strong { color: var(--accent); }
+  .callout.info { border-left-color: var(--link); }
+  .callout.info strong { color: var(--link); }
+  .callout.warning { border-left-color: #f59e0b; }
+  .callout.warning strong { color: #f59e0b; }
+  .callout p:last-child, .source-note p:last-child { margin-bottom: 0; }
+  .source-note { border-style: dashed; }
+  section { margin: 48px 0; scroll-margin-top: 24px; }
+  section h2 {
+    display: inline-block; margin: 0 0 16px; padding-bottom: 8px;
+    border-bottom: 2px solid var(--accent); font-size: 23px; line-height: 1.45;
+  }
+  section h3 { margin: 28px 0 9px; color: var(--accent); font-size: 18px; }
+  section h4 { margin: 18px 0 6px; font-size: 15px; }
+  p { margin: 10px 0; }
+  ul, ol { margin: 12px 0; padding-left: 23px; }
+  li { margin: 6px 0; }
+  code {
+    padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg-elev); font-size: .92em;
+  }
+  .table-wrap { width: 100%; overflow-x: auto; margin: 17px 0; }
+  table {
+    width: 100%; min-width: 680px; border-collapse: collapse;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-elev); overflow: hidden;
+  }
+  th, td {
+    padding: 11px 14px; border-bottom: 1px solid var(--border);
+    text-align: left; vertical-align: top; font-size: 14px;
+  }
+  thead th {
+    background: rgba(127,127,127,.08); color: var(--text-dim);
+    font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  .grid-cards {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px; margin: 18px 0;
+  }
+  .card {
+    padding: 15px 17px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev);
+  }
+  .card h4 { margin: 0 0 6px; color: var(--accent); font-size: 14px; }
+  .card p { margin: 0; color: var(--text-dim); font-size: 13.5px; }
+  .stat-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px; margin: 18px 0;
+  }
+  .stat-card {
+    padding: 14px 15px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev);
+  }
+  .stat-card .num { color: var(--accent); font-size: 25px; font-weight: 800; line-height: 1.2; }
+  .stat-card .label { margin-top: 4px; color: var(--text-dim); font-size: 12px; line-height: 1.5; }
+  .formula {
+    margin: 20px 0; padding: 20px; border: 1px solid var(--border);
+    border-left: 4px solid var(--accent); border-radius: var(--radius);
+    background: var(--bg-elev); text-align: center;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: clamp(14px, 2.2vw, 20px); font-weight: 700; overflow-x: auto;
+  }
+  .formula small {
+    display: block; margin-top: 8px; color: var(--text-dim);
+    font-family: inherit; font-size: 12px; font-weight: 400;
+  }
+  figure.shot { margin: 24px 0; }
+  figure.shot img {
+    display: block; width: 100%; height: auto; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev); cursor: zoom-in;
+  }
+  figure.shot img:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  figure.shot figcaption {
+    margin-top: 8px; color: var(--text-dim); font-size: 13px; line-height: 1.6;
+  }
+  figure.shot figcaption .ts {
+    display: inline-block; margin-left: 6px; padding: 1px 7px;
+    border: 1px solid var(--border); border-radius: 999px;
+    background: var(--bg-elev); color: var(--accent); font-size: 12px;
+    font-weight: 700; white-space: nowrap;
+  }
+  .mermaid {
+    margin: 20px 0; padding: 18px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev);
+    text-align: center; overflow-x: auto; cursor: zoom-in;
+  }
+  .mermaid:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .mermaid svg { max-width: 100%; height: auto; }
+  .diagram-hint { margin: -10px 0 18px; color: var(--text-dim); font-size: 12px; text-align: center; }
+  .refs { padding-left: 22px; }
+  .refs li { margin: 9px 0; word-break: break-word; }
+  footer.page {
+    margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--border);
+    color: var(--text-dim); font-size: 13px;
+  }
+  footer.page .disclaimer { font-size: 12.5px; opacity: .95; }
+  .modal {
+    position: fixed; inset: 0; z-index: 50; display: none;
+    padding: 22px; background: rgba(9,20,38,.82);
+  }
+  .modal.is-open { display: grid; grid-template-rows: auto 1fr; gap: 12px; }
+  .modal-toolbar { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  .modal-button {
+    appearance: none; padding: 8px 12px; border: 1px solid var(--border);
+    border-radius: 999px; background: var(--bg-elev); color: var(--text);
+    font-weight: 700; cursor: pointer;
+  }
+  .modal-button:hover { border-color: var(--accent); color: var(--accent); }
+  .modal-body {
+    display: grid; place-items: center; min-height: 0; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .modal-body svg { width: 100%; height: 100%; min-height: 70vh; }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: minmax(0, 1fr); width: 100%; }
+    aside.sidebar {
+      position: static; height: auto; min-width: 0; max-width: 100%;
+      padding: 14px 20px; border-right: none; border-bottom: 1px solid var(--border);
+    }
+    .toc-panel > summary { display: block; }
+    .toc-title { display: none; }
+    aside.sidebar ol { margin-top: 10px; }
+    main { min-width: 0; max-width: 100%; padding: 36px 20px 80px; }
+  }
+  @media (max-width: 720px) {
+    .modal { padding: 12px; }
+    .modal-toolbar { justify-content: center; }
+    .modal-button { padding: 7px 10px; }
+    .meta-card { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" aria-label="目次">
+    <details class="toc-panel" open>
+      <summary>目次を開く / 閉じる</summary>
+      <p class="toc-title">Contents</p>
+      <ol id="toc"></ol>
+    </details>
+  </aside>
+
+  <main>
+    <header class="page">
+      <div class="eyebrow">Stanford CME295 / YouTube lecture summary</div>
+      <h1>Lecture 4「LLM Training」日本語要約【講義スライド12枚付き】</h1>
+      <p class="lead">LLMを「大量textの次token予測」から「役立つassistant」へ変える全工程を、training compute・GPU memory・data・evaluationの観点から整理する。講義内容と一次資料による補足・補正は明示的に分離した。</p>
+    </header>
+
+    <dl class="meta-card" aria-label="出典メタデータ">
+      <div><dt>出典</dt><dd><a href="https://www.youtube.com/watch?v=VlA_jt_3Qc4" target="_blank" rel="noopener">Stanford Online / YouTube</a></dd></div>
+      <div><dt>講師</dt><dd>Afshine Amidi / Shervine Amidi</dd></div>
+      <div><dt>講義日 / 公開日</dt><dd>2025-10-17 / 2025-10-21</dd></div>
+      <div><dt>コース</dt><dd>CME295 Transformers &amp; LLMs（Autumn 2025）</dd></div>
+      <div><dt>所要時間 / 取得量</dt><dd>1:47:27 / 公式英語字幕 1,864 cues・13,926語 / 公式スライド128ページ / 講義フレーム12枚</dd></div>
+      <div><dt>取得手段</dt><dd>yt-dlp 公式英語字幕・720p動画＋Stanford公式PDF</dd></div>
+      <div><dt>公式教材</dt><dd><a href="https://cme295.stanford.edu/syllabus/" target="_blank" rel="noopener">Syllabus</a> / <a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture4.pdf" target="_blank" rel="noopener">Lecture 4 slides</a></dd></div>
+      <div style="grid-column:1/-1;">
+        <dt>タグ</dt>
+        <dd class="badges">
+          <span class="badge">Pretraining</span>
+          <span class="badge">ZeRO</span>
+          <span class="badge">FlashAttention</span>
+          <span class="badge">SFT</span>
+          <span class="badge">LoRA</span>
+          <span class="badge">QLoRA</span>
+        </dd>
+      </div>
+    </dl>
+
+    <div class="tldr">
+      <h2>3 行サマリ</h2>
+      <ul>
+        <li><strong>Pretraining</strong>はweb・code・多言語の巨大corpusで次token予測を行い、model size・token数・computeの配分をscaling lawで設計する。</li>
+        <li>Trainingの主な制約はGPU memoryとmemory I/Oであり、data/model parallelism、ZeRO、FlashAttention、mixed precisionが異なるbottleneckを解く。</li>
+        <li><strong>SFT / instruction tuning</strong>でhelpfulな振る舞いを学ばせ、LoRAは低rank更新、QLoRAは4-bitの凍結base modelによってpost-trainingを省memory化する。</li>
+      </ul>
+    </div>
+
+    <div class="source-note">
+      <p><strong>読み分け:</strong> 通常の本文・表は講義と公式スライドの再構成である。青・黄の「一次資料による補足／補正」は、講義で省略・保留・単純化された点を原論文や公式documentで補ったもので、講師の発言そのものではない。</p>
+    </div>
+
+    <section id="roadmap">
+      <h2>1. 講義の位置づけとLLM trainingの全体像</h2>
+      <p>冒頭では授業運営が共有された。midtermは2025年10月24日15:30–17:00、Lecture 1–4が範囲で、multiple-choiceと自由記述を含むclosed-book形式。calculatorは不要で、course siteのcheat sheetは学習用だが持ち込み不可。finalは12月10日19:00–20:30、Lecture 5–9が範囲である。</p>
+      <p>前回の復習として、Sparse/Dense MoE、greedy・beam search・sampling、temperature、KV cacheなどのinference optimizationを確認した。今回の中心は、初期化されたmodelをどう学習し、どう役立つmodelへ変えるかである。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture4-llm-training/01-llm-training-paradigm.jpg" alt="Pretrainingした共通modelからspam detection、sentiment extraction、translation用modelへtuningするLLM training paradigmのスライド" loading="lazy" />
+        <figcaption>共通のpretrained modelを作り、end taskごとにtuningするparadigm。taskごとにゼロから学習する従来方式から、transfer learningへ軸足が移る。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=600s" target="_blank" rel="noopener">10:00</a></figcaption>
+      </figure>
+      <p><strong>画像の読み解き：</strong>左の大きなpretrained modelはlanguage・codeの共通知識を担い、右の小さな分岐はtask適応を担う。高価な基盤学習を使い回せることが、modern LLM developmentの経済性を支えている。</p>
+      <div class="mermaid">
+flowchart LR
+  A["初期化model"] --> B["Pretraining<br/>大量corpus・次token予測"]
+  B --> C["Base model<br/>language / codeのpattern"]
+  C -. "任意: task関連dataで継続学習" .-> D["Mid-training"]
+  C --> E["SFT / Instruction tuning<br/>input-output例"]
+  D --> E
+  E --> F["Instruction-following model"]
+  F --> G["Preference tuning<br/>Lecture 5"]
+  G --> H["Aligned assistant"]
+      </div>
+      <p class="diagram-hint">図をクリックすると拡大・移動できる。破線のmid-trainingは講義終盤で紹介された任意段階。</p>
+    </section>
+
+    <section id="pretraining">
+      <h2>2. Pretraining：taskではなくlanguageとcodeを先に学ぶ</h2>
+      <h3>Traditional MLからtransfer learningへ</h3>
+      <p>従来はspam detection、sentiment extraction、translationごとに独立modelを学習した。しかしいずれもtext理解を共有するため、既学習modelを再利用する<strong>transfer learning</strong>が合理的である。LLMでは、まず大規模pretrainingで一般patternを獲得し、その後taskへadaptする。</p>
+      <h3>目的関数とdata mixture</h3>
+      <p>Decoder-only LLMのpretraining objectiveは、prefixを条件に次tokenを当てるcausal language modelingである。</p>
+      <div class="formula">
+        L<sub>PT</sub>(θ) = −∑<sub>t</sub> log P<sub>θ</sub>(x<sub>t</sub> | x<sub>&lt;t</sub>)
+        <small>文章・codeを1 tokenずつ右へずらし、各位置で正解tokenのnegative log-likelihoodを最小化する。</small>
+      </div>
+      <p>Dataは英語、多言語、codeを含む。講義はCommon Crawl、Wikipedia、Reddit、GitHub、Stack Overflowを例示し、「書かれたものを広く予測することでlanguageとcodeの構造を学ぶ」と説明する。Common Crawlはpublic web crawl corpusを無料提供する非営利projectであり、実際のpretrainingではquality filtering、deduplication、license・privacy・safety処理が別途必要になる。</p>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="num">300B</div><div class="label">GPT-3のpretraining token数（講義・Brown et al.）</div></div>
+        <div class="stat-card"><div class="num">15.6T</div><div class="label">Llama 3 405Bのtext token数（公式paperの精密値）</div></div>
+        <div class="stat-card"><div class="num">10<sup>25</sup></div><div class="label">講義が示すLLM training computeのFLOP order</div></div>
+      </div>
+      <div class="callout info">
+        <strong>一次資料による補足：corpusの量だけでは決まらない</strong>
+        <p>Llama 3 paperは15.6T tokenという量に加え、deduplication、quality classifier、domain・language配分、annealing dataを詳述する。raw web page数をそのままqualityと見なせず、data curation自体がmodel設計の一部である。</p>
+        <p><a href="https://arxiv.org/abs/2407.21783" target="_blank" rel="noopener">一次資料: The Llama 3 Herd of Models</a> / <a href="https://commoncrawl.org/overview" target="_blank" rel="noopener">Common Crawl overview</a></p>
+      </div>
+    </section>
+
+    <section id="scaling">
+      <h2>3. FLOP・FLOP/s・scaling law・Chinchilla law</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>表記</th><th>意味</th><th>何を測るか</th></tr></thead>
+          <tbody>
+            <tr><td>FLOP / FLOPs</td><td>floating-point operation(s)</td><td>学習に必要な浮動小数点演算の<strong>総量</strong>。概ねparameter数×token数×architecture係数で増える。</td></tr>
+            <tr><td>FLOP/s（講義ではFLOPS）</td><td>floating-point operations per second</td><td>GPUなどが1秒に処理できる演算の<strong>速度</strong>。precisionやsparsity条件で値が変わる。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Kaplanらのscaling lawは、compute、dataset size、model sizeを増やすとlossがpower law的に下がることを示した。大きいmodelは同じtoken数でもlossが低いという意味でsample-efficientでもある。しかしcomputeは有限なので、parameterとtokenのどちらへ予算を配るかが問題になる。</p>
+      <p>Chinchilla研究は固定compute下で400超のmodelを比較し、model sizeとtraining token数をほぼ同率にscaleさせるべきだと推定した。講義では覚えやすい目安として<strong>training token数 D ≈ 20 × parameter数 N</strong>を紹介する。175B parameterを300B tokenで学習したGPT-3は、この基準ではdata不足の「undertrained」側になる。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture4-llm-training/02-chinchilla-law.jpg" alt="parameter数ごとにcompute-optimalなFLOPsとtoken数を示すChinchilla lawの表" loading="lazy" />
+        <figcaption>Chinchilla paperからのcompute-optimal table。1B parameterには約20.2B token、67Bには約1.5T tokenという対応が映る。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=1173s" target="_blank" rel="noopener">19:33</a></figcaption>
+      </figure>
+      <p><strong>画像の読み解き：</strong>表は「大きいほどよい」ではなく、固定computeをmodel幅とdata量へどう分けるかを示す。たとえばmodelだけを巨大化してtoken数を据え置くと、parameterを十分学習させ切れない。</p>
+      <div class="callout warning">
+        <strong>一次資料による補足：20 token / parameterは普遍定数ではない</strong>
+        <p>これは特定のdense Transformer、data、optimizer、compute budgetから得た経験則である。architecture、data quality、repeated data、inference costの重視度で最適点は変わる。講義Q&amp;Aでも、実務では小規模pilotから自分のsetupのcurveを推定し、Llama 3のように外挿すると説明した。</p>
+        <p><a href="https://arxiv.org/abs/2203.15556" target="_blank" rel="noopener">一次資料: Training Compute-Optimal Large Language Models</a></p>
+      </div>
+      <h3>Pretraining固有の課題</h3>
+      <ul>
+        <li><strong>Cost・time・electricity:</strong> 講義のorderは少なくとも数百万ドル、modelによっては数千万〜数億ドル。</li>
+        <li><strong>Knowledge cutoff:</strong> training corpusを締め切った後の出来事はweightsだけでは知り得ない。</li>
+        <li><strong>Knowledge editing:</strong> 新事実を注入しつつ他domainをregressさせないweight更新は難しい。</li>
+        <li><strong>Memorization / plagiarism:</strong> 次token予測modelがtraining textを再現するriskがある。</li>
+      </ul>
+    </section>
+
+    <section id="training-memory">
+      <h2>4. Training loopのmemory内訳と分散parallelism</h2>
+      <p>Trainingは、parameter初期化、forward pass、loss、backward pass、optimizer updateを繰り返す。問題はparameter以外にも大量のstateを保持する点にある。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>保持物</th><th>役割</th><th>主な増加要因</th></tr></thead>
+          <tbody>
+            <tr><td>Parameters</td><td>modelの学習対象weight。</td><td>parameter数、保存precision。</td></tr>
+            <tr><td>Activations</td><td>forwardの中間値。backpropのchain ruleで必要。</td><td>batch size、sequence length、layer数・hidden幅。attentionは標準実装でsequence長の2乗項を持つ。</td></tr>
+            <tr><td>Gradients</td><td>各parameterをloss低下方向へ動かす微分値。</td><td>trainable parameter数、precision。</td></tr>
+            <tr><td>Optimizer states</td><td>Adamならgradientの1次・2次momentなど。</td><td>parameter数。master weightを含む実装ではparameter本体より大きくなり得る。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>講義例のNVIDIA H100は80GB VRAMであり、billion〜hundreds of billions級modelの全stateは1枚に収まらない。そこで複数GPUへdataまたはmodel computationを分ける。</p>
+      <h3>Data parallelismとZeRO</h3>
+      <p>Data parallelism（DP）はmini-batchをGPU間で分割し、各GPUにmodel replicaを置く。各deviceが独立にforward/backwardを行い、gradientをall-reduceなどで集約・平均して同じupdateを適用する。Batch由来のactivation memoryを分散できるが、modelとoptimizer stateは重複し、通信costも生じる。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ZeRO stage</th><th>GPU間でshardするstate</th><th>意味</th></tr></thead>
+          <tbody>
+            <tr><td>Stage 1</td><td>Optimizer states</td><td>Adam momentやFP32 master stateをrankごとに分担する。</td></tr>
+            <tr><td>Stage 2</td><td>Stage 1 + gradients</td><td>各rankは担当parameterに対応するreduced gradientだけを保持する。</td></tr>
+            <tr><td>Stage 3</td><td>Stage 2 + parameters</td><td>weight自体も分割し、必要なforward/backward時だけcollectして再partitionする。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture4-llm-training/03-zero-stages.jpg" alt="ZeRO-3がoptimizer state、gradient、parameterをGPU間で分割することを示すスライド" loading="lazy" />
+        <figcaption>ZeRO-3はoptimizer state、gradient、parameterの全model stateをdevice間でpartitionする。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=2085s" target="_blank" rel="noopener">34:45</a></figcaption>
+      </figure>
+      <p><strong>画像の読み解き：</strong>各GPUの細い色付き棒は「全stateのcopy」ではなく各stateの一部分である。memoryは減る一方、必要stateを集める通信が増えるため、常に高stageが最速とは限らない。</p>
+      <div class="callout info">
+        <strong>用語補足：shareではなくshard</strong>
+        <p>講義音声・slideは「share」と表現するが、ZeROの実体はstateの<strong>partition / sharding</strong>である。全GPUが同じcopyを共有保持するのではなく、各rankが別のsliceを持つ。</p>
+        <p><a href="https://www.deepspeed.ai/tutorials/zero/" target="_blank" rel="noopener">公式資料: DeepSpeed ZeRO tutorial</a></p>
+      </div>
+      <h3>Model parallelism</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>方式</th><th>何を分割するか</th><th>講義での直観</th></tr></thead>
+          <tbody>
+            <tr><td>Tensor parallelism</td><td>1つの大きなmatrix multiplication。</td><td>weight matrixのrow/column方向を複数GPUで計算する。</td></tr>
+            <tr><td>Pipeline parallelism</td><td>layer群。</td><td>GPU 1がlayer 1–3、GPU 2が4–6のようにstage化する。</td></tr>
+            <tr><td>Expert parallelism</td><td>MoE expert。</td><td>異なるFFN expertを異なるdeviceへ配置する。</td></tr>
+            <tr><td>Sequence / context parallelism</td><td>sequence dimension。</td><td>公式slideに列挙。長いcontextのactivation・attention workloadを分ける方式群。</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="flash-attention">
+      <h2>5. FlashAttention：演算数よりmemory I/Oを減らす</h2>
+      <p>GPUには、大きいが相対的に遅いoff-chip <strong>HBM</strong>と、小さいが高速なon-chip <strong>SRAM</strong>がある。標準attentionは、score <code>S=QKᵀ</code>、probability <code>P=softmax(S)</code>、output <code>O=PV</code>という大きな中間matrixをHBMへ何度もwrite/readする。このdata movementがcomputeより遅いbottleneckになり得る。</p>
+      <div class="formula">
+        Attention(Q,K,V) = softmax(QK<sup>T</sup> / √d<sub>k</sub>)V
+      </div>
+      <p>FlashAttentionはQ・K・Vをblockへ分ける<strong>tiling</strong>を使い、SRAMに入る小blockだけをend-to-endで処理する。Rowごとのrunning maximumとnormalization sumを更新するonline softmaxにより、全score matrixをmaterializeしなくても最終softmaxと同じ値を得る。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture4-llm-training/04-flash-attention-tiling.jpg" alt="Q、K転置、VのblockをSRAMへ読み、OのblockをHBMへ書くFlashAttention tiling図" loading="lazy" />
+        <figcaption>Q・K・Vのgreen blockをSRAMへloadし、Oのblue blockを更新してHBMへ戻すtilingの流れ。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=2780s" target="_blank" rel="noopener">46:20</a></figcaption>
+      </figure>
+      <p><strong>画像の読み解き：</strong>attention matrix全体を保存せず、局所blockの積・softmax統計・Vとの積をon-chipで完結させる。これはsparse attentionのような近似ではなく、丸め誤差の範囲で同じattentionを計算するexact algorithmである。</p>
+      <h3>Backwardでは保存せず再計算する</h3>
+      <p>Backwardに必要な巨大attention activationをforward時にHBMへ保存せず、small summary statisticsだけを保存し、必要なblockを再計算する。FLOPは増えるがHBM trafficが大幅に減るため、memoryもruntimeも下がり得る。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture4-llm-training/05-flash-attention-recompute.jpg" alt="標準attentionとFlashAttentionのGFLOPs、HBM read write、runtime比較表" loading="lazy" />
+        <figcaption>講義slideのpaper結果。GFLOPsは66.6→75.2へ増える一方、HBM read/writeは40.3GB→4.4GB、runtimeは41.7ms→7.3msへ低下する。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=3045s" target="_blank" rel="noopener">50:45</a></figcaption>
+      </figure>
+      <p><strong>画像の読み解き：</strong>「演算を減らせば速い」という単純図式が破れる例である。追加computeより、slow memoryとの往復削減の効果が大きいため、recomputationした方が速い。</p>
+      <div class="callout info">
+        <strong>一次資料による補足：IO-awareとは</strong>
+        <p>Original paperはSRAM sizeを明示したI/O complexityを分析し、sequence lengthに対する標準attentionのquadratic memoryを避ける。FlashAttention 2/3などは同じ核を新しいGPU execution modelへ合わせて改善する。</p>
+        <p><a href="https://arxiv.org/abs/2205.14135" target="_blank" rel="noopener">一次資料: FlashAttention</a></p>
+      </div>
+    </section>
+
+    <section id="precision">
+      <h2>6. Quantizationとmixed precision training</h2>
+      <h3>Floating-point表現</h3>
+      <p>Floatはsign、exponent、fraction（講義slideではmantissa）へbitを分ける。Exponent bitは表せる値のrange、fraction bitは有効桁の細かさに強く関係する。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture4-llm-training/06-floating-point-formats.jpg" alt="FP16、FP32、FP64、BFLOAT16のsign、exponent、mantissa bit数の比較表" loading="lazy" />
+        <figcaption>FP16は1/5/10 bit、FP32は1/8/23、FP64は1/11/52、BF16は1/8/7へ配分する。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=3265s" target="_blank" rel="noopener">54:25</a></figcaption>
+      </figure>
+      <p><strong>画像の読み解き：</strong>FP16とBF16は同じ16 bitでも性質が違う。BF16はFP32と同じ8-bit exponentを保つためrangeが広くoverflowしにくい一方、fractionは7 bitで精度が粗い。FP16はfractionが多いがrangeが狭い。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>手法</th><th>中心idea</th><th>典型的な用途・注意</th></tr></thead>
+          <tbody>
+            <tr><td>Quantization</td><td>weightやactivationをより少ないbitの離散値へmapする。</td><td>Memory・bandwidth・対応hardwareのthroughputを改善。scale、zero-point、clipping、outlier処理がqualityを左右する。</td></tr>
+            <tr><td>Mixed precision</td><td>operationごとにlow/high precisionを使い分け、master stateは高precisionで保持する。</td><td>Training speedとmemoryを改善しつつnumerical stabilityを守る。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>講義のmixed precision mental model</h3>
+      <p>FP32のmaster weightsを保持し、forward activationとbackward gradient計算をFP16で行い、weight updateはFP32へ反映する。Low precisionはmemoryを半減し、Tensor Coreなどで高いFLOP/sを得やすい。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture4-llm-training/07-mixed-precision.jpg" alt="forward activationとbackward gradientをlow precisionで計算するmixed precision trainingのスライド" loading="lazy" />
+        <figcaption>Mixed precisionのbackward pass。講義はactivation・gradientをlow precision、weight updateをhigh precisionで保持する構成を示す。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=3415s" target="_blank" rel="noopener">56:55</a></figcaption>
+      </figure>
+      <div class="callout warning">
+        <strong>一次資料による補足：実際のAMPはoperation単位でprecisionを選ぶ</strong>
+        <p>現代のAutomatic Mixed Precisionは「全部FP16」にせず、matrix multiplicationはlow precision、large reduction・cross entropy・exponentialなど不安定なoperationはFP32へ残す。FP16では小gradientのunderflowを避けるloss scalingも重要である。したがって講義図はprincipleを示す簡略modelである。</p>
+        <p><a href="https://docs.nvidia.com/deeplearning/performance/mixed-precision-training/index.html" target="_blank" rel="noopener">公式資料: NVIDIA Mixed Precision Training Guide</a></p>
+      </div>
+    </section>
+
+    <section id="sft">
+      <h2>7. SFT：次token modelをhelpful assistantへ変える</h2>
+      <p>Pretrained modelは「Can I put my teddy bear in the washer?」を質問として助言せず、training textに続きそうな材質説明などを生成し得る。Pretrainingの目的はassistant behaviorではなく、あくまでcontinuation予測だからである。</p>
+      <p><strong>Supervised Fine-Tuning（SFT）</strong>は、望ましいinput-output pairをlabelとして与え、pretrained weightsを追加学習する。General assistant向けにinstruction-response pairを使うspecial caseが<strong>instruction tuning</strong>である。</p>
+      <div class="formula">
+        L<sub>SFT</sub>(θ) = −∑<sub>t∈response</sub> log P<sub>θ</sub>(y<sub>t</sub> | prompt, y<sub>&lt;t</sub>)
+        <small>講義の設定ではprompt tokenにlossを置かず、assistant response部分だけをteacher forcingする。</small>
+      </div>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture4-llm-training/08-instruction-tuning-objective.jpg" alt="Do Xというinputの後にSure以降のresponse tokenだけを予測対象にするinstruction tuning objective図" loading="lazy" />
+        <figcaption>Input「Do X .」はconditionとして固定し、黄色のassistant response「Sure ...」からlossを計算する例。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=4270s" target="_blank" rel="noopener">1:11:10</a></figcaption>
+      </figure>
+      <p><strong>画像の読み解き：</strong>Modelはuser textをparrotするのではなく、そのinputを条件に望ましいoutput distributionを学ぶ。Causal LM自体は同じでも、どのtokenをlabelとして数えるかがpretrainingと異なる。</p>
+      <div class="callout info">
+        <strong>実装補足：prompt maskingは設定で変わる</strong>
+        <p>Hugging Face TRLではprompt-completion datasetはcompletion-only lossが既定だが、full-sequence lossにも変更できる。Chat形式では<code>assistant_only_loss=True</code>でassistant messageだけを対象にする。講義の説明はresponse-only SFTを指す。</p>
+        <p><a href="https://huggingface.co/docs/trl/sft_trainer" target="_blank" rel="noopener">公式資料: TRL SFT Trainer</a></p>
+      </div>
+      <h3>Instruction data mixture</h3>
+      <p>講義はstory、poem、list、explanation、assistant dialogue、math・reasoning・code、safetyを挙げる。初期datasetはhuman expertが書いたが、現在はstronger LLMでcandidateを生成し、人または別modelがqualityをreviewするsynthetic dataも使われる。</p>
+      <ul>
+        <li><strong>Helpful:</strong> user intentへ直接応答し、actionableでfluentな回答を学ぶ。</li>
+        <li><strong>Harmless / safety:</strong> harmful requestのrefusalや、過度な断定を避けるhedgingをdataとして学ぶ。</li>
+        <li><strong>Generalization:</strong> Pretrainingで得た概念知識とSFTで得たtask formatを組み合わせ、未見のdetailへ適応する。</li>
+      </ul>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>観点</th><th>Pretraining</th><th>SFT / instruction tuning</th></tr></thead>
+          <tbody>
+            <tr><td>Data</td><td>Web・code・多言語の巨大corpus。</td><td>高品質なinstruction-response、human + synthetic。</td></tr>
+            <tr><td>規模</td><td>Hundreds of billions〜trillions of tokens。</td><td>Thousands〜millions of examples。桁違いに小さい。</td></tr>
+            <tr><td>目的</td><td>Language/codeのgeneral patternと知識。</td><td>Promptに対する望ましいbehaviorとtask適応。</td></tr>
+            <tr><td>Loss</td><td>Sequence全体の次token予測。</td><td>講義ではpromptをmaskしresponse tokenにloss。</td></tr>
+            <tr><td>Data quality</td><td>量とcoverageに加えfilteringが重要。</td><td>少量でもstyle・factuality・safetyの一貫性が特に重要。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warning">
+        <strong>一次資料による補正：slideの「GPT-3 13 thousand」はInstructGPT</strong>
+        <p>講義slideはSFT例数を「GPT-3: 13 thousands」としBrown et al. (2020)を引用するが、original GPT-3はinstruction SFTを行っていない。約13k training promptsは、GPT-3をbaseにした<strong>InstructGPT</strong>のSFT dataset（Ouyang et al., 2022）の数字である。Llama 3 paperはpost-trainingにmillions of human instructions and preference judgmentsを使ったと記す。</p>
+        <p><a href="https://arxiv.org/abs/2203.02155" target="_blank" rel="noopener">一次資料: InstructGPT</a> / <a href="https://arxiv.org/abs/2005.14165" target="_blank" rel="noopener">GPT-3 paper</a> / <a href="https://arxiv.org/abs/2407.21783" target="_blank" rel="noopener">Llama 3 paper</a></p>
+      </div>
+    </section>
+
+    <section id="sft-challenges">
+      <h2>8. SFTの難所：data distribution・generalization・cost</h2>
+      <div class="grid-cards">
+        <div class="card"><h4>High-quality data</h4><p>望ましいstyle・factuality・safetyを満たすhuman reviewは時間と費用がかかる。</p></div>
+        <div class="card"><h4>Prompt distribution</h4><p>Training promptとproduction promptが離れると、能力があっても適切に引き出せない。</p></div>
+        <div class="card"><h4>Generalization</h4><p>同じpatternの重複より、task空間を覆う多様なexampleが重要。</p></div>
+        <div class="card"><h4>Evaluation</h4><p>「helpful」の主観性とfactuality・safetyを単一scoreで同時に測れない。</p></div>
+        <div class="card"><h4>Compute</h4><p>Pretrainingより小さいが、full fine-tuningは全parameter・gradient・optimizer stateを扱う。</p></div>
+      </div>
+      <p>同一training promptを再入力しても、non-zero temperatureならword-for-wordで同じoutputになるとは限らない。Flavorが似る可能性はあるが、samplingとpretraining distributionにより別のstoryを生成する。Variationを増やしたい場合、temperatureだけでなく、target domainを覆うdataを増やす必要がある。</p>
+    </section>
+
+    <section id="evaluation">
+      <h2>9. Evaluation：benchmarkとChatbot Arenaの両方に盲点がある</h2>
+      <h3>Capability benchmark</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Benchmark</th><th>測るもの</th><th>一次資料による正確な補足</th></tr></thead>
+          <tbody>
+            <tr><td>MMLU</td><td>General knowledge / multitask understanding。</td><td>STEM・humanities・social sciencesなど<strong>57 tasks</strong>の4択問題。</td></tr>
+            <tr><td>ARC-Challenge</td><td>Science questionを使うbasic reasoning。</td><td>ARCのうちretrieval・co-occurrenceだけでは難しいchallenge subset。</td></tr>
+            <tr><td>GSM8K</td><td>Natural-language math reasoning。</td><td><strong>Grade School Math</strong> 8.5K。講義中の「grad school / high school」ではない。</td></tr>
+            <tr><td>HumanEval</td><td>Function specificationからのcode generation。</td><td>164 Python programming problemsをunit testのpass率で評価。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Benchmark scoreは、test exampleそのもののleakだけでなく、同じ<strong>test task</strong>をtrainingしたかにも依存する。Math reasoning formatを大量に学んだmodelと、同taskを見ていないmodelのscore差を「architectureのemergent ability」とだけ解釈すると不公平になり得る。</p>
+      <div class="callout info">
+        <strong>一次資料による補足：training on the test task ≠ exact contamination</strong>
+        <p>Dominguez-Olmedoらは、exact test itemを見せなくてもtask-specific dataで全modelを同条件にfine-tuneすると、MMLU・GSM8Kの世代差や「突然のemergence」が大きく縮むと報告した。比較ではpretraining/post-training mixtureの透明性が重要である。</p>
+        <p><a href="https://arxiv.org/abs/2407.07890" target="_blank" rel="noopener">一次資料: Training on the Test Task Confounds Evaluation and Emergence</a></p>
+      </div>
+      <h3>Chatbot Arena：user preferenceをpairwise voteする</h3>
+      <p>Chatbot Arenaは匿名の2 modelへ同じpromptを送り、userが良いresponseを選び、pairwise resultからrankingを作る。Open-ended qualityの「vibes」を数値化できる一方、別のbiasを持つ。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture4-llm-training/09-arena-limitations.jpg" alt="Chatbot Arena型評価のcold start、ranking操作、factuality評価、個人嗜好、safety penaltyという課題一覧" loading="lazy" />
+        <figcaption>Human vote leaderboardの5課題：unequal exposure / cold start、rigging、factuality判断、非代表的な個人嗜好、safety responseへのpenalty。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=5540s" target="_blank" rel="noopener">1:32:20</a></figcaption>
+      </figure>
+      <p><strong>画像の読み解き：</strong>Userは読みやすさを判断できても、専門的factualityを検証できるとは限らない。安全上必要なrefusalは「答えなかった」とdownvoteされやすく、voter populationのemoji・verbosity嗜好も全userを代表しない。</p>
+      <div class="callout warning">
+        <strong>一次資料による補足：model識別を使ったranking操作</strong>
+        <p>Huangらはresponseからtarget modelを95%超で識別し、約1,000のstrategic votesでもrankingを動かせるsimulationを示した。Rate limit、login、bot detection、reputationなどでattack costを上げられるが、human voteも無条件のground truthではない。</p>
+        <p><a href="https://arxiv.org/abs/2501.07493" target="_blank" rel="noopener">一次資料: Exploring and Mitigating Adversarial Manipulation of Voting-Based Leaderboards</a></p>
+      </div>
+      <p>結論は「benchmarkかhuman preferenceか」の二者択一ではない。Knowledge、reasoning、code、factuality、safety、latency、target user preferenceなどを分け、use caseに合うevaluation suiteを組む必要がある。</p>
+    </section>
+
+    <section id="alignment">
+      <h2>10. Alignmentとmid-training</h2>
+      <p>講義では、pretraining後の<strong>SFT + preference tuning</strong>を広くalignmentと呼ぶ。SFTがinstruction followingを教え、次回扱うpreference tuningがhuman preferenceやsafety policyへさらに寄せる。ただし「alignment」の範囲は文献・組織によって異なる。</p>
+      <p>終盤では<strong>mid-training</strong>も紹介された。Pretrainingとfine-tuningの間に、最終用途へ近いdataを使って同じnext-token objectiveを続ける段階である。Domain-adaptive continued pretraining、long-context adaptation、capability-specific dataの注入などがこの考え方に近い。SFTのようにresponse behaviorだけを教える前に、target domainの表現・語彙・knowledgeへbase modelを寄せる。</p>
+    </section>
+
+    <section id="lora">
+      <h2>11. LoRA：full weight updateを低rank差分へ置き換える</h2>
+      <p>Full fine-tuningはweight matrix <code>W</code>全体を更新し、同sizeのgradient・optimizer stateを必要とする。LoRA（Low-Rank Adaptation）はpretrained weight <code>W<sub>0</sub></code>をfreezeし、task-specific updateを2つのthin matrixの積で表す。</p>
+      <div class="formula">
+        W′ = W<sub>0</sub> + ΔW = W<sub>0</sub> + (α/r)BA
+        <small>W₀ ∈ R<sup>dout×din</sup>, B ∈ R<sup>dout×r</sup>, A ∈ R<sup>r×din</sup>, r ≪ min(din,dout)</small>
+      </div>
+      <p>Trainable parameterはfull matrixの<code>d<sub>out</sub>d<sub>in</sub></code>から、LoRAの<code>r(d<sub>out</sub>+d<sub>in</sub>)</code>へ減る。<code>α/r</code>はupdate scaleを制御する。講義slideはscaleを省略して<code>W=W₀+BA</code>と示す。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture4-llm-training/10-lora-formula.jpg" alt="大きなWを凍結W0と低rank matrix B、Aの積へ分解するLoRAの図" loading="lazy" />
+        <figcaption>大きなfull-rank updateを、凍結base weightとsmall rank <code>r</code>の<code>B×A</code>へ分けるLoRA。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=5900s" target="_blank" rel="noopener">1:38:20</a></figcaption>
+      </figure>
+      <p><strong>画像の読み解き：</strong>Blueの<code>W</code>全体を再学習せず、grayの<code>W₀</code>は共通baseとして固定し、greenのsmall matricesだけを保存する。Spam、sentiment、translationごとにA/Bを交換でき、1つのbase modelから複数taskを運用しやすい。</p>
+      <ul>
+        <li>Original LoRAは主にattention projectionへ適用し、taskごとにsmall adapterを保存する。</li>
+        <li>Inference時に<code>BA</code>を<code>W₀</code>へmergeすれば、追加layer latencyを避けられる。</li>
+        <li>Rank <code>r</code>はcapacityとmemoryのdesign choice。講義はgrid searchも可能で、<code>r=4</code>をcommonな例として挙げる。</li>
+        <li>Prefix tuningやadapter layerもparameter-efficient手法だが、講義ではLoRAほど深掘りしない。</li>
+      </ul>
+      <div class="callout info">
+        <strong>用語補足：low rank</strong>
+        <p>Matrix rankは独立な方向の数である。<code>BA</code>のrankは最大<code>r</code>なので、LoRAは「task適応に必要なweight変化は、full parameter空間より低次元で表せる」という仮定を置く。Parameterを単に一部選ぶのではなく、全入出力dimensionへ作用する低次元updateを学ぶ。</p>
+        <p><a href="https://arxiv.org/abs/2106.09685" target="_blank" rel="noopener">一次資料: LoRA</a></p>
+      </div>
+    </section>
+
+    <section id="lora-guidance">
+      <h2>12. LoRAの更新guidance：MLP、learning rate、batch size</h2>
+      <p>講義は2025年9月のThinking Machines Lab記事「LoRA Without Regret」を使い、original paper以後の実務guidanceを更新する。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture4-llm-training/11-lora-locations.jpg" alt="LoRAはattentionだけでなくfeed-forward blockへの適用が特に重要だと示すスライド" loading="lazy" />
+        <figcaption>Updated guidanceはMLP / feed-forward blockを「most important location」とし、attention-only LoRAを避ける。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=6145s" target="_blank" rel="noopener">1:42:25</a></figcaption>
+      </figure>
+      <p><strong>画像の読み解き：</strong>Original experimentのQ/V attention projectionだけでなく、modern recommendationはMLPを含む全linear weightへLoRAを置く。MLP-onlyがattention-onlyを上回り、MLP+attentionと近い場合も報告された。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Guidance</th><th>一次資料の観察</th><th>解釈</th></tr></thead>
+          <tbody>
+            <tr><td>Target modules</td><td>All weight matrices、特にMLP/MoEへ適用。Attention-onlyはparameter数を合わせても劣る。</td><td>Task updateの重要方向がattentionだけに閉じていない。</td></tr>
+            <tr><td>Rank</td><td>Datasetがadapter capacityを超えるとFullFTよりlearning efficiencyが落ちる。</td><td>小さい<code>r</code>を常に選べばよいわけではなく、data scaleに合わせる。</td></tr>
+            <tr><td>Learning rate</td><td>High-rank LoRAのoptimal LRはFullFTの約10倍だった。</td><td>FullFTのhyperparameterをそのまま流用しない。</td></tr>
+            <tr><td>Batch size</td><td>一部SFT設定でlarge batchへのpenaltyがFullFTより大きく、rank増加でも消えない。</td><td><code>BA</code>というproduct parameterizationのtraining dynamicsがfull matrixと異なる。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warning">
+        <strong>適用範囲に注意</strong>
+        <p>これらはTulu3・OpenThoughts3などでのempirical resultで、全model・datasetへの定理ではない。記事自身もsmall-to-medium post-training dataではLoRA≈FullFT、adapter capacityを超えるvery large dataではunderperformすると区別する。</p>
+        <p><a href="https://thinkingmachines.ai/blog/lora/" target="_blank" rel="noopener">一次資料: LoRA Without Regret</a> / <a href="https://huggingface.co/docs/trl/lora_without_regret" target="_blank" rel="noopener">公式再現guide: Hugging Face TRL</a></p>
+      </div>
+    </section>
+
+    <section id="qlora">
+      <h2>13. QLoRA：4-bit frozen base + BF16 LoRA</h2>
+      <p>QLoRAはLoRAの<code>W₀</code>を4-bitで保存し、A/B adapterはBF16など高いprecisionで学習する。Forward/backward時はquantized weightをcompute dtypeへdequantizeし、gradientは凍結baseではなくLoRA matricesへ流す。</p>
+      <h3>NF4とdouble quantization</h3>
+      <p><strong>NF4（4-bit NormalFloat）</strong>はpretrained weightが概ねzero-centered normal distributionに従うことを利用し、uniformな数値幅ではなくnormal distributionのquantileに基づくcodebookを置く。各binへおおむね同数のweightが入るため、4 bitをweight密度の高い領域へ効率よく割り当てる。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture4-llm-training/12-qlora-nf4.jpg" alt="uniform cutoffのINT8とnormal quantileに基づくNF4の区切り方を比較する図" loading="lazy" />
+        <figcaption>左の等間隔cutoffより、右のnormal quantile cutoffが分布中央へ多くの表現点を割くNF4の直観。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=6370s" target="_blank" rel="noopener">1:46:10</a></figcaption>
+      </figure>
+      <p><strong>画像の読み解き：</strong>Weightが集中する0付近を細かく、tailを粗く表す。Fixed-width bucketでは頻出領域の誤差が大きくなりやすいが、quantile基準は有限codeを分布へ合わせる。</p>
+      <p>Quantizationにはblockごとのscale constantが必要である。Double quantizationはweightだけでなく、このconstant自体もquantizeする。Original QLoRA paperのもう1つの要素は<strong>paged optimizer</strong>で、long sequenceの一時的なmemory spikeをNVIDIA unified memoryで退避する。講義は時間の都合でここを説明していない。</p>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="num">&gt;780GB → &lt;48GB</div><div class="label">LLaMA 65Bの16-bit FullFTからQLoRAへのpaper記載memory削減。</div></div>
+        <div class="stat-card"><div class="num">0.37 bit/param</div><div class="label">Double quantizationの平均追加saving。65Bで約3GB。</div></div>
+        <div class="stat-card"><div class="num">4-bit + BF16</div><div class="label">Frozen base storageはNF4、LoRA parameterとcomputeは高precision。</div></div>
+      </div>
+      <div class="callout info">
+        <strong>講義の「約16× VRAM saving」を精密化</strong>
+        <p>Paperはregular 16-bit fine-tuningの780GB超を48GB未満へ下げ、65B modelをsingle 48GB GPUでfine-tune可能にしたと報告する。Double quantizationだけの効果は平均0.37 bit/parameterであり、全体の16×はNF4、LoRA、paged optimizerを含むsystem効果である。</p>
+        <p><a href="https://arxiv.org/abs/2305.14314" target="_blank" rel="noopener">一次資料: QLoRA</a></p>
+      </div>
+    </section>
+
+    <section id="qa">
+      <h2>14. 講義内Q&amp;A総覧</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>質問</th><th>講義の回答・要点</th></tr></thead>
+          <tbody>
+            <tr><td>Model version間でpretrainingをtransferするのか。</td><td>Closed modelはrecipeを公開しないため一般回答はできない。いずれにせよpretrainingは高価。</td></tr>
+            <tr><td>Scaling lawでarchitecture差は重要でないのか。</td><td>Paperのtested familyではparameter・tokenが主要因。ただしlawを別architectureへ無条件に外挿しない。</td></tr>
+            <tr><td>Data parallel GPU間のgradient updateは。</td><td>各mini-batchのgradientを通信でaggregateし、平均に相当するupdateを全replicaへ適用する。</td></tr>
+            <tr><td>FlashAttentionはrow全体をSRAMへ入れるのか。</td><td>図は説明用。実際はSRAM sizeに合わせQ/K/Vを2次元blockへ分けられる。</td></tr>
+            <tr><td>Online softmaxの補正係数は近似か。</td><td>Running statisticsを逐次計算するexact method。詳細式はpaper参照。</td></tr>
+            <tr><td>Mixed precisionは全layerへ同じように適用するか。</td><td>Variationがあり、重要な部分を高precisionへ残す。実装・hardware依存。</td></tr>
+            <tr><td>Quantizationのrangeをどう扱うか。</td><td>講義はzero-point・absmax quantizationをpointerとして挙げ、QLoRAのNF4へつなぐ。</td></tr>
+            <tr><td>SFTでinputにもlossを置くか。</td><td>講義のinstruction settingでは置かず、response開始からlossを計算する。</td></tr>
+            <tr><td>同じSFT exampleを入れると同じoutputか。</td><td>Non-zero temperatureなら同じwordingとは限らない。類似flavorはあり得る。</td></tr>
+            <tr><td>LoRA rankはgrid searchするか。</td><td>可能。既知のpopular valueから始めてもよく、講義はr=4を例示。Dataset capacityとの対応を確認する。</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="glossary">
+      <h2>15. 難しい用語の補足</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>用語</th><th>この講義での意味</th></tr></thead>
+          <tbody>
+            <tr><td>Base / pretrained model</td><td>Large corpusで次token予測を終えたが、assistant behaviorへ十分alignしていないmodel。</td></tr>
+            <tr><td>Activation</td><td>Layerがforward時に出す中間tensor。Backwardでgradientを計算するため保持または再計算する。</td></tr>
+            <tr><td>Optimizer state</td><td>Adamの1次・2次momentなど、parameter updateを安定化する補助state。</td></tr>
+            <tr><td>HBM / SRAM</td><td>GPUの大容量off-chip memory / 小容量高速on-chip memory。FlashAttentionは両者間のI/Oを最適化する。</td></tr>
+            <tr><td>All-reduce</td><td>複数rankのgradientをsumし、結果を全rankへ配るcollective communication。</td></tr>
+            <tr><td>Sharding</td><td>Tensorやstateをsliceへ分け、deviceごとに別sliceを持つこと。Replicationの反対。</td></tr>
+            <tr><td>Quantization scale / zero-point</td><td>Integer codeと実数値を対応させる倍率 / zeroのcode位置。Range・誤差を決める。</td></tr>
+            <tr><td>Low rank</td><td>Matrixの独立方向が少ないこと。LoRAではtask updateをrank rのsubspaceへ制限する。</td></tr>
+            <tr><td>Out-of-distribution</td><td>Training prompt/dataとdeployment inputの分布がずれた状態。Generalization failureの一因。</td></tr>
+            <tr><td>Data contamination</td><td>Test itemまたは非常に近いdataがtrainingへ混入し、benchmarkが実力以上に見えること。</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="summary">
+      <h2>16. まとめ：各手法はどのbottleneckを解くか</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>課題</th><th>手法</th><th>得るもの</th><th>新しいtrade-off</th></tr></thead>
+          <tbody>
+            <tr><td>Taskごとにゼロから学習</td><td>Pretraining + transfer learning</td><td>共通知識を再利用。</td><td>巨大な初期cost、cutoff、memorization。</td></tr>
+            <tr><td>固定computeの配分</td><td>Scaling / Chinchilla law</td><td>Parameterとtokenの設計指針。</td><td>Empirical lawはsetup依存。</td></tr>
+            <tr><td>Model stateが1 GPUに収まらない</td><td>DP / ZeRO / model parallelism</td><td>Aggregate memoryとcomputeを利用。</td><td>Communication・scheduling cost。</td></tr>
+            <tr><td>AttentionのHBM traffic</td><td>FlashAttention</td><td>Exact attentionのmemory・runtime削減。</td><td>Kernel・hardware-specific tuning。</td></tr>
+            <tr><td>FP32のmemory・throughput</td><td>Mixed precision / quantization</td><td>少ないbytesと高速hardware path。</td><td>Overflow、underflow、rounding error管理。</td></tr>
+            <tr><td>Base modelがinstructionへ答えない</td><td>SFT / instruction tuning</td><td>Helpful・task-specific behavior。</td><td>High-quality data、distribution、evaluation。</td></tr>
+            <tr><td>FullFTのtrainable stateが大きい</td><td>LoRA</td><td>Small task adapter、swap・merge可能。</td><td>Rank capacity、LR・batch dynamics。</td></tr>
+            <tr><td>Frozen base weightも大きい</td><td>QLoRA</td><td>4-bit storageでsingle-GPU fine-tuning。</td><td>Quantization kernel、dequantization、quality検証。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>講義の一貫したmessageは、LLM trainingを単なる「大きなmodelへ大量dataを流す作業」と見ないことにある。<strong>Knowledgeを得るstage、behaviorを教えるstage、memory state、I/O、precision、evaluation</strong>へ分解すると、各techniqueが何を節約し、何を新たなcostとして持ち込むかが見える。</p>
+    </section>
+
+    <section id="related">
+      <h2>17. 関連レポート</h2>
+      <div class="grid-cards">
+        <div class="card"><h4><a href="stanford-cme295-lecture1-transformer-ja.html">Lecture 1: Transformer</a></h4><p>Tokenization、attention、Transformer本体の前提を復習する。</p></div>
+        <div class="card"><h4><a href="stanford-cme295-lecture2-transformer-models-tricks-ja.html">Lecture 2: Models &amp; Tricks</a></h4><p>RoPE、normalization、sparse attention、BERT系を扱う。</p></div>
+        <div class="card"><h4><a href="stanford-cme295-lecture3-large-language-models-ja.html">Lecture 3: Large Language Models</a></h4><p>MoE、decoding、prompting、KV cache、inference optimizationを扱う。</p></div>
+        <div class="card"><h4><a href="doc-to-lora-and-x-to-lora-derivatives-ja.html">Doc-to-LoRA / X-to-LoRA</a></h4><p>LoRAをtask adapterから文書・code・skillのinternalizationへ拡張する研究を整理。</p></div>
+      </div>
+    </section>
+
+    <section id="references">
+      <h2>18. 出典・一次資料</h2>
+      <ol class="refs">
+        <li>Stanford CME295, <a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture4.pdf" target="_blank" rel="noopener"><em>Lecture 4: LLM Training</em>（128 slides）</a>.</li>
+        <li>Kaplan et al. (2020), <a href="https://arxiv.org/abs/2001.08361" target="_blank" rel="noopener"><em>Scaling Laws for Neural Language Models</em></a>.</li>
+        <li>Hoffmann et al. (2022), <a href="https://arxiv.org/abs/2203.15556" target="_blank" rel="noopener"><em>Training Compute-Optimal Large Language Models</em></a>.</li>
+        <li>Meta Llama Team (2024), <a href="https://arxiv.org/abs/2407.21783" target="_blank" rel="noopener"><em>The Llama 3 Herd of Models</em></a>.</li>
+        <li>Rajbhandari et al. (2020), <a href="https://arxiv.org/abs/1910.02054" target="_blank" rel="noopener"><em>ZeRO</em></a>; Microsoft, <a href="https://www.deepspeed.ai/tutorials/zero/" target="_blank" rel="noopener">DeepSpeed ZeRO tutorial</a>.</li>
+        <li>Hugging Face, <a href="https://huggingface.co/spaces/nanotron/ultrascale-playbook" target="_blank" rel="noopener"><em>The Ultra-Scale Playbook</em></a>.</li>
+        <li>Dao et al. (2022), <a href="https://arxiv.org/abs/2205.14135" target="_blank" rel="noopener"><em>FlashAttention</em></a>.</li>
+        <li>Micikevicius et al. (2018), <a href="https://arxiv.org/abs/1710.03740" target="_blank" rel="noopener"><em>Mixed Precision Training</em></a>; NVIDIA, <a href="https://docs.nvidia.com/deeplearning/performance/mixed-precision-training/index.html" target="_blank" rel="noopener">Mixed Precision Training Guide</a>.</li>
+        <li>Wei et al. (2022), <a href="https://arxiv.org/abs/2109.01652" target="_blank" rel="noopener"><em>Finetuned Language Models Are Zero-Shot Learners</em></a>.</li>
+        <li>Ouyang et al. (2022), <a href="https://arxiv.org/abs/2203.02155" target="_blank" rel="noopener"><em>Training Language Models to Follow Instructions with Human Feedback</em></a>.</li>
+        <li>Hugging Face, <a href="https://huggingface.co/docs/trl/sft_trainer" target="_blank" rel="noopener">TRL SFT Trainer documentation</a>.</li>
+        <li>Hendrycks et al. (2021), <a href="https://arxiv.org/abs/2009.03300" target="_blank" rel="noopener"><em>Measuring Massive Multitask Language Understanding</em></a>.</li>
+        <li>Clark et al. (2018), <a href="https://arxiv.org/abs/1803.05457" target="_blank" rel="noopener"><em>Think you have Solved Question Answering? Try ARC</em></a>.</li>
+        <li>Cobbe et al. (2021), <a href="https://arxiv.org/abs/2110.14168" target="_blank" rel="noopener"><em>Training Verifiers to Solve Math Word Problems</em></a>.</li>
+        <li>Chen et al. (2021), <a href="https://arxiv.org/abs/2107.03374" target="_blank" rel="noopener"><em>Evaluating Large Language Models Trained on Code</em></a>.</li>
+        <li>Dominguez-Olmedo, Dorner &amp; Hardt (2024/2025), <a href="https://arxiv.org/abs/2407.07890" target="_blank" rel="noopener"><em>Training on the Test Task Confounds Evaluation and Emergence</em></a>.</li>
+        <li>Huang et al. (2025), <a href="https://arxiv.org/abs/2501.07493" target="_blank" rel="noopener"><em>Exploring and Mitigating Adversarial Manipulation of Voting-Based Leaderboards</em></a>.</li>
+        <li>Hu et al. (2021), <a href="https://arxiv.org/abs/2106.09685" target="_blank" rel="noopener"><em>LoRA</em></a>.</li>
+        <li>Schulman et al. / Thinking Machines Lab (2025), <a href="https://thinkingmachines.ai/blog/lora/" target="_blank" rel="noopener"><em>LoRA Without Regret</em></a>.</li>
+        <li>Dettmers et al. (2023), <a href="https://arxiv.org/abs/2305.14314" target="_blank" rel="noopener"><em>QLoRA</em></a>.</li>
+      </ol>
+    </section>
+
+    <footer class="page">
+      <p class="disclaimer">本レポートは、上記の出典元コンテンツを参照し、内容を省略せず日本語で要約・再構成した非公式まとめです。記述に誤りがある場合は出典元の表現が正となります。</p>
+      <p>公式教材・原論文・公式documentによる周辺情報は、講義内の説明そのものではなく、説明不足・保留・単純化された点を正確に補う付記です。</p>
+      <p>講義フレーム12枚は理解に必要な要所へ限定した少数引用であり、各captionの時刻からYouTube上の該当箇所を確認できます。</p>
+      <p>出典: <a href="https://www.youtube.com/watch?v=VlA_jt_3Qc4" target="_blank" rel="noopener">YouTube / Stanford Online</a> ／ 取得手段: yt-dlp公式英語字幕（1,864 cues・13,926語を全文精読）・720p動画フレーム12枚＋Stanford公式スライド128ページ＋一次資料 ／ 生成日: 2026-07-25</p>
+    </footer>
+  </main>
+</div>
+
+<div id="diagramModal" class="modal" role="dialog" aria-modal="true" aria-label="図と講義画面の拡大ビューア">
+  <div class="modal-toolbar">
+    <button class="modal-button" type="button" onclick="zoomCmd('in')">拡大</button>
+    <button class="modal-button" type="button" onclick="zoomCmd('out')">縮小</button>
+    <button class="modal-button" type="button" onclick="zoomCmd('reset')">リセット</button>
+    <button class="modal-button" type="button" onclick="closeModal()">閉じる</button>
+  </div>
+  <div id="modalBody" class="modal-body"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+<script>
+  const themeAttr = document.documentElement.getAttribute('data-theme');
+  const isDark = themeAttr ? themeAttr === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: true, theme: isDark ? 'dark' : 'default', securityLevel: 'loose' });
+
+  const tocPanel = document.querySelector('.toc-panel');
+  const mobileToc = window.matchMedia('(max-width: 900px)');
+  const syncTocState = (event) => {
+    if (!tocPanel) return;
+    if (event.matches) tocPanel.removeAttribute('open');
+    else tocPanel.setAttribute('open', '');
+  };
+  syncTocState(mobileToc);
+  mobileToc.addEventListener('change', syncTocState);
+
+  const toc = document.getElementById('toc');
+  const headings = [...document.querySelectorAll('main section[id] > h2, main section[id] > h3')];
+  if (toc && headings.length) {
+    toc.innerHTML = '';
+    headings.forEach((heading, index) => {
+      const section = heading.closest('section');
+      if (!heading.id) heading.id = section ? section.id + '-h' + index : 'heading-' + index;
+      const item = document.createElement('li');
+      item.className = heading.tagName === 'H3' ? 'lvl-3' : 'lvl-2';
+      const anchor = document.createElement('a');
+      anchor.href = '#' + heading.id;
+      anchor.textContent = heading.textContent.trim();
+      item.appendChild(anchor);
+      toc.appendChild(item);
+    });
+    const links = [...toc.querySelectorAll('a')];
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries.filter(entry => entry.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (!visible) return;
+      links.forEach(link => link.classList.toggle('active', link.getAttribute('href') === '#' + visible.target.id));
+    }, { rootMargin: '-20% 0px -65% 0px', threshold: [0, 1] });
+    headings.forEach(heading => observer.observe(heading));
+  }
+
+  let panZoomInstance = null;
+  function tightenViewBox(svg) {
+    if (!svg || !svg.getBBox) return;
+    try {
+      const bbox = svg.getBBox();
+      if (!Number.isFinite(bbox.width) || !Number.isFinite(bbox.height) || bbox.width === 0 || bbox.height === 0) return;
+      const padding = 20;
+      svg.setAttribute('viewBox', [bbox.x-padding, bbox.y-padding, bbox.width+padding*2, bbox.height+padding*2].join(' '));
+    } catch (error) {
+      console.warn('Unable to tighten Mermaid viewBox', error);
+    }
+  }
+  function openDiagramFromElement(diagram) {
+    const sourceSvg = diagram ? diagram.querySelector('svg') : null;
+    if (!sourceSvg) return;
+    const modal = document.getElementById('diagramModal');
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = '';
+    const clonedSvg = sourceSvg.cloneNode(true);
+    clonedSvg.removeAttribute('style');
+    clonedSvg.setAttribute('width', '100%');
+    clonedSvg.setAttribute('height', '100%');
+    modalBody.appendChild(clonedSvg);
+    tightenViewBox(clonedSvg);
+    modal.classList.add('is-open');
+    if (panZoomInstance) panZoomInstance.destroy();
+    panZoomInstance = svgPanZoom(clonedSvg, {
+      zoomEnabled: true, controlIconsEnabled: false, fit: true, center: true, minZoom: .4, maxZoom: 8
+    });
+    panZoomInstance.resize();
+    panZoomInstance.fit();
+    panZoomInstance.center();
+  }
+  function openImageFromElement(img) {
+    const modal = document.getElementById('diagramModal');
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = '';
+    const svgNamespace = 'http://www.w3.org/2000/svg';
+    const width = img.naturalWidth || 1280;
+    const height = img.naturalHeight || 720;
+    const svg = document.createElementNS(svgNamespace, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    const image = document.createElementNS(svgNamespace, 'image');
+    image.setAttributeNS('http://www.w3.org/1999/xlink', 'href', img.src);
+    image.setAttribute('href', img.src);
+    image.setAttribute('x', '0');
+    image.setAttribute('y', '0');
+    image.setAttribute('width', width);
+    image.setAttribute('height', height);
+    svg.appendChild(image);
+    modalBody.appendChild(svg);
+    modal.classList.add('is-open');
+    if (panZoomInstance) panZoomInstance.destroy();
+    panZoomInstance = svgPanZoom(svg, {
+      zoomEnabled: true, controlIconsEnabled: false, fit: true, center: true, minZoom: .4, maxZoom: 12
+    });
+    panZoomInstance.resize();
+    panZoomInstance.fit();
+    panZoomInstance.center();
+  }
+  function closeModal() {
+    const modal = document.getElementById('diagramModal');
+    const modalBody = document.getElementById('modalBody');
+    if (panZoomInstance) {
+      panZoomInstance.destroy();
+      panZoomInstance = null;
+    }
+    modal.classList.remove('is-open');
+    modalBody.innerHTML = '';
+  }
+  function zoomCmd(command) {
+    if (!panZoomInstance) return;
+    if (command === 'in') panZoomInstance.zoomIn();
+    if (command === 'out') panZoomInstance.zoomOut();
+    if (command === 'reset') {
+      panZoomInstance.resetZoom();
+      panZoomInstance.fit();
+      panZoomInstance.center();
+    }
+  }
+  window.closeModal = closeModal;
+  window.zoomCmd = zoomCmd;
+  document.querySelectorAll('.mermaid').forEach((diagram) => {
+    diagram.setAttribute('role', 'button');
+    diagram.setAttribute('aria-label', 'Mermaid図を拡大表示');
+    diagram.setAttribute('title', 'クリックで拡大表示');
+    if (!diagram.hasAttribute('tabindex')) diagram.tabIndex = 0;
+    diagram.addEventListener('click', () => openDiagramFromElement(diagram));
+    diagram.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openDiagramFromElement(diagram);
+      }
+    });
+  });
+  document.querySelectorAll('figure.shot img').forEach((img) => {
+    img.setAttribute('role', 'button');
+    img.setAttribute('aria-label', '講義画面を拡大表示');
+    img.setAttribute('title', 'クリックで拡大表示');
+    if (!img.hasAttribute('tabindex')) img.tabIndex = 0;
+    img.addEventListener('click', () => openImageFromElement(img));
+    img.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openImageFromElement(img);
+      }
+    });
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeModal();
+  });
+  document.getElementById('diagramModal').addEventListener('click', (event) => {
+    if (event.target.id === 'diagramModal') closeModal();
+  });
+</script>
+</body>
+</html>
