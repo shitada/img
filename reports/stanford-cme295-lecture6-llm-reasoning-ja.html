@@ -1,0 +1,2115 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<link rel="stylesheet" href="../assets/stash-theme.css" />
+<script src="../assets/stash-theme.js"></script>
+<title>Stanford CME295 Lecture 6「LLM Reasoning」日本語要約【講義スライド34枚・徹底補足版】</title>
+<meta name="description" content="Stanford CME295 Lecture 6「LLM Reasoning」を公式英語字幕1,692 cues・12,960語、公式スライド148ページ、講義映像の確認済みフレーム34枚から日本語で再構成。reasoning modelの定義、CoT、pass@kの黒板導出、verifiable rewardによるRL、GRPO、GRPO対PPO、出力長バイアス、DAPO・Dr. GRPO、DeepSeek R1レシピ、distillationまでを網羅し、難所には一次資料に基づく補足を多数追加した徹底解説版。" />
+<style>
+  :root {
+    --sidebar-w: 286px;
+    --content-max: 980px;
+    --radius: 14px;
+    --shadow: 0 8px 28px rgba(0,0,0,.34);
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--text); scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.85;
+  }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  strong { color: var(--text); }
+  .layout { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); min-height: 100vh; }
+  aside.sidebar {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    border-right: 1px solid var(--border); background: var(--bg-elev); padding: 24px 18px;
+  }
+  .toc-panel > summary { display: none; color: var(--text); cursor: pointer; font-weight: 700; }
+  .toc-title {
+    margin: 0 0 10px; color: var(--text-dim); font-size: 12px; font-weight: 700;
+    letter-spacing: .12em; text-transform: uppercase;
+  }
+  aside.sidebar ol { list-style: none; padding: 0; margin: 0; }
+  aside.sidebar li { margin: 2px 0; }
+  aside.sidebar a {
+    display: block; padding: 6px 10px; border-left: 2px solid transparent;
+    border-radius: 0 7px 7px 0; color: var(--text-dim); font-size: 13.5px;
+    line-height: 1.45; transition: color .15s, border-color .15s, background .15s;
+  }
+  aside.sidebar a:hover { color: var(--text); background: rgba(127,127,127,.07); text-decoration: none; }
+  aside.sidebar a.active {
+    border-left-color: var(--accent); background: rgba(127,127,127,.1);
+    color: var(--accent); font-weight: 700;
+  }
+  aside.sidebar li.lvl-3 a { padding-left: 22px; font-size: 12.5px; }
+  main { width: min(100%, var(--content-max)); margin: 0 auto; padding: 48px 28px 96px; }
+  header.page { margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+  header.page .eyebrow {
+    color: var(--accent); font-size: 13px; font-weight: 800;
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+  header.page h1 { margin: 8px 0 12px; font-size: clamp(28px, 4vw, 42px); line-height: 1.3; }
+  header.page .lead { margin: 0; color: var(--text-dim); font-size: 16px; }
+  .meta-card {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px 24px; margin: 20px 0 32px; padding: 18px 20px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-elev); font-size: 14px;
+  }
+  .meta-card dt { color: var(--text-dim); font-size: 12px; letter-spacing: .04em; }
+  .meta-card dd { margin: 0 0 7px; color: var(--text); }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border: 1px solid var(--border);
+    border-radius: 999px; background: var(--bg); color: var(--text-dim); font-size: 12px;
+  }
+  .tldr, .callout, .source-note {
+    margin: 24px 0; padding: 17px 22px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev);
+  }
+  .tldr h2 { margin: 0 0 10px; color: var(--accent); font-size: 17px; letter-spacing: .04em; }
+  .callout { border-left: 3px solid var(--accent); }
+  .callout strong { color: var(--accent); }
+  .callout.info { border-left-color: var(--link); }
+  .callout.info strong { color: var(--link); }
+  .callout.warning { border-left-color: #f59e0b; }
+  .callout.warning strong { color: #f59e0b; }
+  .callout p:last-child, .source-note p:last-child { margin-bottom: 0; }
+  .source-note { border-style: dashed; }
+  section { margin: 48px 0; scroll-margin-top: 24px; }
+  section h2 {
+    display: inline-block; margin: 0 0 16px; padding-bottom: 8px;
+    border-bottom: 2px solid var(--accent); font-size: 23px; line-height: 1.45;
+  }
+  section h3 { margin: 28px 0 9px; color: var(--accent); font-size: 18px; }
+  section h4 { margin: 18px 0 6px; font-size: 15px; }
+  p { margin: 10px 0; }
+  ul, ol { margin: 12px 0; padding-left: 23px; }
+  li { margin: 6px 0; }
+  code {
+    padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg-elev); font-size: .92em;
+  }
+  .table-wrap { width: 100%; overflow-x: auto; margin: 17px 0; }
+  table {
+    width: 100%; min-width: 680px; border-collapse: collapse;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-elev); overflow: hidden;
+  }
+  th, td {
+    padding: 11px 14px; border-bottom: 1px solid var(--border);
+    text-align: left; vertical-align: top; font-size: 14px;
+  }
+  thead th {
+    background: rgba(127,127,127,.08); color: var(--text-dim);
+    font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  .grid-cards {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px; margin: 18px 0;
+  }
+  .card {
+    padding: 15px 17px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev);
+  }
+  .card h4 { margin: 0 0 6px; color: var(--accent); font-size: 14px; }
+  .card p { margin: 0; color: var(--text-dim); font-size: 13.5px; }
+  .stat-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px; margin: 18px 0;
+  }
+  .stat-card {
+    padding: 14px 15px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev);
+  }
+  .stat-card .num { color: var(--accent); font-size: 25px; font-weight: 800; line-height: 1.2; }
+  .stat-card .label { margin-top: 4px; color: var(--text-dim); font-size: 12px; line-height: 1.5; }
+  .formula {
+    margin: 20px 0; padding: 20px; border: 1px solid var(--border);
+    border-left: 4px solid var(--accent); border-radius: var(--radius);
+    background: var(--bg-elev); text-align: center;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: clamp(14px, 2.2vw, 20px); font-weight: 700; overflow-x: auto;
+  }
+  .formula small {
+    display: block; margin-top: 8px; color: var(--text-dim);
+    font-family: inherit; font-size: 12px; font-weight: 400;
+  }
+  figure.shot { margin: 24px 0; }
+  figure.shot img {
+    display: block; width: 100%; height: auto; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev); cursor: zoom-in;
+  }
+  figure.shot img:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  figure.shot figcaption {
+    margin-top: 8px; color: var(--text-dim); font-size: 13px; line-height: 1.6;
+  }
+  figure.shot figcaption .ts {
+    display: inline-block; margin-left: 6px; padding: 1px 7px;
+    border: 1px solid var(--border); border-radius: 999px;
+    background: var(--bg-elev); color: var(--accent); font-size: 12px;
+    font-weight: 700; white-space: nowrap;
+  }
+  .mermaid {
+    margin: 20px 0; padding: 18px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev);
+    text-align: center; overflow-x: auto; cursor: zoom-in;
+  }
+  .mermaid:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .mermaid svg { max-width: 100%; height: auto; }
+  .diagram-hint { margin: -10px 0 18px; color: var(--text-dim); font-size: 12px; text-align: center; }
+  .refs { padding-left: 22px; }
+  .refs li { margin: 9px 0; word-break: break-word; }
+  footer.page {
+    margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--border);
+    color: var(--text-dim); font-size: 13px;
+  }
+  footer.page .disclaimer { font-size: 12.5px; opacity: .95; }
+  .modal {
+    position: fixed; inset: 0; z-index: 50; display: none;
+    padding: 22px; background: rgba(9,20,38,.82);
+  }
+  .modal.is-open { display: grid; grid-template-rows: auto 1fr; gap: 12px; }
+  .modal-toolbar { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  .modal-button {
+    appearance: none; padding: 8px 12px; border: 1px solid var(--border);
+    border-radius: 999px; background: var(--bg-elev); color: var(--text);
+    font-weight: 700; cursor: pointer;
+  }
+  .modal-button:hover { border-color: var(--accent); color: var(--accent); }
+  .modal-body {
+    display: grid; place-items: center; min-height: 0; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .modal-body svg { width: 100%; height: 100%; min-height: 70vh; }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: minmax(0, 1fr); width: 100%; }
+    aside.sidebar {
+      position: static; height: auto; min-width: 0; max-width: 100%;
+      padding: 14px 20px; border-right: none; border-bottom: 1px solid var(--border);
+    }
+    .toc-panel > summary { display: block; }
+    .toc-title { display: none; }
+    aside.sidebar ol { margin-top: 10px; }
+    main { min-width: 0; max-width: 100%; padding: 36px 20px 80px; }
+  }
+  @media (max-width: 720px) {
+    .modal { padding: 12px; }
+    .modal-toolbar { justify-content: center; }
+    .modal-button { padding: 7px 10px; }
+    .meta-card { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" aria-label="目次">
+    <details class="toc-panel" open>
+      <summary>目次を開く / 閉じる</summary>
+      <p class="toc-title">Contents</p>
+      <ol id="toc"></ol>
+    </details>
+  </aside>
+
+  <main>
+    <header class="page">
+      <div class="eyebrow">Stanford CME295 · Transformers &amp; Large Language Models · Autumn 2025 · Lecture 6</div>
+      <h1>LLM Reasoning ― 「考えてから答える」モデルはどう作られるのか</h1>
+      <p class="lead">
+        reasoning model の定義から、pass@k の黒板導出、verifiable reward による RL、GRPO と PPO の違い、
+        出力が延々と長くなる length bias とその修正（DAPO / Dr. GRPO）、そして DeepSeek R1 の 5 段階レシピまで。
+        1 時間 47 分の講義を、<strong>数式の意味を 1 つずつ噛み砕きながら</strong>省略せずに再構成する。
+      </p>
+    </header>
+
+    <dl class="meta-card" aria-label="出典メタデータ">
+      <div><dt>出典</dt><dd><a href="https://www.youtube.com/watch?v=k5Fh-UgTuCo" target="_blank" rel="noopener">Stanford CME295 Transformers &amp; LLMs | Autumn 2025 | Lecture 6 - LLM Reasoning</a></dd></div>
+      <div><dt>登壇者</dt><dd>Afshine Amidi / Shervine Amidi（ともに Stanford University Adjunct Lecturer）</dd></div>
+      <div><dt>講義日 / 公開日</dt><dd>2025年11月7日 / 2025年11月14日</dd></div>
+      <div><dt>チャンネル</dt><dd>Stanford Online（YouTube・Education）</dd></div>
+      <div><dt>所要時間</dt><dd>1時間47分10秒（6,430秒・全10チャプター）</dd></div>
+      <div><dt>取得手段</dt><dd>yt-dlp 公式英語字幕（en-US・1,692 cues／整形後 12,960 語）＋ ffmpeg フレーム抽出 34 枚（全点 目視確認）＋ 公式スライド PDF 148ページ</dd></div>
+      <div><dt>公式スライド</dt><dd><a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture6.pdf" target="_blank" rel="noopener">fall25-cme295-lecture6.pdf</a>（cme295.stanford.edu・148ページ）</dd></div>
+      <div style="grid-column: 1 / -1;">
+        <dt>タグ</dt>
+        <dd class="badges">
+          <span class="badge">Reasoning models</span>
+          <span class="badge">Chain of Thought</span>
+          <span class="badge">Pass@k</span>
+          <span class="badge">RLVR</span>
+          <span class="badge">GRPO</span>
+          <span class="badge">PPO</span>
+          <span class="badge">DAPO</span>
+          <span class="badge">Dr. GRPO</span>
+          <span class="badge">DeepSeek R1</span>
+          <span class="badge">Distillation</span>
+        </dd>
+      </div>
+    </dl>
+
+    <div class="source-note">
+      <p><strong>このレポートの作り方と補足方針。</strong>
+      本文は講義の英語字幕を全文精読し、公式スライド PDF（148ページ）と突き合わせて再構成している。
+      とくに GRPO と PPO の損失関数を比較するパートは、登壇者自身が <em>「非常にテクニカルだ。おそらくクラス全体で一番難しいパートだろう（probably the hardest part of the whole class）」</em> と述べた箇所である。
+      本レポートでは <strong>数式・記号・RL 用語で詰まりやすい箇所に、講義では説明されなかった背景を一次資料（原論文・公式ドキュメント）で裏取りしたうえで大幅に補った</strong>。</p>
+      <p>補足は <span style="color:var(--link);font-weight:700;">周辺情報</span> と明示したブロックにまとめてあり、<strong>登壇者が講義内で話した内容そのものではない</strong>。
+      講義で実際に語られた内容と、本レポート独自の補足は必ず区別して読んでほしい。数式は HTML で読めるようプレーンテキスト記法（<code>pi_theta</code>、<code>A_hat</code> など）に書き下している。</p>
+    </div>
+
+    <div class="tldr">
+      <h2>3 行サマリ</h2>
+      <ul>
+        <li><strong>reasoning model とは「答えの前に reasoning chain を出力するモデル」。</strong> 出力は <code>答え</code> ではなく <code>推論 + 答え</code> になる。核となるアイデアは Chain of Thought そのものだが、<strong>few-shot プロンプトではなく学習によって、はるかに大規模に</strong>やる点が違う。</li>
+        <li><strong>作り方の主役は SFT ではなく RL。</strong> 長い推論チェーンを人手で書くのは非現実的で、しかも人間の書き方に縛るのは望ましくない。一方 coding / math には <strong>「テストが通ったか」「答えが一致したか」という検証可能な報酬（verifiable reward）</strong>が自然に存在する。だから reward model すら要らない RL が回せる。ただし講義の主張は <strong>「ゼロから始めるなら SFT は良い方法ではない」</strong>という限定付きで、SFT が不要になるわけではない。実際、RL のみで作られたのは概念実証の <strong>R1-Zero</strong> であり、完成版の <strong>R1 は少量の SFT と GRPO を交互に重ねる</strong>。</li>
+        <li><strong>アルゴリズムは GRPO。</strong> PPO の value function（critic）を捨て、<strong>同じプロンプトから G 個生成して群内の平均と比べる</strong>ことで advantage を作る。ただし損失に含まれる <code>1/|o_i|</code> が「長い間違った出力ほど得」という悪いインセンティブを生み、出力長が際限なく伸びる。<strong>DeepSeek R1（2025年1月）は素の GRPO を軸に 5 段階のレシピを組み上げ</strong>、closed-source の reasoning model に匹敵する性能を出した。<strong>この length bias を修正した DAPO / Dr. GRPO は、その後の 2025 年 3 月に出た別系統の研究</strong>であり、R1 のレシピには含まれていない。</li>
+      </ul>
+    </div>
+
+    <section id="s01">
+      <h2>1. この講義の位置づけ ― Lecture 4・5 の積み上げの上に立つ</h2>
+      <p>
+        Afshine は冒頭で、今回が <em>「preference tuning の話（Lecture 5）と非常に良い接続になる。Lecture 5 で使った手法の多くが、今回の土台としてそのまま使われるからだ」</em> と述べて始めた。
+        まずその復習パートを追う。
+      </p>
+
+      <h3>3 段階パイプラインの再確認</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>段階</th><th>講義回</th><th>教えること</th><th>終わった時点のモデル</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Pretraining</strong></td><td>Lecture 4</td><td>テキスト・コードの構造。最も計算コストが重い超大規模学習</td><td>言語とコードは知っているが、<strong>「続きを autocomplete する」ことしかできない</strong></td></tr>
+          <tr><td><strong>Finetuning（SFT）</strong></td><td>Lecture 4</td><td>高品質でキュレーションされた SFT データで「どう振る舞うか」を教える</td><td>特定タスク（例：質問に答えるアシスタント）向けに調整済み</td></tr>
+          <tr><td><strong>Preference tuning</strong></td><td>Lecture 5</td><td>人間の好みに合わせる（alignment）。RLHF が代表</td><td>人間の選好に沿った出力を返す</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>RL 設定と LLM の対応関係（Lecture 5 の復習）</h3>
+      <p>
+        今回の内容を理解するうえで最も重要な復習が、<strong>一般的な RL の用語を LLM にどう写像するか</strong>という対応表である。
+        Afshine はこの図を再掲して確認した。
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>RL の用語</th><th>LLM での対応</th><th>意味</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Agent</strong>（エージェント）</td><td>LLM そのもの</td><td>行動を選ぶ主体</td></tr>
+          <tr><td><strong>Environment</strong>（環境）</td><td>予測しうる token の集合</td><td>エージェントが働きかける世界</td></tr>
+          <tr><td><strong>State</strong>（状態）</td><td>これまでの入力（input so far）</td><td>現在の文脈</td></tr>
+          <tr><td><strong>Action</strong>（行動）</td><td>次の token</td><td>状態に対して取る選択</td></tr>
+          <tr><td><strong>Policy</strong>（方策）</td><td>次 token の確率分布</td><td>「状態→行動」の確率分布。<em>「行動に対する確率分布に他ならない」</em></td></tr>
+          <tr><td><strong>Reward</strong>（報酬）</td><td>Lecture 5 では人間の選好、<strong>今回は検証可能な正誤</strong></td><td>行動の良し悪しの信号</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="callout info">
+        <p><strong>周辺情報：RL の基本語彙をもう一段かみ砕く。</strong>
+        強化学習を初めて扱う読者向けに、この対応表の意味を補っておく。通常の RL では、エージェント（例：ロボット）が状態（例：現在位置）を観測し、
+        policy に従って行動（例：右に進む）を選び、環境から報酬（例：ゴールに近づいたら +1）を受け取る、というループを回す。
+        LLM の場合、これが<strong>「今までの文章を見て、次の 1 token を選ぶ」という 1 手</strong>に対応する。
+        つまり <strong>1 回の文章生成が「何百手もの意思決定の連鎖」</strong>であり、報酬は多くの場合その連鎖の最後にしか与えられない。
+        これが LLM の RL を難しくしている根本的な理由で、後述する advantage や value function はすべて
+        「最後にしかもらえない報酬を、途中の各 token にどう配分するか」という問題への答えである。</p>
+      </div>
+
+      <h3>RL 段階の損失は 2 つの部分でできている</h3>
+      <p>Afshine が繰り返し強調したのは、preference tuning の RL 損失が常に次の 2 項からなるという構造である。</p>
+      <div class="formula">
+        Loss = ① advantage の最大化 &nbsp; + &nbsp; ② 旧モデル / base モデルから離れすぎないこと
+        <small>Lecture 5 の復習スライド「Maximize advantages」＋「Don't deviate too much from old/base model」</small>
+      </div>
+      <ul>
+        <li><strong>① advantage の最大化。</strong> advantage は reward に基づく量で、<em>「今出している答えが、期待されるより良いかどうかを教えてくれる」</em>もの。ベースラインを引くことで<strong>勾配の分散を減らす</strong>役割がある。</li>
+        <li><strong>② 逸脱の抑制。</strong> 「1 イテレーション前のモデル（old policy）から離れすぎない」ことと、「初期モデル＝ SFT モデル（base）から離れすぎない」ことの両方を指す。理由は明快で、<em>「モデルはすでに多くを学んでおり、すでに十分高性能。やりたいのは人間の好みに揃えることであって、モデルを完全に作り替えることではない」</em>から。</li>
+      </ul>
+
+      <h3>PPO の 2 つのバリアント ― 記号の罠に注意</h3>
+      <p>
+        Lecture 5 で扱った PPO（Proximal Policy Optimization）には 2 つのバリアントがあり、これが今回 GRPO と比較される対象になる。
+        Afshine はここで<strong>記号の紛らわしさ</strong>を明示的に警告している。
+      </p>
+      <div class="callout warning">
+        <p><strong>記号の罠。</strong> PPO-Clip の式に出てくる <code>r</code> は <strong>reward（報酬）ではない</strong>。
+        <em>「r は実は reward ではなく ratio（比）だ。紛らわしい記法だ」</em>と Afshine は明言している。
+        <code>r</code> は <strong>現在の policy と 1 つ前の RL イテレーションの policy の確率比</strong> <code>pi_theta / pi_theta_old</code> を指す。</p>
+      </div>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>バリアント</th><th>やり方</th><th>「離れすぎない」の基準</th></tr></thead>
+        <tbody>
+          <tr><td><strong>PPO-Clip</strong></td><td>ratio <code>r</code> が一定の閾値を超えないよう <strong>clip（切り詰め）</strong>する。大きすぎる更新にインセンティブを与えない</td><td>1 イテレーション前の policy（old policy）</td></tr>
+          <tr><td><strong>PPO-KL penalty</strong></td><td><strong>KL divergence</strong> で「変わりすぎ」にペナルティを課す</td><td>PPO 原論文では old policy。<strong>ただし現代の RLHF では base（SFT）モデルに対して適用するのが普通</strong></td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>
+        Afshine のまとめ：<em>「要するに PPO 原論文が導入したこの 2 つのバリアントがあり、実際の学習ではこの 2 つの損失関数の組み合わせ・混合を使うのが典型」</em>。
+      </p>
+
+      <div class="callout info">
+        <p><strong>周辺情報：KL divergence を一言で。</strong>
+        KL divergence（カルバック・ライブラー情報量）は 2 つの確率分布の「ずれ」を測る非対称な量で、
+        同じ分布なら 0、離れるほど大きくなる。RLHF では <code>D_KL[pi_theta || pi_ref]</code> の形で損失に足し込み、
+        <strong>「更新後のモデルの token 分布が、参照モデルの token 分布から離れすぎたらペナルティ」</strong>として働く。
+        これが無いとモデルは reward を最大化するためだけに極端な出力（意味不明な文字列で報酬関数だけを騙す等＝reward hacking）へ暴走しうる。</p>
+      </div>
+    </section>
+
+    <section id="s02">
+      <h2>2. vanilla LLM の強みと 4 つの弱点 ― 今日はそのうち 1 つを潰す</h2>
+      <p>
+        ここまでで作られるのが、Afshine の言う <strong>"vanilla LLM"</strong>（プロンプトを入れると答えが返ってくるだけの素の LLM）である。
+        講義はまずその強みと弱みを整理した。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/01-vanilla-strengths-weaknesses.jpg" alt="スライド「Practical consideration &amp; caveats of vanilla LLMs」。Strengths に模倣・アイデア生成、コード生成/デバッグ。Weaknesses に Limited reasoning、Knowledge is static、Cannot perform actions、Hard to evaluate の4項目" loading="lazy" />
+        <figcaption>vanilla LLM の強み 2 点と弱み 4 点。弱みは <strong>Limited reasoning</strong> / <strong>Knowledge is static</strong> / <strong>Cannot perform actions</strong> / <strong>Hard to evaluate</strong>。このうち今回は 1 つ目、残る 3 つは Lecture 7・8 で扱われる。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=735s" target="_blank" rel="noopener">12:15</a></figcaption>
+      </figure>
+
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>区分</th><th>項目</th><th>講義での説明</th><th>扱う回</th></tr></thead>
+        <tbody>
+          <tr><td rowspan="2"><strong>強み</strong></td><td>模倣・アイデア生成が得意</td><td>エッセイや詩の生成も「本当に、本当に得意」</td><td>―</td></tr>
+          <tr><td>コード生成・デバッグが驚異的</td><td>「どこにエラーがあるか見つけるのに最適」</td><td>―</td></tr>
+          <tr><td rowspan="4"><strong>弱み</strong></td><td><strong>推論能力が限定的</strong></td><td>複雑な数学問題では途中で迷子になる。next token prediction で訓練されただけのモデルが難問を解ける理由は本来ない</td><td><strong>今回（Lecture 6）</strong></td></tr>
+          <tr><td>知識が静的</td><td>pretraining データの <strong>cutoff date</strong> に縛られる。「数日前に選挙があったが、選挙前のデータで学習していたら当選者は答えられない」</td><td>Lecture 7</td></tr>
+          <tr><td>行動できない</td><td>"all talk, no action"。注文を出すといった実際のアクションが取れない</td><td>Lecture 7</td></tr>
+          <tr><td>評価が難しい</td><td>従来 NLP と違い<strong>自由形式テキスト</strong>を生成する。翻訳の BLEU、要約の ROUGE のようなルールベース指標では測りきれない</td><td>Lecture 8</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="callout info">
+        <p><strong>周辺情報：BLEU と ROUGE がなぜ効かないのか。</strong>
+        BLEU（機械翻訳の標準指標）は参照訳との n-gram 一致率、ROUGE（要約の標準指標）は参照要約との n-gram 再現率を測る。
+        いずれも<strong>「正解テキストが 1 つ（または少数）に定まる」前提</strong>に立つ。
+        ところが LLM は同じ問いに対して無数の妥当な言い回しを返せるため、正解文字列との重なりで測ると、
+        正しいのに低スコアになったり、逆に的外れなのに語彙が重なるだけで高スコアになったりする。
+        これが今回のテーマである <strong>pass@k のような「答えの正しさそのものを検証する」指標</strong>が必要になる背景であり、
+        同時に reasoning タスクが RL と相性が良い理由でもある（正誤が自動判定できる）。</p>
+      </div>
+
+      <p>
+        なお Afshine は <em>「これは LLM が持ちうる弱点の一部にすぎない（網羅的なリストではない）」</em> と断っている。
+      </p>
+    </section>
+
+    <section id="s03">
+      <h2>3. reasoning とは何か ― 合意された定義は存在しない</h2>
+      <p>
+        講義は正直に切り出す。<em>「悪いニュースだが、reasoning が何かについて世の中で広く合意された定義は存在しない。だからできる限りで定義してみる」</em>。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/02-reasoning-definition.jpg" alt="スライド「Terminology」。Tentative definition として Reasoning = Ability to solve a problem。下に Not reasoning と Reasoning の対比例" loading="lazy" />
+        <figcaption>暫定的な定義「<strong>Reasoning = Ability to solve a problem</strong>」と、reasoning でない例／reasoning の例の対比。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=925s" target="_blank" rel="noopener">15:25</a></figcaption>
+      </figure>
+
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>分類</th><th>スライドの例</th><th>なぜそう分類されるか</th></tr></thead>
+        <tbody>
+          <tr><td><strong>reasoning ではない</strong></td><td>「Stanford の Transformers &amp; LLMs のコース番号は？」</td><td>単なる<strong>知識</strong>の照会。答えは CME 295 と決まっており、多段の思考は不要</td></tr>
+          <tr><td><strong>reasoning である</strong></td><td>「クマは 2020 年生まれ。2025 年の今、何歳？」</td><td>複数ステップの<strong>推論プロセス</strong>が必要。簡単な例だが、はるかに難しい問題も同じ型に入る</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <p>
+        講義での「問題（problem）」は主に <strong>数学問題とコーディング問題</strong>を想定している。
+        <em>「ただし、この能力が他の分野にも波及することが期待される」</em>。
+        そして reasoning の特徴は <strong>multi-step reasoning process</strong>。
+        <em>「試験を受けるときと少し似ている。自明でない問題が来たら、いくつかのステップに分解して、順にたどって、最終的な答えに到達する」</em>。
+      </p>
+
+      <div class="callout info">
+        <p><strong>周辺情報：定義が定まっていないことの実害。</strong>
+        「reasoning」の定義が共有されていないため、業界では「reasoning model」「thinking model」「test-time compute scaling」といった呼称が
+        ほぼ同義で混在している。本レポートでも講義の用語に従い、<strong>「答えの前に中間の思考列を生成し、その分だけ推論時の計算を増やすモデル」</strong>という
+        操作的な意味で reasoning model を使う。学術的には「本当に推論しているのか、訓練で見たパターンを高度に再利用しているだけか」という論争が続いており、
+        講義もそこには踏み込まず、<strong>「解けるかどうか」という機能的な定義</strong>を採っている点に注意したい。</p>
+      </div>
+    </section>
+    <section id="s04">
+      <h2>4. コアアイデアは Chain of Thought ―「ただし、はるかに大規模に」</h2>
+      <p>
+        では、どうすればそういうプロンプトに対応できるモデルが得られるのか。
+        Afshine は <em>「授業の 2 回目か 3 回目で見た chain of thought というテクニックを活用する」</em> と、既習事項に接続した。
+        受講生からの回答は <strong>「一発で答えを出す代わりに、段階を踏んで考えること」</strong>。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/03-cot-bear.jpg" alt="スライド「Core idea behind improving reasoning」。クマの年齢を問う few-shot CoT の例。下部に Idea for reasoning models: Do CoT but at a much larger scale." loading="lazy" />
+        <figcaption>Chain of Thought（Wei et al., 2022）の例。<strong>in-context learning の例示の中に推論過程を明示的に書く</strong>ことで、モデルにも答えの前に推論を書かせる。下線部が結論：<strong>「reasoning model のアイデア＝ CoT をはるかに大規模にやること」</strong>。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=1145s" target="_blank" rel="noopener">19:05</a></figcaption>
+      </figure>
+
+      <h3>受講生からの鋭い指摘 ― 文脈がなければ解けない問題もある</h3>
+      <p>
+        ここで受講生から <em>「その問題には文脈（今が何年か）が必要では」</em> という質問が入り、Afshine は 2 点で答えた。
+      </p>
+      <ul>
+        <li><strong>preamble。</strong> <em>「LLM には preamble と呼ばれるものがあり、文脈を伝える。日付は典型的に preamble に入れる情報だ」</em>。今日が 2025 年 11 月 7 日である、といった情報は最初から与えられている。</li>
+        <li><strong>持っていない文脈の取得は Lecture 7 の話題。</strong> <em>「今日のところは、それは reasoning model の拡張であって、動作原理の根幹ではないと考える」</em>。</li>
+      </ul>
+
+      <div class="callout info">
+        <p><strong>周辺情報：preamble ＝ system prompt の一部。</strong>
+        商用 LLM では、ユーザーの入力より前に「あなたは有用なアシスタントです」「今日の日付は…」といった<strong>システム側の前置き</strong>が挿入される。
+        これを preamble あるいは system prompt と呼ぶ。現在日時、モデル名、利用可能なツール、安全ポリシーなどがここに入るのが一般的で、
+        「LLM は知識が静的（cutoff date に縛られる）」という弱点のうち、<strong>日付のようなごく基本的な情報だけはこの経路で補われている</strong>。
+        それ以外の最新知識を取りに行く仕組み（検索・RAG・ツール利用）が Lecture 7 のテーマになる。</p>
+      </div>
+
+      <h3>なぜ「考えさせる」と性能が上がるのか ― 2 つの直感</h3>
+      <p>Afshine は理屈を 2 つ挙げた。ここは今回の講義でもっとも本質的な直感なので、丁寧に追う。</p>
+
+      <div class="grid-cards">
+        <div class="card">
+          <h4>直感 ①：難問を「見たことのある問題」に分解する</h4>
+          <p>LLM は next token prediction で訓練され、<strong>もっともらしく聞こえる（plausible）</strong>ように答える。とても難しい問題は訓練データにほぼ出てこない。そこで<strong>問題を扱いやすい小問に分解</strong>し、訓練時に見たパターンで各小問を解く。「学生が難問を、勉強中に見た既知のものに結びつけて解こうとするのと同じ」。</p>
+        </div>
+        <div class="card">
+          <h4>直感 ②：token を多く出す＝計算を多く使える</h4>
+          <p>「LLM に token を多く生成させると、それだけ計算を与えていることになる。生成ステップごとに forward pass が丸ごと 1 回走るのだから、回数が増えれば計算量も増える」。ここから <strong>compute budget</strong>（計算予算）という用語が出てくる。</p>
+        </div>
+      </div>
+
+      <div class="callout info">
+        <p><strong>周辺情報：「test-time compute」という言い方。</strong>
+        直感②は近年 <strong>test-time compute scaling（推論時計算のスケーリング）</strong> と呼ばれる考え方そのものである。
+        従来のスケーリング則は「学習時のパラメータ数・データ量・計算量を増やすと性能が上がる」という話だったが、
+        reasoning model は<strong>学習後、推論のたびに使う計算量を増やすことで性能を上げる</strong>という別軸を開いた。
+        講義スライドの該当セクション名が実際に「Develop "test-time scaling"」となっているのはこのためである。
+        Transformer は 1 token 生成するごとに全層の forward pass を 1 回実行するので、
+        「1,000 token 考えてから答える」は「1 token で即答する」より単純に 1,000 倍近い計算を投じていることになる。</p>
+      </div>
+
+      <h3>新しいパラダイム：出力 ＝ 推論 ＋ 答え</h3>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/04-new-paradigm.jpg" alt="スライド「Enhancing model reasoning abilities」。Until now は Question→LLM→Answer。New paradigm は Question→LLM→Reasoning chain→Answer" loading="lazy" />
+        <figcaption>従来は <code>Question → LLM → Answer</code>。新パラダイムでは <code>Question → LLM → Reasoning chain → Answer</code> となり、<strong>LLM の出力は「答え」ではなく「推論＋答え」</strong>になる。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=1300s" target="_blank" rel="noopener">21:40</a></figcaption>
+      </figure>
+      <p>
+        この 1 行が今回の講義全体の前提である。<strong>出力に推論チェーンが含まれる</strong>という事実が、
+        後述する「課金の話」「pass@k の話」「出力長が伸びる話」すべての出発点になる。
+      </p>
+    </section>
+
+    <section id="s05">
+      <h2>5. reasoning model のタイムライン ― すべては 2024 年秋以降</h2>
+      <p>
+        Afshine は <em>「今日見るものはほぼすべて 2024 年か 2025 年のものだ。ただ幸運なことに、今はどれが重要かを見分けられるだけの後知恵がある」</em> と前置きした。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/05-timeline.jpg" alt="スライド「Reasoning model release is trendy」。2024年9/12 OpenAI o1-preview、12/19 Gemini 2.0 Flash Thinking、2025年1/20 DeepSeek R1、2/19 Grok 3 Beta、2/24 Claude 3.7 Sonnet、6/10 Magistral のタイムライン" loading="lazy" />
+        <figcaption>reasoning model の主要リリース年表（スケールは非等間隔・網羅的ではない旨がスライドに明記）。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=1375s" target="_blank" rel="noopener">22:55</a></figcaption>
+      </figure>
+
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>日付</th><th>モデル</th><th>提供元</th><th>講義での言及</th></tr></thead>
+        <tbody>
+          <tr><td>2024-09-12</td><td><strong>o1-preview</strong></td><td>OpenAI</td><td>reasoning model が出始めた起点。<em>「その後は全員が『OpenAI はどうやったんだ』と考え込んだ」</em></td></tr>
+          <tr><td>2024-12-19</td><td>Gemini 2.0 Flash Thinking</td><td>Google</td><td>各 AI ラボが推論能力の強化に一斉に着手</td></tr>
+          <tr><td>2025-01-20</td><td><strong>DeepSeek R1</strong></td><td>DeepSeek</td><td><em>「大きな騒ぎになった。OpenAI の推論性能に匹敵し、しかもその手法を論文に書いていたから。2025 年 1 月は大きな瞬間だった」</em></td></tr>
+          <tr><td>2025-02-19</td><td>Grok 3 Beta</td><td>xAI</td><td>―</td></tr>
+          <tr><td>2025-02-24</td><td>Claude 3.7 Sonnet</td><td>Anthropic</td><td>―</td></tr>
+          <tr><td>2025-06-10</td><td>Magistral</td><td>Mistral</td><td>―</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>Afshine のまとめ：<em>「このタイムラインは網羅的ではないが、これらのモデルがいかに最近のものかを示すためのものだ。要するに 2024 年の終わりに始まった」</em>。</p>
+    </section>
+
+    <section id="s06">
+      <h2>6. 使っているモデルが reasoning model かどうかの見分け方</h2>
+      <p>
+        Afshine は受講生に問いかけた。<em>「ChatGPT とやりとりしていて、これは reasoning model を使っているのかと考えた。スクリーンショットを見てどう思う？」</em>
+        答えは <strong>キーワード "Thinking"</strong>。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/06-spot-reasoning-model.jpg" alt="スライド「How to spot a reasoning model」。ChatGPT 5 Thinking との会話のスクリーンショット。Thought for 6s、Thinking パネル、Extended thinking などが赤枠で強調" loading="lazy" />
+        <figcaption>ChatGPT 5 Thinking との会話（2025年11月3日撮影）。<code>Thinking</code>、<code>Thought for 6s</code>、<code>Extended thinking</code> といった表示が赤枠で示され、右側に「Thought summary」パネルが出ている。質問はスライド全体を貫くクマの例（"My bear was born in 2020. How old is he now?"）。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=1520s" target="_blank" rel="noopener">25:20</a></figcaption>
+      </figure>
+
+      <h3>表示されるのは「思考の要約」であって生の推論チェーンではない</h3>
+      <p>
+        講義スライドは <strong>"Thought summary"</strong> と <strong>"Complete chain of thought usually hidden"</strong> の 2 つのラベルを付けている。
+        Afshine は <em>「これは仮説だが」</em> と断ったうえで、生チェーンを見せない理由を 3 つ挙げた。
+      </p>
+      <ol>
+        <li><strong>人間にとって完全には可読でない可能性がある。</strong> 生の推論チェーンは必ずしも人が読んで分かる形になっていない。</li>
+        <li><strong>ユーザーが何ページも読みたくない。</strong></li>
+        <li><strong>推論チェーンがあれば、それを学習データにして能力を模倣したモデルを作れてしまう。</strong> ―― これは講義の最後で扱う <strong>distillation</strong> の話そのものである。</li>
+      </ol>
+
+      <div class="callout info">
+        <p><strong>周辺情報：3 番目の理由は実際に起きている。</strong>
+        講義の最終節で見るとおり、DeepSeek は R1 が生成した推論チェーンを教師データにして、
+        Qwen や Llama ベースの小型モデルへ能力を移植（distill）している。
+        つまり<strong>「生の reasoning chain を公開する＝自社モデルの能力を蒸留可能にする」</strong>という直接的な競争上のリスクがあり、
+        主要ラボが要約しか見せないのは経済合理性のある選択といえる。この点で講義の仮説は、講義後半の内容と完全に整合している。</p>
+      </div>
+    </section>
+
+    <section id="s07">
+      <h2>7. 課金の話 ― 推論 token にもお金がかかる</h2>
+      <p>
+        reasoning model の出力は「答え」ではなく「推論＋答え」だった。ここから直接、料金の話が出てくる。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/07-pricing-reasoning-tokens.jpg" alt="スライド「How to spot a reasoning model」。OpenAI の Pricing ページ、Anthropic の developer guide、Google の developer guide のスクリーンショットが並び、reasoning token の課金に関する記述が赤枠で強調されている" loading="lazy" />
+        <figcaption>OpenAI・Anthropic・Google の公式ドキュメントの該当箇所（2025年11月4日撮影）。OpenAI 側は「reasoning token は API 経由では見えないが、モデルのコンテキストウィンドウを占有し、<strong>output token として課金される</strong>」旨、Anthropic 側は「<strong>要約 token ではなく、元のリクエストが生成した thinking token 全量に対して課金される</strong>」旨が赤枠で示されている。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=1640s" target="_blank" rel="noopener">27:20</a></figcaption>
+      </figure>
+
+      <p>
+        Afshine のまとめ：<em>「これらの API のどれを見ても、ドキュメントには必ず一言二言、output token に課金されると書いてある。そしてその output token には reasoning token も含まれる」</em>。
+        そして重要な帰結として：
+      </p>
+      <div class="callout">
+        <p><strong>ユーザー側のインセンティブ。</strong> <em>「ユーザーの立場からすると、これは『最小の reasoning token で最大の推論能力を』というインセンティブを生む。たくさん払いたくはないからだ」</em>。
+        この一文が、後半の <strong>length bias（出力長が伸びる問題）</strong>と <strong>thinking budget の制御</strong>という 2 つのトピックの動機になっている。</p>
+      </div>
+    </section>
+    <section id="s08">
+      <h2>8. reasoning ベンチマーク ― coding と math</h2>
+      <p>
+        推論能力を定量化するために、講義は 2 種類のベンチマークを挙げる。両者に共通するのは
+        <strong>「生成された答えが正しいかどうかを機械的に検証できる（verification）」</strong>という性質である。
+        これが後で RL を回せる決定的な理由になる。
+      </p>
+
+      <h3>coding ベンチマーク</h3>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/08-coding-benchmarks.jpg" alt="スライド「Reasoning-based benchmarks」。Coding の説明と HumanEval データセットのスクリーンショット（task_id, prompt, canonical_solution, test の列）。下に Examples: HumanEval, CodeForces, SWE-bench" loading="lazy" />
+        <figcaption>HumanEval データセット（Hugging Face Datasets のビューア、2025年11月3日撮影）。<code>task_id</code>・<code>prompt</code>・<code>canonical_solution</code>・<code>test</code> の列構成が見える。<code>HumanEval/0</code> は <code>has_close_elements</code> という関数を書かせる問題で、<code>test</code> 列に <code>assert</code> 群が入っている。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=1755s" target="_blank" rel="noopener">29:15</a></figcaption>
+      </figure>
+      <p>
+        構造は <strong>Problem → Solution → Verification</strong>。
+        <em>「問題が与えられ、テストケースを通せる解を作る。全テストケースを通れば、動く解を得たことになる。これが、生成された応答が正しいかを検証する我々のやり方だ」</em>。
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>ベンチマーク</th><th>講義での説明</th><th>性質</th></tr></thead>
+        <tbody>
+          <tr><td><strong>HumanEval</strong></td><td>「100 何問かの、人が書いたコーディング問題。だから HumanEval という名前」（<strong>正確には 164 問</strong>。原論文の表現は "164 hand-written programming problems"）</td><td>関数単位の小問。docstring から実装を書かせ、隠しテストで判定</td></tr>
+          <tr><td><strong>CodeForces</strong></td><td>「競技プログラミングのサイトから来ている」</td><td>コンテスト形式。難易度が高くレーティングで測れる</td></tr>
+          <tr><td><strong>SWE-bench</strong></td><td>「GitHub の issue から作られた問題群。実際の実務的な問題」</td><td>リポジトリ全体を対象にしたバグ修正。単一関数より遥かに難しい</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>math ベンチマーク</h3>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/09-math-benchmarks.jpg" alt="スライド「Reasoning-based benchmarks」の Math 部分。AIME データセットのスクリーンショット（id, problem, solution, answer の列）。下に Examples: AIME, GSM8K" loading="lazy" />
+        <figcaption>AIME データセット（Hugging Face Datasets、2025年11月3日撮影）。<code>problem</code>（散歩とコーヒーショップの所要時間を問う文章題）・<code>solution</code>（LaTeX の詳細な解法）・<code>answer</code>（<code>204</code>）の列構成。<strong>answer 列があるから機械的に正誤判定できる</strong>ことが一目でわかる。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=1885s" target="_blank" rel="noopener">31:25</a></figcaption>
+      </figure>
+      <p>
+        構造は <strong>Problem → Reasoning → Ground truth との比較</strong>。ポイントは <strong>答えのパース</strong>である。
+        <em>「モデルにパース可能な形で答えを出させる。プロンプトで強制するのだ。ボックス（<code>\boxed{}</code>）に入れさせる人もいる。やり方はいろいろある」</em>。
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>ベンチマーク</th><th>講義での説明</th></tr></thead>
+        <tbody>
+          <tr><td><strong>AIME</strong></td><td>「米国の数学オリンピック予選に進むための数学試験」。多くのモデルがこれで性能を測る</td></tr>
+          <tr><td><strong>GSM8K</strong></td><td>「小学校レベルの算数問題」</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="callout info">
+        <p><strong>周辺情報：<code>\boxed{}</code> というパース規約。</strong>
+        数学ベンチマークで広く使われる慣習が、LaTeX の <code>\boxed{...}</code> で最終解を囲ませる方式である。
+        評価スクリプトは生成テキストから <code>\boxed{}</code> の中身だけを取り出し、ground truth と文字列 / 数値比較する。
+        これにより「長い推論の途中に出てきた数字」と「最終解答」を確実に区別でき、<strong>推論チェーンの内容には一切触れずに正誤だけを機械判定できる</strong>。
+        後述する verifiable reward は、まさにこの仕組みをそのまま報酬関数に流用したものである。</p>
+      </div>
+    </section>
+
+    <section id="s09">
+      <h2>9. Pass@k ― 「k 回試して 1 回でも当たる確率」</h2>
+      <p>
+        ベンチマークが用意できたとして、何を指標にするのか。
+        Afshine は <em>「これは自明ではないので、今から見る」</em> と、この指標に 16 分を割いた。講義の中でも特に丁寧な導出パートである。
+      </p>
+
+      <div class="formula">
+        Pass@k = 「k 回の試行のうち、少なくとも 1 回が成功する確率」
+        <small>Chen et al., 2021「Evaluating Large Language Models Trained on Code」（Codex 論文）で導入</small>
+      </div>
+
+      <h3>そもそも、なぜ k 回も試すのか</h3>
+      <p>
+        Afshine は <em>「これはあまり自明ではない」</em> と前置きしてから理由を説明する。
+      </p>
+      <ul>
+        <li><strong>時間をかけて複数答案を作れるユースケースがある。</strong> <em>「正解する確率が上がると分かっているなら、複数答案を生成するために時間をかけてもよい」</em>。</li>
+        <li><strong>コーディングのような問題では、答えが正しいか自分で検査できる。</strong> だから「たくさん作って、通ったものを採用する」が成立する。</li>
+      </ul>
+
+      <h3>Best-of-N との違い</h3>
+      <p>
+        Afshine は Lecture 5 の <strong>Best-of-N</strong> と対比させた。
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>Best-of-N（Lecture 5）</th><th>Pass@k（今回）</th></tr></thead>
+        <tbody>
+          <tr><td>やること</td><td>n 個の答案を生成する</td><td>k 個の答案を生成する</td></tr>
+          <tr><td>選び方</td><td><strong>reward model</strong> で採点し、最良のものを取る</td><td><strong>決定的で検証可能な方法</strong>（テスト通過・答え一致）で正誤を判定する</td></tr>
+          <tr><td>必要なもの</td><td>学習済み reward model</td><td>reward model は不要</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>Afshine の言葉：<em>「同じものと考えていい。ただ reward model を持たず、正しいかどうかを決定的・検証可能に確かめる手段を持っているだけだ」</em>。</p>
+
+      <h3>素朴な推定がダメな理由 ― 分散が大きすぎる</h3>
+      <p>
+        「k 回生成して、正解数を数えればいい」ではダメである。理由は Afshine の説明どおり：
+        <em>「k 回しかやらないと、推定値のノイズが非常に大きくなる。純粋な偶然で、あるインスタンスでは 5 回中 3 回正解、別のインスタンスでは 1 回、ということが起きる」</em>。
+      </p>
+      <p>
+        そこで実際にやるのは次の手順である。
+      </p>
+      <div class="mermaid">
+flowchart TD
+  A["同じ問題に対して<br/>k ではなく n 個の答案を生成<br/>（n は k より大きい）"] --> B["採点する<br/>正解 c 個 / 不正解 n - c 個"]
+  B --> C["問い：この n 個から k 個を<br/>ランダムに選んだとき、<br/>少なくとも 1 個が正解である確率は？"]
+  C --> D["＝ Pass@k の不偏推定量"]
+      </div>
+      <p class="diagram-hint">図はクリック（または Enter / Space）で拡大でき、ドラッグ移動・ホイール操作・拡大／縮小／リセットが使えます。</p>
+    </section>
+
+    <section id="s10">
+      <h2>10. Pass@k の黒板導出 ― 「余事象」と「非復元抽出」だけでできている</h2>
+      <p>
+        Afshine は <em>「時間が押しているが、今ここで導出する。答えの形が自明ではないので、どこから来たか知らないまま驚いてほしくないからだ」</em> と言って黒板に向かった。
+        以下、その導出を式変形ごとに追う。<strong>この講義でもっとも「手を動かせば分かる」パートである。</strong>
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/10-passk-derivation-blackboard.jpg" alt="黒板に書かれた Pass@k の導出。= 1 - (n-c)! / (k!(n-c-k)!) × (n-k)!k! / n! という式が書かれ、講師が指差している" loading="lazy" />
+        <figcaption>黒板での導出の途中。積の形を階乗で書き直し、分子・分母に <code>k!</code> を掛けて二項係数の形に整える段階。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=2600s" target="_blank" rel="noopener">43:20</a></figcaption>
+      </figure>
+
+      <h3>ステップ 1：余事象を取る</h3>
+      <p>
+        <em>「確率の授業をやったことがあれば、『少なくとも 1 つ』の確率は『全部が外れる確率』の 1 − という、とても一般的なトリックがある」</em>。
+      </p>
+      <div class="formula">
+        Pass@k = P(k 回中、少なくとも 1 回成功) = 1 − P(k 回すべて失敗)
+      </div>
+
+      <h3>ステップ 2：非復元抽出で「全部外れ」を書き下す</h3>
+      <p>
+        n 個の答案のうち失敗は <code>n − c</code> 個。そこから k 個を順に引いて全部失敗になる確率は、条件付き確率の連鎖で書ける。
+      </p>
+      <div class="formula">
+        P(全部失敗) = (n−c)/n × (n−c−1)/(n−1) × … × (n−c−k+1)/(n−k+1)
+        <small>「1 つ目が失敗、1 つ目が失敗と分かった上で 2 つ目も失敗、…」を k 回。確率でいう<strong>非復元抽出（sampling without replacement）</strong>と同じ</small>
+      </div>
+
+      <h3>ステップ 3：階乗にまとめる</h3>
+      <div class="formula">
+        = [ (n−c)! / (n−c−k)! ] × [ (n−k)! / n! ]
+      </div>
+
+      <h3>ステップ 4：分子・分母に k! を掛けて二項係数にする</h3>
+      <p>
+        <em>「ここでトリックをした。分子と分母に k! を掛けたのだ」</em>。二項係数の定義 <code>C(n,k) = n! / (k! (n−k)!)</code> を使って整理すると：
+      </p>
+      <div class="formula">
+        <strong>Pass@k = 1 − C(n−c, k) / C(n, k)</strong>
+        <small>n = 生成した答案数、c = そのうち正解の数、k = 評価したい試行回数（n ≥ k が必要）</small>
+      </div>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/11-passk-formula.jpg" alt="スライド「Reasoning-based benchmark metrics」。Attempt #1..#n の色分けと n = c + (n-c) の分解、そして Pass@k = 1 - C(n-c,k)/C(n,k) の枠付き数式" loading="lazy" />
+        <figcaption>スライド上の完成形。左に <code>Pass@k = 1 − C(n−c, k) / C(n, k)</code>、右に <code>n = c + (n − c)</code>（Successful ＋ Unsuccessful）の分解。緑が成功、赤が失敗の試行を表す。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=2670s" target="_blank" rel="noopener">44:30</a></figcaption>
+      </figure>
+
+      <p>
+        Afshine の締め：<em>「わざわざ導出したのは、この式が見た目には少し怖いからだ。でも実際にはとても自然で、非復元抽出の考え方だけでできている」</em>。
+      </p>
+
+      <div class="callout info">
+        <p><strong>周辺情報：直感的に確かめる。</strong>
+        式が正しいか、極端な場合で検算すると腑に落ちる。<br>
+        ・<strong>c = 0（全部不正解）</strong>のとき：<code>C(n−0, k) / C(n, k) = 1</code> なので Pass@k = 0。当然。<br>
+        ・<strong>c = n（全部正解）</strong>のとき：<code>C(0, k) = 0</code>（k &gt; 0）なので Pass@k = 1。これも当然。<br>
+        ・<strong>k = 1</strong> のとき：<code>C(n−c, 1)/C(n, 1) = (n−c)/n</code> なので Pass@1 = <code>1 − (n−c)/n = c/n</code>。すなわち<strong>単なる正解率</strong>。<br>
+        Afshine が「k に 1 を代入すると大幅に簡約され、成功した試行の割合になる。直感的にも意味が通る」と述べたのはこの計算のことである。</p>
+      </div>
+
+      <div class="callout warning">
+        <p><strong>実装上の注意（本レポートの補足）。</strong>
+        この式を素直に階乗で計算すると、n が大きいときに数値がオーバーフローする。
+        Codex 論文（Chen et al., 2021）は、この点を踏まえて数値的に安定な形の実装を付録に載せている。
+        考え方は、比 <code>C(n−c,k)/C(n,k)</code> を階乗で計算せず、
+        <code>prod_{i = n−c+1}^{n} (1 − k/i)</code> という<strong>1 に近い数どうしの積</strong>に書き換えるというもの。
+        OpenAI が公開している HumanEval の評価コードでは、この式がそのまま
+        <code>1.0 - np.prod(1.0 - k / np.arange(n - c + 1, n + 1))</code> と実装されており、
+        <code>n - c &lt; k</code>（失敗数が k 未満＝必ず 1 つは当たる）のときは早期に <code>1.0</code> を返す分岐が入っている。
+        自分で pass@k を実装するときはこの形を使うのが安全である。
+        なお Codex 論文の実験設定は <code>n = 200</code>、<code>k ≤ 100</code> である。</p>
+      </div>
+    </section>
+
+    <section id="s11">
+      <h2>11. Pass@1、temperature、そして cons@k</h2>
+
+      <h3>Pass@1 は「1 回の生成が成功する確率」</h3>
+      <p>
+        <em>「Pass@k の特別な場合が Pass@1 で、これは 1 回の試行が成功する確率と定義される」</em>。
+        用途の使い分けはスライドに明示されている。
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>指標</th><th>スライドの用途説明</th><th>実務的な読み方</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Pass@k</strong></td><td>検査が容易／高いレイテンシを許容できるユースケース向け</td><td>CI で自動テストが回せるコード生成など。何回でも試して通ればよい</td></tr>
+          <tr><td><strong>Pass@1</strong></td><td>単一の生成結果を重視するユースケース向け</td><td>チャットのように「1 発目の答え」がそのままユーザーに届く場面</td></tr>
+          <tr><td><strong>Cons@k</strong></td><td>"Consensus at k"。多数決（majority voting）の答えを ground truth と比べるのと等価</td><td>k 個生成して<strong>最も多く現れた答え</strong>を採用。self-consistency と同じ発想</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>
+        Afshine は cons@k について <em>「self-consistency のテクニックはこれと非常に近いと考えていい」</em> と補足し、
+        <em>「他にはお馴染みの accuracy や exact match といった指標も使われる」</em> と結んだ。
+      </p>
+
+      <h3>temperature をどう選ぶか ― 受講生からの質問</h3>
+      <p>
+        導出の前に出ていた <em>「特定の temperature を選ぶのか？」</em> という質問に、ここで答えが返される。
+        答えは <strong>「その通り。多様性のために temperature を使う」</strong>。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/12-temperature-passk.jpg" alt="スライド「Reasoning-based benchmark metrics」。Pass@K vs K, Temperature のグラフ。T=0.0 から T=1.2 までの7本の曲線。横軸 Number of samples (k) の対数軸、縦軸 Pass@k" loading="lazy" />
+        <figcaption>Codex 論文の図。横軸がサンプル数 k（対数目盛 10^0〜10^2）、縦軸が Pass@k。<strong>T=0.0 は水平（k を増やしても改善しない）</strong>、T=0.2 は緩やかに増加、T=0.6〜0.8 が大きな k で最良、T=1.2 は小さな k で最下位。原論文はこの図から「最適温度は k とともに上がる」と結論しており、679M モデルでは pass@1 の最適温度 T*=0.2、pass@100 の最適温度 T*=0.8 と報告している。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=2790s" target="_blank" rel="noopener">46:30</a></figcaption>
+      </figure>
+
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>temperature</th><th>起きること</th><th>Pass@k への影響</th></tr></thead>
+        <tbody>
+          <tr><td><strong>非常に低い（T = 0）</strong></td><td>解は良質だが<strong>多様でない</strong>。何度生成しても同じ</td><td>k を増やしても<strong>まったく改善しない（グラフは水平）</strong></td></tr>
+          <tr><td><strong>やや低い（T = 0.2）</strong></td><td>多少の多様性が出る</td><td>k とともに増加する</td></tr>
+          <tr><td><strong>中程度（T ≈ 0.4〜0.8）</strong></td><td>多様性と品質のバランスが取れる</td><td>大きな k で最良。<em>「この例では 0.8 が大きなサンプル数で最良の結果を出していると思う」「（小さい k では）0.4 かもしれない」</em></td></tr>
+          <tr><td><strong>高すぎる（T = 1.2）</strong></td><td>多様性は出るが<strong>本来ありそうにない token まで出やすくなり性能を害する</strong></td><td>この例では極端でベストではない</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>
+        結論：<em>「典型的な temperature の選択は、大きすぎず小さすぎず。だから論文では必ず、ベンチマーク結果を出したときの temperature を明記している。これは覚えておくとよい」</em>。
+      </p>
+
+      <div class="callout info">
+        <p><strong>周辺情報：なぜ T=0 だと k を増やしても無駄なのか。</strong>
+        temperature 0 は greedy decoding（各ステップで最尤 token を選ぶ）に相当し、<strong>生成が決定的</strong>になる。
+        つまり 100 回生成しても 100 回とも同じ答案が出る。Pass@k は「k 個のうち少なくとも 1 個当たり」だが、
+        全部同じなら「1 個当たる確率」＝「その 1 個が正解である確率」で頭打ちになる。これがグラフの水平線の正体である。
+        逆に温度を上げると出力がばらつき、<strong>「どれか 1 つは当たる」可能性が上がる代わりに、1 つ 1 つの品質は下がる</strong>。
+        つまり Pass@k における temperature 選択は、典型的な <strong>exploration（探索）と exploitation（活用）のトレードオフ</strong>そのものである。
+        なお、この直感は次節以降の RL でもそのまま効いてくる。GRPO が同じプロンプトから G 個生成するとき、
+        全部同じ出力になってしまえば群内の分散がゼロになり、advantage が 0 になって学習信号が消えてしまう。</p>
+      </div>
+    </section>
+    <section id="s12">
+      <h2>12. なぜ SFT ではなく RL なのか ― 3 つの理由</h2>
+      <p>
+        ここから講義後半、Afshine 自身が <em>「この講義でいちばん面白いパート」</em> と呼ぶ「どうやって reasoning model を作るか」に入る。
+        やりたいことは <strong>「答える前に chain of thought / reasoning chain を出すようモデルにインセンティブを与える」</strong>こと。
+        では、手持ちの道具箱から何を選ぶか。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/13-why-rl-considerations.jpg" alt="スライド「Develop &quot;test-time scaling&quot;」。Considerations として、Reasoning chain is hard to write from scratch (SFT data by hand impractical)、Don't want to limit the model to human-written reasoning、Natural verifiable reward の3項目" loading="lazy" />
+        <figcaption>SFT を選ばない理由 2 つと、RL を選べる理由 1 つ。この直後のスライドに <strong>「Let's try RL!」</strong> と書かれている。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=3060s" target="_blank" rel="noopener">51:00</a></figcaption>
+      </figure>
+
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>スライドの文言</th><th>Afshine の説明</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>Reasoning chain is hard to write from scratch（<strong>SFT data by hand impractical</strong>）</td>
+            <td>「SFT には高品質データが必要で、推論チェーンを全部書かなければならない。それがない場合はゼロから書くことになるが、それは非常に難しい」</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>Don't want to limit the model to human-written reasoning</td>
+            <td>「<strong>モデルの推論の仕方は、我々の推論の仕方と違うかもしれない</strong>。人間が書いた推論は、モデルに推論を教えるのに最良ではないかもしれない」</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>Natural verifiable reward（"did it solve the problem?" → "yes" or "no"）</td>
+            <td>「これらの reasoning タスクには、<strong>実際に検証可能な、ごく自然な報酬</strong>がある。コードならテストが通るか・コンパイルできるか、数学なら答えが ground truth と一致するか。当然のように報酬信号が存在する」</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="callout">
+        <p><strong>結論：<em>「報酬信号はある。SFT はゼロから始めるには良い方法ではない。ではどうする？ RL を試そう」</em></strong>
+        ―― この一文が講義後半すべての出発点である。</p>
+      </div>
+
+      <div class="callout info">
+        <p><strong>周辺情報：RLVR という呼び名。</strong>
+        この「reward model を学習せず、正誤の自動判定をそのまま報酬に使う RL」は、近年
+        <strong>RLVR（Reinforcement Learning with Verifiable Rewards）</strong> と呼ばれることが多い。
+        Lecture 5 で扱った RLHF が「人間の選好 → reward model を学習 → その reward で RL」という 3 段構えだったのに対し、
+        RLVR は<strong>reward model を丸ごと省略できる</strong>のが最大の違いである。
+        これは単に楽というだけでなく、Lecture 5 で問題になった <strong>reward hacking</strong>（学習した reward model の穴を突く行動）を
+        原理的に減らせるという意味も大きい。実際 DeepSeek-R1 の論文は、ニューラルな reward model（outcome/process いずれも）を
+        使わなかった理由として <strong>reward hacking のリスク、再学習に必要な追加リソース、パイプラインの複雑化</strong>の 3 点を挙げている。</p>
+      </div>
+    </section>
+
+    <section id="s13">
+      <h2>13. 2 つの verifiable reward ― フォーマットと正解</h2>
+      <p>
+        では、その RL で使う報酬をどう設計するか。講義は 2 つの報酬に分けて説明した。
+      </p>
+
+      <h3>Reward 1：推論チェーンが存在するか（フォーマット報酬）</h3>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/14-reward1-cot-present.jpg" alt="スライド「Reward 1: verify that CoT is there」。左に think タグと ANSWER のテンプレート、右に DeepSeek-R1 のサンプル応答。赤字で Wait, wait. Wait. That's an aha moment I can flag here. が強調されている" loading="lazy" />
+        <figcaption>左が <strong>テンプレート</strong>（<code>&lt;think&gt; … &lt;/think&gt;</code> の後に <code>ANSWER</code>）、右が DeepSeek-R1 論文のサンプル応答。平方根を含む方程式を解く過程で、赤字の <strong>"Wait, wait. Wait. That's an aha moment I can flag here."</strong> が現れ、そこからモデルが自分で解き直しを始めている。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=3120s" target="_blank" rel="noopener">52:00</a></figcaption>
+      </figure>
+      <p>
+        <em>「モデルが推論チェーンを出したかどうかを、単純にチェックすればよい。<strong>think の開始・終了 token の存在</strong>を確認すればいい。推論チェーンを差し込むためにその token を使えとモデルに指示しておくのだ」</em>。
+      </p>
+
+      <div class="callout info">
+        <p><strong>周辺情報：この赤字は DeepSeek-R1 論文の "aha moment"。</strong>
+        スライド右側のサンプル応答は DeepSeek-R1 論文から引用されたもので、
+        論文が <strong>"aha moment"</strong> と名付けた現象の実例である。
+        論文はこれを「学習の途中で、モデルが最初のアプローチを自分で見直し、より多くの思考時間を割り当てるようになる挙動」と説明している。
+        重要なのは、<strong>この「立ち止まって考え直す」振る舞いを人間が明示的に教えたわけではない</strong>という点。
+        フォーマットと正誤という 2 つの単純な報酬だけで RL を回した結果、創発的に現れた。
+        後述する <strong>budget forcing</strong> で「Wait」を差し込むテクニックは、この創発的な挙動を推論時に人為的に誘発しようという発想である。</p>
+      </div>
+
+      <h3>Reward 2：解が正しいか（正解報酬）</h3>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/15-reward2-solution-correct.jpg" alt="スライド「Reward 2: verify that solution is correct」。Test case #1、#2、#c がすべて緑チェックで重なって表示され、下に Code verification のラベル" loading="lazy" />
+        <figcaption>コードの検証。テストケース <code>#1</code>〜<code>#c</code> がすべてパス（緑チェック）していれば正解。この後スライドには数学側の検証（推論を経て導いた <code>Answer: 5</code> を ground truth の <code>5</code> と照合）も並置される。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=3145s" target="_blank" rel="noopener">52:25</a></figcaption>
+      </figure>
+      <p>
+        <em>「コードなら全ケースで動くかを確認する。数学なら答えが ground truth と同じかを確認するだけ」</em>。
+      </p>
+
+      <div class="formula">
+        Rewards = ① formatting（think 区切りがあるか？） + ② accuracy（解は正しいか？）
+        <small>いずれも<strong>モデルを必要としない</strong>。「どちらも簡単にできる。モデルは要らない」（Afshine）</small>
+      </div>
+    </section>
+
+    <section id="s14">
+      <h2>14. 実際に効く ― R1-Zero の学習曲線</h2>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/16-run-rl-verifiable-rewards.jpg" alt="スライド「Run RL on &quot;verifiable&quot; rewards」。左に Rewards = formatting + accuracy の構成図、右に DeepSeek-R1-Zero AIME accuracy during training のグラフ（横軸 Steps 0-8000、縦軸 Accuracy 0.2-0.9）" loading="lazy" />
+        <figcaption>左が報酬の構成（① formatting ＋ ② accuracy）、右が <strong>DeepSeek-R1-Zero の AIME 精度の学習推移</strong>。横軸が RL のステップ数（0〜8,000 超）、縦軸が Accuracy。凡例は上から <code>r1-zero-pass@1</code>（青・実線）、<code>r1-zero-cons@16</code>（赤・実線）、<code>o1-0912-pass@1</code>（緑・破線）、<code>o1-0912-cons@64</code>（紫・破線）。R1-Zero の 2 本がステップとともに大きく上昇し、破線で示された o1-0912 の水準に到達している。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=3230s" target="_blank" rel="noopener">53:50</a></figcaption>
+      </figure>
+      <p>
+        <em>「RL のステップを進めるにつれて、これらのベンチマークでのモデルの性能が実際に上がる。しかもかなり大きく上がる」</em>。
+        <em>「モデルに『考えろ』と『正しい答えを出せ』というインセンティブを与えるだけで、この 2 つの検証可能な報酬だけで、実際にかなり有意義に学習できる」</em>。
+      </p>
+
+      <div class="callout info">
+        <p><strong>周辺情報：この曲線の実際の数字。</strong>
+        DeepSeek-R1 論文によれば、R1-Zero の <strong>AIME 2024 の pass@1 は学習を通じて 15.6% から 71.0% へ上昇</strong>し、
+        <strong>majority voting（cons@k）を使えば 86.7%</strong> に達した。論文はこの水準を OpenAI o1-0912 と同等と位置づけている。
+        <strong>SFT を一切行わず、純粋な RL だけで</strong>この上昇が起きたことが、当時この論文が大きな衝撃を与えた理由である。
+        グラフに 2 本の線が引かれているのは、pass@1 と cons@16 の両方をプロットしているためで、
+        §11 で扱った Pass@k / Cons@k がここで実際に使われていることが確認できる。</p>
+      </div>
+    </section>
+
+    <section id="s15">
+      <h2>15. 推論時に「どれだけ考えるか」を制御する</h2>
+      <p>
+        RL で考えさせられるようになった。しかし Afshine は次の問題を提起する。
+        <em>「すべてのプロンプトが同じではない。あまり考える必要のないプロンプトもあれば、少し考える必要があるプロンプトもある」</em>。
+        これに対する研究の方向は 4 つ挙げられた。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/17-control-thinking.jpg" alt="スライド「Control thinking at inference time」。Problem: Not all prompts are equal。Ideas to control thinking として Dynamic budget、Context awareness、Budget forcing、Continuous thoughts の4項目" loading="lazy" />
+        <figcaption>推論時に thinking をコントロールする 4 つのアイデア。各項目に別々の論文が脚注として付いている（Token-Budget-Aware LLM Reasoning / s1 / Coconut）。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=3430s" target="_blank" rel="noopener">57:10</a></figcaption>
+      </figure>
+
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>アイデア</th><th>講義での説明</th><th>スライドが挙げる論文</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Dynamic budget</strong><br>（動的な思考予算）</td>
+            <td>「考えすぎる必要のない質問でモデルが overthink しないようにする。プロンプトに走る<strong>軽量な分類器</strong>で、高思考タイプか低思考タイプかを判定する、という解がありうる。ただし<strong>これは未解決問題（open problem）に近い</strong>」</td>
+            <td>Han et al., 2024「Token-Budget-Aware LLM Reasoning」</td>
+          </tr>
+          <tr>
+            <td><strong>Context awareness</strong><br>（文脈長の自覚）</td>
+            <td>「LLM の context window は有限。考えるときに<strong>残りの context 長を意識する</strong>必要がある。その制限のせいで、考えすぎることもできない」</td>
+            <td>―</td>
+          </tr>
+          <tr>
+            <td><strong>Budget forcing</strong><br>（思考の強制延長・強制終了）</td>
+            <td>「S1 という論文で導入された用語だと思う。<strong>もっと考えさせたいなら、途中で token を差し込んで思考を続けさせる</strong>。たとえば <code>Wait</code> のような token。逆に <strong><code>OK, your time is up. Now my answer is</code></strong> のように書けば、モデルに答えを強制できる」</td>
+            <td>Muennighoff et al., 2025「s1: Simple test-time scaling」</td>
+          </tr>
+          <tr>
+            <td><strong>"Continuous" thoughts</strong><br>（連続的な思考）</td>
+            <td>「モデルは推論チェーンで token を出すが、<strong>モデルは言語空間ではない別の空間で考えているかもしれない</strong>。thinking token を token ではなく<strong>隠れ表現</strong>にする、という研究の流れがある。より意味を持ち、より圧縮された表現になりうる」</td>
+            <td>Hao et al., 2024「Training Large Language Models to Reason in a Continuous Latent Space」</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <p>
+        Afshine は <em>「リンクしたのは 2024 年の論文だが、数日前にもまた別の論文を見た。非常に活発な研究分野だ」</em> と付け加えた。
+      </p>
+
+      <div class="callout info">
+        <p><strong>周辺情報：3 つの論文が実際に何をしているか。</strong></p>
+        <ul>
+          <li><strong>s1（budget forcing）。</strong> 思考量の<strong>上限</strong>を課すときは、思考終了デリミタを強制的に付加し、必要なら <code>Final Answer:</code> を添えて回答段階へ移す。思考量の<strong>下限</strong>を課すときは、逆に終了デリミタの生成を抑止し、モデルが終わろうとしたところに <code>Wait</code> を挿入して思考を続けさせる。Afshine が口頭で言った通りの仕組みが、そのまま論文の手法名になっている。学習データ <code>s1K</code> は高品質な「質問・推論トレース・答え」の <strong>1,000 例</strong>のみ。</li>
+          <li><strong>Coconut（continuous thought）。</strong> 通常の生成では、最終層の隠れ状態を語彙上の確率分布に変換して 1 token を選び、その token の埋め込みを次の入力にする。Coconut はこの <strong>「token に decode する」段階を飛ばし、直前位置の最終隠れ状態をそのまま次位置の入力埋め込みとしてフィードバック</strong>する。言語に落とさない分、情報が失われず圧縮も効く、というのが狙いである。</li>
+          <li><strong>TALE（Token-Budget-Aware LLM Reasoning）。</strong> プロンプトに token 予算を組み込むことで冗長な思考を抑える枠組み。arXiv の初版は平均 <strong>68.64% の token 削減</strong>で精度低下は 5% 未満と主張していた（現行版では TALE-EP が約 67% 削減・低下 3% 未満、TALE-PT が約 50% 削減という記述に更新されている）。</li>
+        </ul>
+      </div>
+
+      <div class="callout">
+        <p><strong>ここまでのまとめ（Afshine の言葉）。</strong>
+        <em>「持ち帰ってほしい takeaway は、<strong>ゼロから始めるなら、モデルにもっと考えさせるインセンティブを与えるには RL を使う</strong>ということだ」</em>。</p>
+      </div>
+    </section>
+    <section id="s16">
+      <h2>16. GRPO ― Group Relative Policy Optimization</h2>
+      <p>
+        RL を使うと決まったところで、では具体的にどのアルゴリズムか。答えが <strong>GRPO</strong> である。
+        <em>「GRPO は 2024 年にリリースされ、これらの reasoning タスクの学習にとって<strong>デファクトの RL アルゴリズム</strong>になっている」</em>。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/18-grpo-definition.jpg" alt="スライド「Common RL algorithm for reasoning」。GRPO = Group Relative Policy Optimization。L(theta) = [Maximize advantages] + [Don't deviate too much from old / base model]" loading="lazy" />
+        <figcaption>GRPO の位置づけ。損失は PPO と同じく <strong>「advantage の最大化」＋「old / base モデルから離れすぎない」</strong>の 2 項からなる。出典は DeepSeekMath（Shao et al., 2024）。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=3590s" target="_blank" rel="noopener">59:50</a></figcaption>
+      </figure>
+
+      <p>GRPO は PPO と同じ 2 つの目的を持つ。</p>
+      <ol>
+        <li><strong>advantage の最大化。</strong> <em>「advantage は、出している答えが期待より良いかどうかを教えてくれるもの」</em>。</li>
+        <li><strong>old model（1 つ前のイテレーション）や base model（SFT 段階のモデル）から離れすぎない。</strong></li>
+      </ol>
+
+      <div class="callout">
+        <p><strong>そして、決定的な違いは 1 点だけ。</strong>
+        <em>「その違いは <strong>advantage をどう計算するか</strong>にある」</em>。スライドにも <strong>"Big difference compared to PPO!"</strong> と書かれている。</p>
+      </div>
+
+      <h3>PPO の advantage ―「value function」という重荷</h3>
+      <p>PPO がどうやって advantage を求めていたかを Afshine が改めて整理する。</p>
+      <ul>
+        <li>プロンプトと <strong>1 つの完成応答</strong>があり、その 2 つから <strong>reward</strong> が得られる（completion レベル）。</li>
+        <li>それに加えて、学習時に<strong>同時に訓練しているもう 1 つのモデル</strong>を使う。それが <strong>value function</strong>。</li>
+        <li>value function の目的は <em>「その policy に従って token を生成し続けたとしたら、報酬はいくらになるかを予測すること」</em>。</li>
+        <li>この 2 つから <strong>GAE（generalized advantage estimation）</strong>という「非常に複雑な式」で advantage を求める。<em>「実際には見なかった」</em>（Lecture 5 でも扱っていない）。</li>
+      </ul>
+      <div class="callout warning">
+        <p><strong>PPO の大きな制約。</strong> <em>「大きな制約は、<strong>policy と一緒に value function を訓練しなければならない</strong>ことだった。これが大きなボトルネックだ」</em>。</p>
+      </div>
+
+      <div class="callout info">
+        <p><strong>周辺情報：value function（critic）とは何者か。</strong>
+        RL の教科書的な用語では、value function は「ある状態から先、この policy で行動し続けたときに得られる報酬の期待値」を返す関数である。
+        LLM では<strong>「この途中まで書いた文章から先を書き続けたら、最終的にどれくらいの報酬が得られそうか」を各 token 位置で予測するモデル</strong>にあたる。
+        advantage はざっくり「実際に得られた報酬 − value function の予測値」であり、
+        <strong>「期待より良かったか / 悪かったか」</strong>を表す。これが「期待通り」なら 0 になるので、
+        「たまたま簡単な問題だったから報酬が高い」といったノイズを差し引ける（＝勾配の分散が下がる）。
+        問題は、<strong>この value function 自体が policy と同規模のニューラルネットである</strong>こと。
+        LLM の RL では policy が数百億パラメータなので、critic も同程度のメモリを食う。GRPO が解こうとしたのはここである。</p>
+      </div>
+    </section>
+
+    <section id="s17">
+      <h2>17. GRPO の核心 ― 「群」の平均をベースラインにする</h2>
+      <p>
+        GRPO の答えは明快である。<em>「そんなことはしない。1 つの completion を取って報酬を計算し、<strong>同じプロンプトに対する他の completion たちの報酬の平均</strong>と比べる」</em>。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/19-grpo-advantage-group.jpg" alt="スライド「Common RL algorithm for reasoning」。GRPO の損失構造に加えて Advantage ~ Reward - Avg(reward of group) の枠付き式が追加されている" loading="lazy" />
+        <figcaption>GRPO の advantage の定義（概念版）：<strong>Advantage ≈ Reward − Avg(reward of group)</strong>。同じプロンプトから複数の completion をサンプルし、その群の平均をベースラインにする。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=3790s" target="_blank" rel="noopener">63:10</a></figcaption>
+      </figure>
+
+      <p>
+        <em>「同じプロンプトに対して複数の completion を生成する。プロンプトは共有だ。各 completion について、その報酬と他の completion の報酬との<strong>相対的な尺度</strong>を測る。これによって『群の残りと比べてどれだけ良いか／悪いか』が分かる。これが我々の advantage になる」</em>。
+      </p>
+
+      <div class="formula">
+        A_hat(i) ≈ ( r_i − mean(r_1, …, r_G) ) / std(r_1, …, r_G)
+        <small>Afshine：「実は正確には（平均を引くだけ）ではない。<strong>報酬から平均を引き、それらの報酬の標準偏差で割る</strong>、というのが彼らの定義だ。<br>ちなみに、これが最善のやり方ではないかもしれない、というのは後で見る」</small>
+      </div>
+      <div class="callout warning">
+        <p><strong>細かいが重要な読み違いポイント。</strong> Afshine は口頭で「<strong>他の</strong> completion の報酬の平均と比べる」と言っているが、
+        スライドの式も原論文（DeepSeekMath）の定義も、平均・標準偏差は <strong>自分自身を含む群 G 個すべての報酬</strong>にわたって計算する
+        （<code>mean(r_1, …, r_G)</code> / <code>std(r_1, …, r_G)</code>）。
+        「自分を除いた残り」を使う leave-one-out 方式ではないので、実装するときは注意したい。</p>
+      </div>
+
+      <h3>なぜ「群との比較」で十分なのか ― 難易度の吸収</h3>
+      <p>
+        受講生の <em>「なぜそうするのか」</em> という質問に、Afshine は 2 段で答えた。
+      </p>
+      <ol>
+        <li><strong>歴史的な理由。</strong> <em>「従来の RL アルゴリズムは、LLM が登場する前に開発された。PPO は 2017 年の手法だと思う。だからそこで出てくる量は、ある種のセットアップでは非常に意味があっても、言語の世界では意味を持たないかもしれない」</em>。</li>
+        <li><strong>設計上の狙い。</strong> <em>「著者たちがやりたかったのは、<strong>訓練しなければならない非常に高価な joint model を持たずに</strong>、相対的な方法を別の形で考えることだ」</em>。</li>
+      </ol>
+      <p>そして、もっとも直感的な説明がこれである。</p>
+      <div class="callout">
+        <p><em>「たとえば、かなり簡単な数学問題があったとする。そこで高い報酬が出たとしても、それは<strong>そもそも問題が簡単だったから</strong>かもしれない。
+        逆に非常に難しい問題で正解を出せたなら、<strong>その token をもっと大きく上方修正</strong>したい。難問への良い解を見つけたのだから。
+        それを advantage に組み込みたいのだ」</em></p>
+      </div>
+
+      <div class="callout info">
+        <p><strong>周辺情報：これは「ベースライン」という古典的アイデアの応用。</strong>
+        方策勾配法では、報酬から任意の<strong>ベースライン（行動に依存しない量）</strong>を引いても勾配の期待値は変わらず、分散だけが下がるという定理がよく知られている。
+        PPO は「学習した value function」をベースラインに使い、GRPO は「同じ問題に対する他の生成の平均報酬」をベースラインに使う。
+        後者は<strong>学習不要でその場で計算できる</strong>ぶん、モデル 1 個分のメモリと学習コストが丸ごと消える。
+        DeepSeekMath 論文はこの点を「GRPO は critic model を放棄する（<em>foregoes the critic model</em>）」と明記している。
+        代償は「同じプロンプトから G 個生成しなければならない」という生成コストだが、
+        LLM の推論はバッチ化しやすいため、critic を訓練するより安上がりというのが実証的な結論になっている。</p>
+      </div>
+
+      <div class="callout warning">
+        <p><strong>ここで押さえておきたい伏線。</strong> 標準偏差 <code>std</code> で割る処理は、後の §22 で
+        <strong>「難易度に対するバイアス」</strong>として問題視される。すべての completion が失敗するような難問では
+        std が小さくなり、advantage が不当に増幅されてしまうためである。Afshine 自身「最善ではないかもしれない」と予告している。</p>
+      </div>
+    </section>
+
+    <section id="s18">
+      <h2>18. GRPO と PPO を図で並べる</h2>
+      <p>Afshine は <em>「質問があっても心配ない。これから正確にどう動くかをウォークスルーする」</em> と言って、同じ内容を図で追い直した。</p>
+
+      <h3>GRPO の流れ</h3>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/20-grpo-diagram.jpg" alt="スライド「Comparison between GRPO and PPO」。GRPO の流れ図：q → Policy Model → o1..oG → Reference Model / Reward Model → r1..rG → Group Computation → A1..AG。Policy Model へ KL の矢印" loading="lazy" />
+        <figcaption>GRPO の処理フロー（DeepSeekMath 論文の図）。<code>q</code>（クエリ）→ <strong>Policy Model</strong> → <code>o_1 … o_G</code>（G 個の completion）→ <strong>Reward Model</strong> → <code>r_1 … r_G</code> → <strong>Group Computation</strong> → <code>A_1 … A_G</code>。上部の曲線は <strong>Reference Model との KL</strong> が Policy Model に戻るフィードバック。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=4050s" target="_blank" rel="noopener">67:30</a></figcaption>
+      </figure>
+
+      <div class="mermaid">
+flowchart LR
+  Q["q（クエリ）"] --> PM["Policy Model<br/>（学習対象）"]
+  PM --> O["o_1, o_2, …, o_G<br/>G 個の completion"]
+  O --> RM["Reward Model<br/>（reasoning では<br/>検証スクリプトで代用）"]
+  RM --> R["r_1, r_2, …, r_G"]
+  R --> GC["Group Computation<br/>A_i = (r_i − mean) / std"]
+  GC --> PM
+  O --> REF["Reference Model<br/>（凍結）"]
+  REF -.->|KL penalty| PM
+      </div>
+      <p class="diagram-hint">図はクリックで拡大できます。</p>
+
+      <h3>PPO の流れ</h3>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/21-grpo-ppo-diagrams.jpg" alt="スライド「Comparison between GRPO and PPO」。上に薄く GRPO の図、下に PPO の図：q → Policy Model → o → Reference Model / Reward Model → KL → r" loading="lazy" />
+        <figcaption>下段が PPO。<code>q</code> → <strong>Policy Model</strong> → <code>o</code>（<strong>1 つだけ</strong>の completion）→ Reference Model と Reward Model → KL と報酬を合成して <code>r</code>。GRPO と違い群がなく、代わりに（図の続きで）Value Model が登場する。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=4130s" target="_blank" rel="noopener">68:50</a></figcaption>
+      </figure>
+
+      <p>PPO 側で、講義がここで初めて明かした<strong>実装上の詳細</strong>が 2 つある。</p>
+      <ul>
+        <li><strong>KL 項は報酬に混ぜ込まれる。</strong> <em>「実装の観点では、KL divergence 項を報酬に組み込むのが普通だ。<strong>per-token の報酬</strong>のような形になり、最後の token だけが completion 全体の報酬を持ち、他の全 token は KL divergence 項を持つ」</em>。</li>
+        <li><strong>value function は per-token。</strong> <em>「value function は per-token で、policy に従って残りの系列を生成し続けたときの報酬を定量化しようとする」</em>。</li>
+      </ul>
+
+      <h3>訓練するモデル・凍結するモデル</h3>
+      <p>Afshine が <em>「これが key difference だ」</em> と強調した比較表。</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>モデル</th><th>GRPO</th><th>PPO</th><th>備考</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Policy model</strong></td><td>訓練する</td><td>訓練する</td><td>これが最終的な成果物</td></tr>
+          <tr><td><strong>Value model</strong>（critic）</td><td style="color:#22c55e;font-weight:700;">不要</td><td style="color:#ef4444;font-weight:700;">訓練する</td><td><strong>ここが最大の差</strong>。policy と同規模のモデルを 1 個減らせる</td></tr>
+          <tr><td><strong>Reference model</strong></td><td>凍結</td><td>凍結</td><td>KL の基準。SFT モデル</td></tr>
+          <tr><td><strong>Reward model</strong></td><td>凍結</td><td>凍結</td><td><strong>reasoning のケースでは、そもそも存在しない</strong></td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="callout">
+        <p><strong>reasoning では reward model すら要らない。</strong>
+        <em>「注意すべきは、reasoning のケースでは<strong>実際には reward model を訓練していない</strong>ことだ。
+        解が正しいかどうかを我々が判定できるからだ。検証可能な報酬があるので、reasoning のケースでは reward model はまったく存在しない。
+        これは GRPO も PPO も同じだ」</em></p>
+      </div>
+
+      <div class="callout info">
+        <p><strong>周辺情報：メモリ視点で数えてみる。</strong>
+        典型的な RLHF では、policy・value・reward・reference の 4 つのモデルを同時にメモリに載せる必要がある（Lecture 5 で「PPO の 4 モデル問題」として扱われた）。
+        しかも policy と value は<strong>学習対象</strong>なので、パラメータ本体に加えて勾配と Adam の状態（1 次・2 次モーメント）を保持する必要があり、
+        推論だけの reference / reward より 1 モデルあたりのメモリ消費が数倍大きい。
+        GRPO ＋ verifiable reward の組み合わせでは、これが<strong>「学習する policy 1 つ ＋ 凍結した reference 1 つ」</strong>まで減る。
+        reasoning 向け RL が急速に普及した現実的な理由の 1 つが、この<strong>実装とインフラの単純さ</strong>である。</p>
+      </div>
+    </section>
+
+    <section id="s19">
+      <h2>19. 損失関数を並べて読む ― 講義最難関パート</h2>
+      <p>
+        <em>「ここまでは絵と図だけだった。では数式を見よう。上が GRPO の損失関数、下が PPO の損失関数だ。<strong>怖く見える</strong>。でも一緒に、似ている点と違う点を見ていこう」</em>。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/22-grpo-vs-ppo-loss.jpg" alt="スライド「Comparison between GRPO and PPO」。Similarities. Ratio, clipping。上に GRPO の目的関数の数式、下に PPO の目的関数の数式" loading="lazy" />
+        <figcaption>GRPO（上）と PPO（下）の目的関数。共通点として <strong>Ratio</strong> と <strong>clipping</strong> がハイライトされている。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=4370s" target="_blank" rel="noopener">72:50</a></figcaption>
+      </figure>
+
+      <h3>共通点</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>共通点</th><th>中身</th></tr></thead>
+        <tbody>
+          <tr><td><strong>① Ratio（比）</strong></td><td>どちらも <code>pi_theta(現在の policy) / pi_theta_old(1 つ前の policy)</code> という確率比の上で動作する</td></tr>
+          <tr><td><strong>② Clipping（切り詰め）</strong></td><td>どちらも更新をある領域内に留める。<em>「advantage が正のときに損失がどう見えるか、負のときどうか、というチャートを Lecture 5 で見た。ぜひ見直してほしい」</em></td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>相違点</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>相違点</th><th>GRPO</th><th>PPO</th></tr></thead>
+        <tbody>
+          <tr><td><strong>① KL penalty の置き場所</strong></td><td><strong>目的関数に明示的な項として入っている</strong>（<code>− β D_KL[pi_theta || pi_ref]</code>）</td><td>典型的には <strong>advantage の中（実装上は報酬の中）に混ぜ込まれている</strong></td></tr>
+          <tr><td><strong>② advantage の推定法</strong></td><td>各 completion の報酬を、<strong>群の他の completion と比べて</strong>算出</td><td>報酬と <strong>value model</strong> を使って GAE で算出</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="callout info">
+        <p><strong>周辺情報：GRPO の目的関数を、記号ごとに分解する。</strong>
+        原論文（DeepSeekMath, Shao et al., 2024）の式をプレーンテキストで書き下すと次の形になる。<strong>怖いのは記号の数だけで、構造は 4 パーツしかない。</strong></p>
+        <div class="formula" style="text-align:left;font-size:14px;">
+J_GRPO(θ) = E[ q ~ P(Q), {o_i}_{i=1..G} ~ pi_θ_old(O|q) ]<br>
+&nbsp;&nbsp;× (1/G) Σ_{i=1..G} <span style="color:var(--accent)">(1/|o_i|)</span> Σ_{t=1..|o_i|} {<br>
+&nbsp;&nbsp;&nbsp;&nbsp; min[ r_{i,t}(θ)·Â_{i,t} , clip( r_{i,t}(θ), 1−ε, 1+ε )·Â_{i,t} ]<br>
+&nbsp;&nbsp;&nbsp;&nbsp; − β·D_KL[ pi_θ ‖ pi_ref ]<br>
+&nbsp;&nbsp;}<br>
+<br>
+r_{i,t}(θ) = pi_θ(o_{i,t} | q, o_{i,&lt;t}) / pi_θ_old(o_{i,t} | q, o_{i,&lt;t})
+        </div>
+        <ul>
+          <li><strong><code>(1/G) Σ_i</code>：</strong> 同じ質問 <code>q</code> から生成した <strong>G 個の completion にわたる平均</strong>。</li>
+          <li><strong><code>(1/|o_i|) Σ_t</code>：</strong> 1 つの completion の中の <strong>token にわたる平均</strong>。<code>|o_i|</code> は i 番目の completion の token 数。<span style="color:var(--accent);font-weight:700">この項が §20〜21 で「悪いインセンティブ」の犯人になる。</span></li>
+          <li><strong><code>min[ r·Â , clip(r,1−ε,1+ε)·Â ]</code>：</strong> PPO-Clip と同じ形。ratio が <code>[1−ε, 1+ε]</code> の外に出たら、advantage を掛ける前に切り詰める。</li>
+          <li><strong><code>− β D_KL[pi_θ ‖ pi_ref]</code>：</strong> reference（SFT）モデルから離れないための明示的なペナルティ。<code>β</code> がその強さ。</li>
+        </ul>
+        <p>advantage は outcome supervision の場合、<strong>completion 内の全 token で同じ値</strong>（<code>Â_{i,t} = (r_i − mean(r)) / std(r)</code>）になる。
+        つまり「この応答は群の中で良かった／悪かった」という 1 つの数値が、その応答の全 token に一律で配られる。
+        PPO のように token ごとに value function で細かく配分するのではなく、<strong>ざっくり応答単位で配る</strong>のが GRPO の割り切りである。</p>
+        <p>なお KL の計算には、論文が「unbiased estimator」と呼ぶ次の形（通称 k3 estimator）が使われる：
+        <code>pi_ref/pi_θ − log(pi_ref/pi_θ) − 1</code>。これは常に非負になるため、損失として扱いやすいという性質がある。
+        DeepSeekMath-RL の実験では、1 つの質問につき <strong>G = 64</strong> の出力をサンプルしている。</p>
+      </div>
+
+      <div class="callout">
+        <p><strong>Afshine の「これだけ持ち帰れ」まとめ。</strong>
+        <em>「これらのアルゴリズムは、RL 段階でモデルをチューニングするためだけに存在する、と自分に言い聞かせればいい。
+        PPO は preference tuning の枠組みで多用され、GRPO は reasoning ベースの学習で一般的に使われる。
+        そして<strong>GRPO が PPO と違うのは、value function を必要としない点</strong>。
+        GRPO は他の completion との比較で advantage を計算する。PPO は報酬と value を取り、2 つを比べて advantage を得る。
+        これが腑に落ちていれば、もう十分に良い」</em></p>
+        <p>そして講義は率直にこう続く。<em>「これは非常にテクニカルだ。おそらくクラス全体で一番難しいパートだろう。
+        消化に時間がかかるのはまったく普通のことだ」「録画を何度か見直すことをお勧めする」</em>。</p>
+      </div>
+    </section>
+    <section id="s20">
+      <h2>20. 出力長が伸び続ける現象 ― 何が起きているか</h2>
+      <p>
+        残り 11 分で Afshine が扱ったのが、GRPO の拡張研究である。
+        動機は §7 の課金の話に戻る。<em>「reasoning token はユーザーに課金される。だから払いすぎたくない。
+        モデルには望むことをしてほしいが、生成しすぎてほしくはない。プロバイダ側から見ても、効率的な方がずっと良い。
+        だから出力長を最適化する動機がある」</em>。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/23-length-increase.jpg" alt="スライド「&quot;Increasing output length&quot; phenomenon」。Observation. Response length keeps on increasing with RL training。DeepSeek-R1-Zero average length per response during training のグラフ（横軸 Steps 0-8000、縦軸 Average length 0-12000）" loading="lazy" />
+        <figcaption>DeepSeek-R1-Zero の学習中の平均応答長。RL のステップが進むにつれ、平均応答長が約 1,000 token から <strong>10,000 token 超</strong>まで単調に伸び続けている。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=4680s" target="_blank" rel="noopener">78:00</a></figcaption>
+      </figure>
+
+      <p>Afshine が指摘した「引っかかり」はこうである。</p>
+      <ol>
+        <li>RL 学習が進むと、出力（主に推論チェーン）が<strong>どんどん長くなる</strong>。これは経験的な事実。</li>
+        <li>前半ではこの長さの増加が<strong>性能の向上と相関している</strong>。だから一見よいことに見える。</li>
+        <li>しかし、<strong>ある段階で性能は頭打ちになるのに、出力長だけは伸び続ける</strong>。</li>
+      </ol>
+      <p><em>「多くの人がこのチャートを見て、『何かおかしいことが起きているぞ』となった」</em>。</p>
+
+      <div class="callout warning">
+        <p><strong>ここから先の注意書き（講義から）。</strong>
+        <em>「小さな警告だが、これも少しテクニカルだ。1 つの数式があって、それを可能な限り説明しようと思う。少し数学がある」</em>。
+        本レポートではこの部分をもっとも丁寧に分解する。</p>
+      </div>
+    </section>
+
+    <section id="s21">
+      <h2>21. 犯人は <code>1/|o_i|</code> ― 「長い間違いのほうが得」という悪い設計</h2>
+
+      <h3>ステップ 1：目的関数を「日本語」で読む</h3>
+      <p>Afshine はまず数式を平易な言葉に置き換えた。</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>記号</th><th>意味</th></tr></thead>
+        <tbody>
+          <tr><td><code>J</code></td><td>objective function（目的関数）。GRPO はこれを<strong>最大化</strong>する</td></tr>
+          <tr><td>比（ratio）の部分</td><td>「モデルが old policy と比べてどれだけ変わったか」</td></tr>
+          <tr><td>clip の部分</td><td>「更新が大きくなりすぎないよう防ぐ機構」</td></tr>
+          <tr><td>右側の KL 項</td><td>「モデルが base model（reference model）から離れすぎないようにする」</td></tr>
+          <tr><td>外側の Σ（<code>i = 1..G</code>）</td><td><strong>群の中の completion 番号</strong>にわたる和</td></tr>
+          <tr><td>内側の Σ（<code>t = 1..|o_i|</code>）</td><td><strong>その出力の token 番号</strong>にわたる和</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p><em>「プロンプトがあれば複数回サンプルして複数の completion を得る。そしてそれを出力の全 token について行う。だから 2 重和になる」</em>。</p>
+
+      <h3>ステップ 2：<code>1/|o_i|</code> を内側の Σ の中に「移動」させる</h3>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/24-length-bias-swap.jpg" alt="スライド「&quot;Increasing output length&quot; phenomenon」。GRPO の目的関数の数式で、1/|o_i| が 2つの総和記号の後ろ（token 総和の内側）に移動して書かれている" loading="lazy" />
+        <figcaption>Afshine が行った書き換え。<code>1/|o_i|</code> を <strong>2 つの総和記号の後ろ</strong>に移して、token ごとの寄与に掛かる係数として見えるようにしている。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=4890s" target="_blank" rel="noopener">81:30</a></figcaption>
+      </figure>
+      <p>
+        <em>「私が何をしたか分かるだろうか。<code>1/|o_i|</code> をここに移しただけだ。なぜそうしたか説明する」</em>。
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>因子</th><th>何に依存するか</th><th>値の大小</th></tr></thead>
+        <tbody>
+          <tr><td><code>1/|o_i|</code></td><td><strong>その token がどの出力に属しているか</strong>だけ</td><td>非常に長い出力なら<strong>小さい数</strong>。短い出力なら<strong>大きい数</strong></td></tr>
+          <tr><td>その右側の項（min/clip の部分）</td><td><strong>token 固有</strong></td><td>―</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="callout">
+        <p><strong>ここが核心の一文。</strong>
+        <em>「言い換えると、<strong>ある token が目的関数に対して持つ寄与は、その token が属する出力の長さに依存する</strong>。
+        token が短い文の中にあれば、長い文の中にあるより<strong>大きな重み</strong>を持つ」</em></p>
+      </div>
+
+      <h3>ステップ 3：advantage の符号と組み合わせて考える</h3>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/25-bad-incentive.jpg" alt="スライド「&quot;Increasing output length&quot; phenomenon」。1/|o_i| が赤枠で強調され、下に A&gt;0 と A&lt;0 の2列、Short output と Long output の2行の表。短い出力では矢印が大きく、長い出力では矢印が小さい" loading="lazy" />
+        <figcaption>advantage の符号（<code>A &gt; 0</code> / <code>A &lt; 0</code>）と出力長（Short / Long）の 2×2。<strong>短い出力ほど矢印（更新量）が大きい</strong>。緑の上向き矢印が確率の引き上げ、赤の下向き矢印が引き下げ。スライドはこの構図に <strong>"Bad incentive!"</strong> と書き添えている。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=5030s" target="_blank" rel="noopener">83:50</a></figcaption>
+      </figure>
+
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>advantage が正（良い出力）</th><th>advantage が負（悪い出力）</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>短い出力</strong></td>
+            <td>その token の確率を<strong>大きく上げる</strong></td>
+            <td style="color:#ef4444;font-weight:700;">その token の確率を大きく下げる</td>
+          </tr>
+          <tr>
+            <td><strong>長い出力</strong></td>
+            <td>確率を小さくしか上げない</td>
+            <td style="color:#22c55e;font-weight:700;">確率を小さくしか下げない（＝<strong>お咎めが軽い</strong>）</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <p>Afshine の説明をそのまま引く。</p>
+      <blockquote>
+        「advantage が正の出力の中にある token なら、その token が再び出る確率を上げたい。しかも<strong>短い文のほうが、長い文よりずっと大きく</strong>上げることになる。
+        同時に advantage が負のとき ―― これは『そうしたい』のではなく、<strong>この定式化がそうなっている</strong>だけだが ――
+        短い出力の中の token は、長い出力の中にあるときより<strong>さらに大きく下方修正される</strong>。<br>
+        <strong>そしてこれが問題だ。これは悪いインセンティブである。</strong>
+        なぜならモデルにこう伝えていることになるからだ：<strong>『短くて悪い文は、長くて悪い文より悪い』</strong>と。」
+      </blockquote>
+
+      <div class="callout warning">
+        <p><strong>言い換えると。</strong>
+        <em>「出力長で割るという行為は、token が短い出力の中にあるときに<strong>さらに強く下方修正する</strong>ようモデルを誘導している。
+        結果として、モデルは<strong>短くて悪い出力より、長くて悪い出力を好む</strong>ようになる。
+        これが、出力長がどんどん大きくなっている原因だと人々は仮説を立てている」</em></p>
+      </div>
+
+      <div class="callout info">
+        <p><strong>周辺情報：Dr. GRPO 論文による同じ主張の言い方。</strong>
+        この現象は Liu et al., 2025「Understanding R1-Zero-Like Training: A Critical Perspective」で
+        <strong>response-level length bias</strong> と名付けられている。論文の説明は Afshine とまったく同じで、
+        「負の advantage を持つ応答では、長い応答ほど大きな <code>|o_i|</code> で割られるため
+        <em>longer responses are penalized less</em>（長い応答ほどペナルティが軽い）となり、
+        結果として誤答の中でも長いものを選好する方向に更新される」というものである。
+        つまり<strong>「長く間違えたほうが叱られない」</strong>という、報酬設計のバグに近い性質が
+        GRPO の定義そのものに埋め込まれていた、ということになる。</p>
+      </div>
+    </section>
+
+    <section id="s22">
+      <h2>22. 修正案 ― DAPO と Dr. GRPO</h2>
+      <p>
+        <em>「つまり、この <code>1/|o|</code> について人々は何とかしたかった」</em>。2025 年前半に出た 2 本の論文がその答えである。
+      </p>
+      <div class="callout warning">
+        <p><strong>時系列の注意。</strong> Afshine はこれらを <em>「GRPO の研究に対して、この数か月で人々が行った拡張」</em> と紹介している。
+        どちらも <strong>2025 年 3 月</strong>の論文であり、<strong>2025 年 1 月に公開された DeepSeek R1 のレシピには含まれていない</strong>。
+        R1（§26）が使っているのは、あくまで <code>1/|o_i|</code> を持つ<strong>素の GRPO</strong> である。</p>
+      </div>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/26-dapo-drgrpo.jpg" alt="スライド「Mitigating &quot;increasing length&quot; phenomenon」。Problem に赤字で 1/|o_i|、Remedy. Equalize token-level contributions。DAPO と Dr. GRPO の式。右に Token Efficiency のグラフ（横軸 Output length、縦軸 Reward、Dr. GRPO が赤菱形、GRPO が灰色丸）" loading="lazy" />
+        <figcaption>左：問題の <code>1/|o_i|</code> と、対処法「<strong>token レベルの寄与を均等化する</strong>」。DAPO は正規化係数を群全体で共通にし、Dr. GRPO は係数を丸ごと外す。右：Token Efficiency のグラフで、<strong>同じ reward に到達するのに Dr. GRPO のほうが短い出力で済んでいる</strong>（赤の軌跡が左側に寄っている）。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=5170s" target="_blank" rel="noopener">86:10</a></figcaption>
+      </figure>
+
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>手法</th><th>やったこと（講義の説明）</th><th>正規化の形</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>DAPO</strong><br>（2025年3月）</td>
+            <td>「<strong>token レベルの寄与を均等化した</strong>」。正規化係数がすべての token に共通になる</td>
+            <td><code>1 / Σ_{i=1..G} |o_i|</code>（群全体の token 総数で 1 回だけ割る）</td>
+          </tr>
+          <tr>
+            <td><strong>Dr. GRPO</strong><br>（2025年3月）</td>
+            <td>「GRPO done right だと思う。Dr. GRPO と書く。この論文は<strong>係数を丸ごと除去する</strong>ことを提案している」</td>
+            <td><code>1/|o_i|</code> を<strong>削除</strong>（出力長に依存しない定数に置き換え）</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>効果 ― 正解の長さは変わらず、誤答だけ短くなる</h3>
+      <p>
+        <em>「reward を出力長の関数としてプロットすると、モデルが長さを際限なく増やすのをやめる。
+        さらに深く見ると、<strong>正解のサンプルの長さは GRPO のものと一致している</strong>。
+        だが不正解の解については、修正後の policy のほうが GRPO よりも<strong>平均長がずっと短い</strong>。
+        これがまさに<strong>意図した効果</strong>だ」</em>。
+      </p>
+      <div class="callout">
+        <p><strong>ここが上手い。</strong> 「出力を短くする」修正が、<strong>正解の推論チェーンを削らずに、無駄に長い誤答だけを削っている</strong>という点が重要である。
+        Afshine は <em>「これは非常に重要な、人々が典型的に適用する修正だ」</em> と評価した。</p>
+      </div>
+
+      <div class="callout info">
+        <p><strong>周辺情報：2 本の論文の正式名称と実測値。</strong></p>
+        <ul>
+          <li><strong>DAPO</strong> ＝ <em>Decoupled Clip and Dynamic sAmpling Policy Optimization</em>（Yu et al., 2025）。
+          論文が挙げる 4 つの技法は <code>Clip-Higher</code>・<code>Dynamic Sampling</code>・<code>Token-Level Policy Gradient Loss</code>・<code>Overlong Reward Shaping</code>。
+          講義で扱った正規化の変更はこのうち 3 番目にあたる。式で書くと、従来の <code>(1/G) Σ_i (1/|o_i|) Σ_t ℓ_{i,t}</code> を
+          <code>(1 / Σ_i |o_i|) Σ_i Σ_t ℓ_{i,t}</code> に置き換える。つまり<strong>応答ごとに長さ正規化して平均するのではなく、群内の有効 token 総数で一度だけ割る</strong>。
+          結果として Qwen2.5-32B で <strong>AIME 2024 が 50.0 点</strong>、DeepSeek-R1-Zero-Qwen-32B の 47.0 点を、<strong>半分の学習ステップ数</strong>で上回ったと報告している。</li>
+          <li><strong>Dr. GRPO</strong> ＝ <em>Group Relative Policy Optimization Done Right</em>（Liu et al., 2025）。
+          Afshine が「発音の仕方が分からない」と言っていたが、正式には「GRPO を正しくやる」の意。
+          この論文は <code>1/|o_i|</code>（response-level length bias）に加えて、
+          <strong>advantage の <code>std</code> による除算（question-level difficulty bias）も除去</strong>している。
+          7B の base model から AIME 2024 で <strong>43.3%</strong> を達成したと abstract で報告している。</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="s23">
+      <h2>23. その他の調整 ― 難易度バイアスと非対称クリップ</h2>
+      <p>Afshine は残り 1 分で、さらに 2 つの修正を早口で紹介した。どちらも実務では重要である。</p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/27-other-adjustments.jpg" alt="スライド「Exploration of other adjustments」。Bias linked to level of difficulty（advantage の std 除算の式）と Encourage diversity（clip の epsilon が epsilon_low と epsilon_high に分かれる式）" loading="lazy" />
+        <figcaption>2 つの追加調整。上：advantage の <code>std</code> 除算に起因する<strong>難易度バイアス</strong>。下：<code>clip(r, 1−ε, 1+ε)</code> を <code>clip(r, 1−ε_low, 1+ε_high)</code> に変えて<strong>多様性を促す</strong>。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=5290s" target="_blank" rel="noopener">88:10</a></figcaption>
+      </figure>
+
+      <h3>調整 ①：難易度に紐づくバイアス（std の除算）</h3>
+      <p>
+        <em>「advantage の式の中の標準偏差に関する修正がある。これは<strong>問題の難易度に関してバイアスがかかる</strong>。
+        たとえば非常に難しい問題があったとする。すると completion のほとんどは失敗になる。
+        <strong>すると標準偏差はあまり大きくならない</strong>。これが問題を引き起こしうる」</em>。
+      </p>
+      <div class="callout info">
+        <p><strong>周辺情報：なぜ std が小さいと問題なのか。</strong>
+        advantage は <code>(r_i − mean) / std</code> である。<strong>分母の std が小さいと、advantage の絶対値が大きくなる</strong>。
+        極端な難問（G 個中 1 個だけ正解）や極端な易問（G 個中 1 個だけ不正解）では群内の報酬がほぼ一様になり、std が非常に小さくなる。
+        すると、その 1 個の外れ値に対する advantage が<strong>実際の学習価値に比べて過大に増幅</strong>され、
+        「難易度が極端な問題ばかりが勾配を支配する」という歪みが生じる。
+        Dr. GRPO 論文はこれを <strong>question-level difficulty bias</strong> と呼び、std による除算を外すことを提案している。
+        Hugging Face TRL では <code>scale_rewards=False</code> でこの除算を無効化できる。</p>
+      </div>
+
+      <h3>調整 ②：多様性を促す非対称クリップ（Clip-Higher）</h3>
+      <p>
+        <em>「もう 1 つよく検討される修正は、<strong>epsilon を 2 種類持つ</strong>ことだ。
+        epsilon は、1 回のイテレーションで policy をどれだけ変えられるかに影響する」</em>。
+        そして Afshine は黒板でこう書いた。
+      </p>
+      <div class="formula">
+        pi_θ / pi_θ_old ∈ [ 1 − ε , 1 + ε ] &nbsp; ⟺ &nbsp; pi_θ ∈ [ (1−ε)·pi_θ_old , (1+ε)·pi_θ_old ]
+        <small>「言い換えると <code>1 + ε</code> 掛ける <code>pi_old</code> だ。この <code>pi_old</code> が非常に小さければ、値を大きく変えることはできない」</small>
+      </div>
+      <p>
+        <em>「token の確率が非常に低いとき、成長のために小さな epsilon しか与えないのは<strong>ある種フェアではない</strong>。
+        なぜならこの epsilon は<strong>掛け算</strong>されるからだ。<br>
+        かといって epsilon を高くしすぎたくもない。<strong>大きな確率が突然 0 に落ちる</strong>のは避けたい。
+        だから<strong>下限と上限の間に非対称性を導入したい</strong>のだ」</em>
+      </p>
+
+      <div class="callout info">
+        <p><strong>周辺情報：Clip-Higher の実際の値と狙い。</strong>
+        これは DAPO の 4 技法のうち <strong>Clip-Higher</strong> にあたる。論文の設定は <code>ε_low = 0.20</code>、<code>ε_high = 0.28</code>。
+        つまり<strong>上げる方向だけ緩め、下げる方向は従来どおり</strong>にする。<br>
+        狙いは Afshine の説明どおりで、確率の低い token（＝珍しい言い回しや別解のきっかけになりうる token）は、
+        対称なクリップだと <code>(1+0.2) × 0.001 = 0.0012</code> のようにごくわずかしか上げられず、
+        <strong>探索が early に潰れて出力が単調になる（entropy collapse）</strong>。上限だけ緩めれば、低確率 token にも育つ余地が生まれる。
+        Hugging Face TRL の <code>GRPOConfig</code> にも <code>epsilon_high</code> パラメータがあり、
+        ドキュメントには DAPO の推奨値として <code>0.28</code> が明記されている。</p>
+      </div>
+
+      <p>Afshine の締めくくり：<em>「今のはかなり多かった。何か質問は？ 時間が押している。講義の後に時間を取るので、質問があればそのときに。では Shervine に代わる」</em>。</p>
+    </section>
+    <section id="s24">
+      <h2>24. ここからは Shervine ― DeepSeek のレシピで全部つなげる</h2>
+      <p>
+        <em>「難しいところを全部カバーしてくれた Afshine に感謝します。ここからは少し楽になります。すべてがどう組み合わさるかを見るからです」</em>。
+        Shervine は <strong>DeepSeek の論文群</strong>を題材に、Afshine が説明した部品がどう 1 本のパイプラインになるかを示した。
+      </p>
+
+      <h3>従来の LLM パイプラインとの対比</h3>
+      <p>
+        <em>「これまでの講義で見たのは、いわゆる伝統的な LLM です。インターネットのテキストで next token prediction をした pretrained base model から始めて、
+        SFT とその後の RL からなる alignment を行う。SFT は instruction tuning でした」</em>。
+        DeepSeek のモデル群は、<strong>同じ V3-Base から 3 通りの後処理で分岐している</strong>と見ると全体像がつかみやすい。
+      </p>
+      <div class="mermaid">
+flowchart LR
+  B0["V3-Base<br/>pretrained base model<br/>next token prediction のみ"] --> T1["SFT<br/>instruction tuning"]
+  T1 --> T2["RL<br/>通常の RLHF"]
+  T2 --> TV["V3<br/>従来型モデル"]
+  B0 --> Z1["GRPO のみ<br/>SFT を一切やらない"]
+  Z1 --> ZV["R1-Zero<br/>proof of concept"]
+  B0 --> FP["5 段階レシピ<br/>SFT と GRPO を交互に"]
+  FP --> FV["R1<br/>full pipeline"]
+      </div>
+      <p class="diagram-hint">図はクリックで拡大できます。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/28-stitching-together.jpg" alt="スライド「Stitching it all together」。Base model (V3-Base) → &quot;Traditional&quot; model (V3、薄い表示) と Reasoning models (R1-Zero, R1)。V3-Base から直接 Reasoning models へ矢印" loading="lazy" />
+        <figcaption>DeepSeek のモデル系譜。<strong>V3-Base</strong>（base model）から、伝統的な alignment を経た <strong>V3</strong> と、reasoning 系の <strong>R1-Zero / R1</strong> が分岐する。R1-Zero へは V3 を経由せず <strong>V3-Base から直接</strong>矢印が伸びているのがポイント。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=5470s" target="_blank" rel="noopener">91:10</a></figcaption>
+      </figure>
+
+      <p>
+        <em>「DeepSeek R1 の論文が良い例なのは、複数のステージを踏むからです。まず、Afshine が言及した verifiable reward を適用したときに
+        <strong>RL ステージがどれだけ強力になりうるか</strong>を示す。そしてそこで得られた性能の観察に基づいて、
+        <strong>R1 と呼ぶ非常に強力なモデルを得るための完全なパイプライン</strong>を組み立てる。
+        つまり、<strong>それぞれ proof of concept と完全な reasoning model</strong> です」</em>。
+      </p>
+      <p>スライドには R1-Zero に「<strong>Proof of concept</strong>」、R1 に「<strong>Full pipeline</strong>」というラベルが付けられている。</p>
+    </section>
+
+    <section id="s25">
+      <h2>25. R1-Zero のレシピ ― SFT を一切やらない</h2>
+
+      <h3>Step 1：伝統的な手法で pretrain（V3-Base）</h3>
+      <p>
+        <em>「最新のアーキテクチャに、あらゆる工夫を盛り込んで next token prediction で学習した pretrained model から始めます。
+        講義で扱った <strong>mixture of experts</strong> を使い、DeepSeek V2 で導入した <strong>MLA（multi-latent attention）</strong>というトリックを再利用しています。
+        アーキテクチャを見ると、transformer block で <strong>pre-norm</strong> を使っている。典型的なベース LLM です」</em>。
+      </p>
+      <p>スライドには <strong>MoE / ~671B total, ~37B active</strong> と記載されている。</p>
+
+      <div class="callout info">
+        <p><strong>周辺情報：MoE と MLA の 1 行おさらい。</strong>
+        <strong>MoE（Mixture of Experts）</strong>は、FFN 層を多数の「エキスパート」に分割し、token ごとにごく一部だけを活性化する仕組み。
+        DeepSeek-V3 は<strong>総パラメータ 671B に対し、token あたりの活性パラメータは 37B</strong>。
+        つまり 671B 相当の知識容量を持ちながら、計算コストは 37B 相当で済む。<br>
+        <strong>MLA（Multi-head Latent Attention）</strong>は、KV キャッシュを低次元の潜在ベクトルに圧縮して保持する attention 変種で、
+        長い文脈での推論メモリを大幅に削減する。<strong>推論チェーンが 1 万 token を超える reasoning model にとっては、これが効いてくる</strong>。
+        いずれも Lecture 2・3 で扱われた技術がそのまま使われている。</p>
+      </div>
+
+      <h3>Step 2：SFT を飛ばして、いきなり GRPO</h3>
+      <p>
+        <em>「そして、ここから面白くなります。SFT からなる alignment 戦略に進む代わりに、
+        <strong>next token prediction だけで学習された pretrained model からそのまま始める</strong>。
+        まだ何の supervision も見ていない状態です。そこに Afshine が説明した手法を reasoning データに適用します」</em>。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/29-r1-zero-template.jpg" alt="スライド「DeepSeek R1-Zero's training recipe」。ステップ2 GRPO with reasoning data: R1-Zero。下に論文のテンプレート全文（A conversation between User and Assistant...）が表示され、赤字で this placeholder is replaced by a reasoning query" loading="lazy" />
+        <figcaption>R1-Zero の学習テンプレート（DeepSeek-R1 論文 Table 1）。前半で「ユーザーと対話するアシスタントである」という設定を与え、
+        <strong>「考えることは何でもしてよいが、<code>&lt;think&gt;</code> で囲め。答えを出す準備ができたら <code>&lt;answer&gt;</code> で囲め」</strong>とフォーマット要件を平文で書いている。赤字部分がサンプルのプロンプトに差し替わる。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=5610s" target="_blank" rel="noopener">93:30</a></figcaption>
+      </figure>
+
+      <p>
+        <em>「報酬を見て、モデルにインセンティブを与えるのは <strong>アウトプット（入力に対する答え）と formatting</strong> に基づく報酬を増やすことだけです。
+        think token があれば formatting 側の報酬が与えられる」</em>。
+      </p>
+      <p>
+        <em>「そして論文には、モデルを学習させたテンプレートが正確に書かれています。非常にシンプルなものです」</em>。
+      </p>
+
+      <h3>Step 3：結果と、見えてきた問題</h3>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/30-r1-zero-benefits-challenges.jpg" alt="スライド「DeepSeek R1-Zero's training recipe」。Benefits: Reasoning abilities without any SFT。Challenges: Chains of reasoning have formatting and readability issues" loading="lazy" />
+        <figcaption>R1-Zero の総括。<strong>Benefits：SFT を一切やらずに推論能力が獲得できた。</strong> <strong>Challenges：推論チェーンにフォーマットと可読性の問題がある。</strong><a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=5745s" target="_blank" rel="noopener">95:45</a></figcaption>
+      </figure>
+
+      <p>
+        <em>「『すべて解決した、素晴らしい、SFT なしで最高性能だ』と思うかもしれません。でもそう簡単ではない。
+        著者たちが推論チェーンを見たところ、<strong>2 種類の問題</strong>が見つかったのです」</em>。
+      </p>
+      <ol>
+        <li><strong>言語の混在。</strong> <em>「思考 token を出しているとき、<strong>複数言語が混ざる</strong>ことがあった」</em>。</li>
+        <li><strong>構文の問題。</strong> <em>「syntax の問題もあった」</em>。</li>
+      </ol>
+      <p>
+        Shervine の仮説：<em>「これは、<strong>その直前に強い supervision を一切見ていない</strong>からだと考えられます。
+        モデルには好きなように最適化する自由を与えたが、拠り所となる強い教師信号を背景として持っていないのです」</em>。
+      </p>
+
+      <div class="callout info">
+        <p><strong>周辺情報：R1-Zero の到達点と "aha moment"。</strong>
+        DeepSeek-R1 論文によれば、R1-Zero は <strong>AIME 2024 の pass@1 を 15.6% → 71.0%</strong> に引き上げ、
+        majority voting では <strong>86.7%</strong>（o1-0912 と同等水準）に達した。
+        また、報酬に <strong>ニューラルな reward model（outcome / process いずれも）を使わなかった</strong>ことを論文は明記しており、
+        その理由として reward hacking のリスク、reward model の再学習に必要な追加リソース、パイプラインの複雑化を挙げている。
+        さらに §13 で触れた <strong>"aha moment"</strong>（モデルが学習途中で自発的に「立ち止まって考え直す」振る舞いを獲得する現象）も、
+        この R1-Zero の学習中に観測されたものである。</p>
+      </div>
+    </section>
+
+    <section id="s26">
+      <h2>26. R1 のレシピ ― 5 段階のフルパイプライン</h2>
+      <p>
+        <em>「R1-Zero が証明しようとしたこと（RL だけで reasoning レベルの性能に到達できる）が分かったので、
+        次は、見えてきた課題を調整して完全なパイプラインにする方法を見ます」</em>。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/32-r1-recipe-full.jpg" alt="スライド「DeepSeek R1's training recipe」。1 Pretrain V3-Base、2 Small-scale SFT with reasoning data、3 GRPO with reasoning data、4 Large-scale SFT、5 GRPO with reasoning and non-reasoning data: R1。下に Reward = Formatting + accuracy と Reward = helpfulness + harmlessness の2つの枠" loading="lazy" />
+        <figcaption>R1 の 5 段階レシピ全体。最終段階（⑤）では、reasoning データには <strong>Formatting ＋ accuracy</strong> の報酬、
+        non-reasoning（"General" data、主に V3 の RL データを再利用）には <strong>helpfulness ＋ harmlessness</strong> の報酬が使われる。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=6110s" target="_blank" rel="noopener">101:50</a></figcaption>
+      </figure>
+
+      <div class="mermaid">
+flowchart TD
+  S1["① Pretrain：V3-Base<br/>MoE・MLA・pre-norm<br/>671B total / 37B active"] --> S2
+  S2["② 小規模 SFT（cold start）<br/>R1-Zero が生成した長い CoT を<br/>人手で書き直したデータ"] --> S3
+  S3["③ GRPO（reasoning データ）<br/>Reward = formatting + accuracy<br/>+ language consistency"] --> S4
+  S4["④ 大規模 SFT<br/>reasoning 約600k（rejection sampling）<br/>+ non-reasoning 約200k"] --> S5
+  S5["⑤ GRPO（reasoning + non-reasoning）<br/>reasoning: formatting + accuracy<br/>general: helpfulness + harmlessness<br/>→ R1"]
+      </div>
+      <p class="diagram-hint">図はクリックで拡大できます。</p>
+
+      <h3>② cold start データ ― R1-Zero の出力を人手で直す</h3>
+      <p>
+        <em>「彼らが <strong>cold start data</strong> と呼ぶものから始まります。<strong>R1-Zero の段階で CoT を生成させた</strong>のです。
+        そしてそれらの CoT には時に問題があった。そこで<strong>人間を使って一部を書き直し</strong>、
+        すべての CoT がフォーマットと言語の一貫性の点で準拠するようにしました。
+        そして、この『プロンプトと書き直された出力』のペアを SFT の学習データに使ったのです」</em>。
+      </p>
+      <p>
+        データ量について Shervine は正直に述べる。<em>「この段階のサンプル数は論文に数値が与えられていなかったと思います。
+        ただ論文の言い回しからすると、他のステージより<strong>数桁少ない</strong>可能性がある。おそらく（数千程度の）入出力ペアでしょう」</em>。
+      </p>
+      <div class="callout info">
+        <p><strong>周辺情報：論文の記述を確認すると。</strong>
+        DeepSeek-R1 論文は cold start データを <em>"thousands of cold-start data"</em>（数千件）と表現しており、
+        正確な件数は明示していない。Shervine の読みは論文の記述と一致している。</p>
+      </div>
+
+      <h3>③ reasoning データでの GRPO ― 言語一貫性報酬の追加</h3>
+      <p>
+        <em>「この段階が整ったら、R1-Zero でやったのと同じ RL ステージを続けます」</em>。
+        ただし報酬に新しい項目が 1 つ加わる。
+      </p>
+      <div class="formula">
+        Reward = formatting + accuracy + <span style="color:var(--accent)">language consistency</span>
+      </div>
+      <p>
+        <em>「思考の可読性が低いという問題に対抗するために、彼らが新しく導入したものがあります。
+        <strong>language consistency reward</strong> と呼ばれるもので、モデルが本当に言語を混ぜていないかを、非常に単純なヒューリスティックで評価します。
+        たしか、<strong>出力されたチェーンの中の、目標言語の token の比率</strong>だったと思います。
+        正しい言語の token の量を最大化するために、それを入れたのです」</em>。
+      </p>
+      <div class="callout info">
+        <p><strong>周辺情報：論文の定義。</strong>
+        DeepSeek-R1 論文は language consistency reward を「CoT における<strong>目標言語の単語の割合</strong>（<em>the proportion of target language words</em>）」と定義している。
+        Shervine の記憶どおりである。なお論文は、この報酬を入れると <strong>ベンチマーク性能はわずかに下がる</strong>が、
+        人間にとっての可読性が上がるためトレードオフとして受け入れた、という趣旨のことを述べている点も付記しておく。</p>
+      </div>
+
+      <h3>④ 大規模 SFT ― rejection sampling で 600k、一般データで 200k</h3>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/31-r1-sft-600k-200k.jpg" alt="スライド「DeepSeek R1's training recipe」。ステップ4 Large-scale SFT。左に ~600k pairs（Maths, coding, logic、Rejection sampling of &quot;R1 so far&quot; responses via rules + V3 judge）、右に ~200k pairs（General data、Mostly reuses V3 SFT data）" loading="lazy" />
+        <figcaption>大規模 SFT の内訳。左が reasoning 系 <strong>約 600k ペア</strong>（数学・コーディング・論理。<strong>rejection sampling</strong> でここまでの R1 の応答をルールと V3 judge で選別）、右が一般データ <strong>約 200k ペア</strong>（主に V3 の SFT データを再利用）。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=6000s" target="_blank" rel="noopener">100:00</a></figcaption>
+      </figure>
+      <p>
+        <em>「最初の RL を通した後、非常に興味深い戦略で SFT を続けます。cold start のときより<strong>大きなスケール</strong>で行い、
+        今度は <strong>reasoning データと non-reasoning データの両方を混ぜます</strong>。
+        ユーザーがモデルに求めうる幅広いケースで有用になるようにするためです」</em>。
+      </p>
+      <ul>
+        <li><strong>non-reasoning データ（約 200k）。</strong> <em>「non-reasoning 版のモデル、つまり V3 に使われたデータを一部リサイクルしました。約 200k ペアです。instruction tuning の回で述べた領域をカバーしています。広い範囲のトピックです」</em>。</li>
+        <li><strong>reasoning データ（約 600k）。</strong> <em>「そこに reasoning に向けたペアを大量に加えました。比率は <strong>3 対 1</strong> です」</em>。</li>
+      </ul>
+
+      <h3>rejection sampling とは何か</h3>
+      <p>
+        <em>「reasoning のほうは <strong>rejection sampling</strong> という手法で生成されました。
+        reasoning 系の分野をカバーするプロンプトを取り、<strong>そこまでに学習してきたモデル</strong>を使って応答を生成させる。
+        そして judge を使って、<strong>一部の答えを採用し、他を棄却</strong>する。結果としてできるデータセットが非常に高品質になるようにするのです。
+        これを rejection sampling と呼んでいます。<strong>完璧でない答えをフィルタして落とすだけ</strong>のことです」</em>。
+      </p>
+      <p>
+        <em>「LLM judge などで自動的にやった理由は、データの規模を考えれば当然でしょう。そしてこれらのヒューリスティックはその規模でうまく機能しました」</em>。
+      </p>
+      <div class="callout info">
+        <p><strong>周辺情報：rejection sampling は「自己生成データの品質フィルタ」。</strong>
+        モデル自身に大量の応答を生成させ、正解のものだけを残して SFT データにする ―― という考え方は、
+        <strong>「良質な人手データが足りない領域を、検証可能性で埋める」</strong>典型的な手法である。
+        数学やコードでは正誤が自動判定できるので、ルールベースでフィルタできる。
+        判定が難しいケースには DeepSeek-V3 を judge（LLM-as-a-judge）として使った、というのがスライドの
+        <em>"Rejection sampling of 'R1 so far' responses via rules + V3 judge"</em> の意味である。
+        なお論文全体では、この段階の SFT データは reasoning 約 600k ＋ non-reasoning 約 200k で<strong>合計約 800k サンプル</strong>とされている。</p>
+      </div>
+
+      <h3>⑤ 最終 RL ― helpfulness と harmlessness</h3>
+      <p>
+        <em>「最後のステージは、non-reasoning モデルの学習パイプラインで登場するものを思い出させるかもしれません。
+        今回は reasoning データだけでなく non-reasoning データも混ぜます。
+        reasoning データには今まで見てきたのと同じ報酬。<strong>non-reasoning のほうは、LLM を有用（helpful）で無害（harmless）なアシスタントにする特性にモデルを揃えます</strong>」</em>。
+      </p>
+      <div class="callout">
+        <p><strong>細かいが重要な違い。</strong>
+        <em>「<strong>harmlessness の報酬は、出力された全 token に対して適用されました</strong>。答えの部分だけではありません。
+        なぜなら、答えの think セクションの中にある chain of thought も無害であってほしいからです。
+        一方 <strong>helpfulness のほうは、ユーザーが目にする部分</strong>に、より焦点を当てていました」</em></p>
+      </div>
+    </section>
+
+    <section id="s27">
+      <h2>27. R1 の結果 ― 2 つのクラスタと、closed-source との比較</h2>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/33-r1-results.jpg" alt="スライド「DeepSeek R1's results」。ベンチマーク比較表。列は Claude-3.5-Sonnet-1022、GPT-4o 0513、DeepSeek V3、OpenAI o1-mini、OpenAI o1-1217、DeepSeek R1。行は English/Code/Math/Chinese の各ベンチマーク。R1 の優位な数値が赤枠で囲まれている" loading="lazy" />
+        <figcaption>DeepSeek-R1 論文の結果表。<code>MMLU-Redux 92.9</code>、<code>MMLU-Pro 84.0</code>、<code>DROP 92.2</code>、<code>AlpacaEval2.0 87.6</code>、<code>ArenaHard 92.3</code>、<code>AIME 2024 79.8</code>、<code>MATH-500 97.3</code> などが赤枠で強調されている。アーキテクチャ行に <strong>MoE / 37B activated / 671B total</strong> が明記。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=6190s" target="_blank" rel="noopener">103:10</a></figcaption>
+      </figure>
+
+      <p>Shervine が読み取った 2 点。</p>
+      <ol>
+        <li><strong>2 つのクラスタが現れる。</strong> <em>「reasoning ベースのベンチマークでは、まず結果が 2 つのクラスタに分かれることに気づきます。
+        non-reasoning ベースのモデル群が一定の性能を持ち、reasoning ベースのモデル群は当然ながらそれよりずっと高い性能を持つ」</em>。</li>
+        <li><strong>closed-source と競合できている。</strong> <em>「R1 は、reasoning ベースを謳う closed-source モデルに対してかなり競争力があった。
+        あの水準の性能を再現できたのは、Afshine が触れたとおり、非常に興味深い瞬間でした」</em>。</li>
+      </ol>
+    </section>
+
+    <section id="s28">
+      <h2>28. distillation ― 大きなモデルの推論能力を小さなモデルへ</h2>
+      <p>
+        <em>「最後に興味深い話で締めたいと思います。<strong>600B の MoE を自由に使えるわけではない</strong>としましょう。
+        手元にあるのはもっと小さいモデルだが、この巨大な reasoning model の能力が欲しい。どうすればいいでしょうか」</em>。
+      </p>
+
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture6-llm-reasoning/34-distillation.jpg" alt="スライド「And what about distillation?」。左が Distillation seen in lecture 2（教師Tと生徒Sの出力分布を一致させる図、Goal: match next token distribution）、右が Distillation used here（targeted x から R1 と R1-Distill、generate entire responses、Goal: SFT-learn reasoning traces）" loading="lazy" />
+        <figcaption>2 種類の distillation の対比。左（Lecture 2 で扱った古典的な蒸留）は<strong>次 token の確率分布そのものを一致させる</strong>。右（ここでの蒸留）は <strong>R1 に応答全体を生成させ、それを SFT で学習する</strong>。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=6320s" target="_blank" rel="noopener">105:20</a></figcaption>
+      </figure>
+
+      <h3>Lecture 2 の distillation との違い</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>Lecture 2 の distillation</th><th>R1 で使われた distillation</th></tr></thead>
+        <tbody>
+          <tr><td>前提</td><td>扱うデータが<strong>固定</strong>（next token prediction ならテキスト、SFT ならペア）</td><td>reasoning の SFT ペアは<strong>そのままでは存在しない</strong></td></tr>
+          <tr><td>生徒が合わせる対象</td><td>教師モデルの<strong>出力確率分布そのもの</strong>（ハードラベルでなく分布全体）</td><td>教師（R1）が生成した<strong>token 系列そのもの</strong></td></tr>
+          <tr><td>手順</td><td>教師と生徒に同じ入力を通し、分布の距離を損失にする</td><td>①R1 に thinking token 込みの応答をオフラインで生成させる → ②その系列を小型モデルに SFT で学習させる</td></tr>
+          <tr><td>スライドの Goal</td><td>match next token distribution</td><td>SFT-learn reasoning traces</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>
+        <em>「教師モデル、ここでは R1 を使って、<strong>thinking token を含むサンプル応答をオフラインで生成</strong>させます。
+        そして第 2 段階で SFT を回し、教師よりずっと重みの少ない小さなモデルをそこに fit させる。
+        <strong>次 token の分布に fit させるのではなく、系列全体に fit させる</strong>のです。
+        教師が出力したのと同じ token の系列を予測しようとするだけです」</em>。
+      </p>
+
+      <h3>結果 ― なぜ RL ではなく蒸留なのか</h3>
+      <p>
+        <em>「結果は、より小さな reasoning model を謳う closed-source の代替と比べて、やはり非常に競争力があります。
+        たとえば o1-mini と比べても、数値は同等です」</em>。
+      </p>
+      <p>
+        そして、受講生が抱くであろう疑問に Shervine 自身が答える。
+        <em>「『同じ RL の手法をやればいいのに、なぜわざわざ蒸留するのか』と思うかもしれません。
+        実は著者たちは、<strong>小さいサイズのモデルでは、ゼロから直接学習させるより、知識を蒸留するほうが性能面で効率的</strong>だと確認しているのです」</em>。
+      </p>
+
+      <div class="callout info">
+        <p><strong>周辺情報：論文が示した具体的な比較。</strong>
+        DeepSeek-R1 論文は、この主張を実験で裏づけている。同じ Qwen-32B をベースに、
+        <strong>直接大規模 RL をかけた DeepSeek-R1-Zero-Qwen-32B は AIME 2024 で 47.0</strong>、
+        <strong>R1 から蒸留した DeepSeek-R1-Distill-Qwen-32B は 72.6</strong>。差は歴然としている。
+        蒸留のベースモデルとして使われたのは Qwen2.5-Math-1.5B / Qwen2.5-Math-7B / Qwen2.5-14B / Qwen2.5-32B /
+        Llama-3.1-8B / Llama-3.3-70B-Instruct の 6 種類である。
+        スライドが結果に <strong>"Good" use of compute</strong> と書き添えているのはこの意味で、
+        「小さいモデルに RL を回す計算があるなら、大きいモデルの出力を蒸留したほうが得」というのが実務上の教訓になる。</p>
+      </div>
+
+      <p>Shervine の締めの一言：<em>「よろしいでしょうか。それでは、良い週末を」</em>。</p>
+    </section>
+    <section id="s29">
+      <h2>29. 難所チートシート ― 詰まりやすい 10 点だけを 1 枚に</h2>
+      <p>
+        この講義には、登壇者自身が「クラス全体で一番難しいパートだろう」と述べた GRPO / PPO の損失比較をはじめ、
+        初見で詰まりやすい箇所が多い。本レポート独自の整理として、<strong>つまずきやすいポイントだけを抜き出して</strong>並べておく。
+      </p>
+
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>詰まりやすい点</th><th>正しい理解</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>PPO の式の <code>r</code> を報酬だと思う</td><td><strong><code>r</code> は ratio（確率比）</strong>。<code>pi_θ / pi_θ_old</code>。報酬は別の記号（<code>R</code> や <code>r_i</code>）で書かれる。講義でも「紛らわしい記法」と明言</td></tr>
+          <tr><td>2</td><td>Pass@k の式が突然出てきて意味不明</td><td><strong>「1 − 全部外れる確率」＋「非復元抽出」</strong>の 2 つだけ。<code>1 − C(n−c,k)/C(n,k)</code>。k=1 を入れると <code>c/n</code>（ただの正解率）になることを確かめれば腑に落ちる</td></tr>
+          <tr><td>3</td><td>なぜ n 個生成して k を評価するのか</td><td>k 個だけだと<strong>推定の分散が大きすぎる</strong>から。n（例：200）生成して、そこから k 個を選ぶ確率計算をする</td></tr>
+          <tr><td>4</td><td>advantage が何なのか分からない</td><td><strong>「期待よりどれだけ良かったか」</strong>。PPO は value function で期待値を推定、GRPO は<strong>同じ問題の他の生成の平均</strong>で代用する</td></tr>
+          <tr><td>5</td><td>GRPO と PPO の違いが多すぎて覚えられない</td><td>覚えるのは 1 つだけ：<strong>GRPO は value function（critic）を持たない</strong>。あとはそこから派生する話</td></tr>
+          <tr><td>6</td><td>KL 項が GRPO と PPO で違う場所にある</td><td>GRPO は<strong>目的関数に明示的な項</strong>、PPO は<strong>実装上、報酬（→ advantage）に混ぜ込む</strong>。数学的な意図は同じ「reference から離れるな」</td></tr>
+          <tr><td>7</td><td><code>1/|o_i|</code> がなぜ問題なのか</td><td>これは<strong>「その token が属する出力の長さ」だけで決まる重み</strong>。短い出力の token ほど強く更新される。結果、<strong>「短い誤答」が「長い誤答」より強く罰される</strong>＝長く間違えるほうが得、という悪い誘因になる</td></tr>
+          <tr><td>8</td><td>DAPO と Dr. GRPO の違い</td><td>どちらも <code>1/|o_i|</code> を潰す。<strong>DAPO は群全体の token 総数で 1 回だけ割る</strong>（<code>1/Σ|o_i|</code>）、<strong>Dr. GRPO は係数自体を外す</strong>。Dr. GRPO はさらに <code>std</code> 除算も外す</td></tr>
+          <tr><td>9</td><td>std で割ると何がまずいのか</td><td>極端な難問／易問では群内の報酬がほぼ一様になり <strong>std が小さくなる → advantage が過大に増幅</strong>される。これが難易度バイアス</td></tr>
+          <tr><td>10</td><td>ε を 2 つに分ける意味</td><td>ratio の制約は <code>pi_θ ∈ [(1−ε)pi_old, (1+ε)pi_old]</code> という<strong>掛け算</strong>。低確率 token は上げ幅が絶対値で見て極小になるので、<strong>上限だけ緩める（Clip-Higher）</strong>と探索が保たれる</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>1 枚図：verifiable reward による reasoning 学習の全体像</h3>
+      <div class="mermaid">
+flowchart TD
+  P["reasoning プロンプト<br/>（数学・コード）"] --> G["Policy Model が<br/>G 個の completion を生成"]
+  G --> F1["① format 報酬<br/>＜think＞ タグはあるか？"]
+  G --> F2["② accuracy 報酬<br/>テスト通過 / 答え一致？"]
+  F1 --> SUM["r_i = ① + ②<br/>（+ language consistency）"]
+  F2 --> SUM
+  SUM --> ADV["群内で正規化<br/>A_i = (r_i − mean) / std"]
+  ADV --> UPD["GRPO 損失で<br/>Policy Model を更新<br/>（clip + KL penalty）"]
+  UPD --> G
+  REF["Reference Model<br/>（SFT・凍結）"] -.->|KL penalty| UPD
+  NOTE["reward model は不要<br/>value model も不要"] -.-> SUM
+      </div>
+      <p class="diagram-hint">図はクリックで拡大できます。</p>
+    </section>
+
+    <section id="s30">
+      <h2>30. 講義内のやりとり ― 受講生の質問と回答</h2>
+      <p>今回は質疑が比較的少なかったが、内容理解の助けになるものを時系列で並べる。</p>
+
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>時点</th><th>質問 / 発言</th><th>回答の要旨</th></tr></thead>
+        <tbody>
+          <tr><td>16:00 頃</td><td>「chain of thought とは何か」（教員からの問いかけ）</td><td>受講生：「一発で答える代わりに、<strong>段階を踏んで考える</strong>こと」。Afshine：「素晴らしい答え」</td></tr>
+          <tr><td>16:45 頃</td><td>「その質問（クマの年齢）には<strong>文脈</strong>が必要では？」</td><td>日付は典型的に <strong>preamble</strong> に入る。それ以外の未知の文脈をどう取得するかは <strong>Lecture 7</strong> のテーマ。今日は reasoning model の「拡張」であって根幹ではないと位置づける</td></tr>
+          <tr><td>24:40 頃</td><td>「このスクリーンショットは reasoning model か？」（教員からの問いかけ）</td><td>キーワードは <strong>"Thinking"</strong>。UI が思考プロセスを見せていること。ただし表示されるのは <strong>thought summary</strong> であって生の推論チェーンではない</td></tr>
+          <tr><td>34:50 頃</td><td>「特定の <strong>temperature</strong> を選ぶのか？」</td><td>「スライドがあるので数枚後まで質問を保留させて」→ §11 で回答。多様性のために temperature を使い、<strong>大きすぎず小さすぎず</strong>を選ぶ。論文は必ず使用した temperature を明記する</td></tr>
+          <tr><td>1:03:00 頃</td><td>「（GRPO は）なぜそうするのか？」</td><td>従来 RL は LLM 以前の設計（PPO は 2017 年）。<strong>高価な joint model（value function）を持たずに相対評価する</strong>という発想。簡単な問題での高報酬と、難問での高報酬を区別したい</td></tr>
+          <tr><td>1:14:30 頃</td><td>（質問なし）</td><td>Afshine：「質問がないのは、自分にとってはむしろ<strong>アラーム</strong>だ」「非常にテクニカルで、クラス全体で一番難しいパート。消化に時間がかかるのは普通」「<strong>録画を何度か見直すことを勧める</strong>」</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    <section id="s31">
+      <h2>31. 用語集</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>用語</th><th>意味</th><th>この講義での位置づけ</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Reasoning model</strong></td><td>答えの前に推論チェーンを出力するモデル。出力＝推論＋答え</td><td>今回の主題</td></tr>
+          <tr><td><strong>Chain of Thought (CoT)</strong></td><td>段階を踏んで考えさせる手法（Wei et al., 2022）</td><td>reasoning model の核となるアイデア。「これを大規模にやる」</td></tr>
+          <tr><td><strong>Test-time scaling</strong></td><td>推論時に使う計算量を増やして性能を上げること</td><td>スライドのセクション名。token を多く出す＝計算を多く使う</td></tr>
+          <tr><td><strong>Compute budget</strong></td><td>応答生成にモデルへ与える計算予算</td><td>thinking の長さを制御する概念</td></tr>
+          <tr><td><strong>Pass@k</strong></td><td>k 回試して少なくとも 1 回成功する確率。<code>1 − C(n−c,k)/C(n,k)</code></td><td>reasoning ベンチマークの主指標</td></tr>
+          <tr><td><strong>Pass@1</strong></td><td>1 回の生成が成功する確率＝正解率</td><td>単一生成を重視する用途向け</td></tr>
+          <tr><td><strong>Cons@k</strong></td><td>k 個生成し多数決した答えを ground truth と比較</td><td>self-consistency と同発想</td></tr>
+          <tr><td><strong>Verifiable reward</strong></td><td>機械的に正誤判定できる報酬（テスト通過・答え一致）</td><td>reward model なしで RL を回せる理由</td></tr>
+          <tr><td><strong>Format reward</strong></td><td><code>&lt;think&gt;</code> タグの有無を確認する報酬</td><td>Reward 1</td></tr>
+          <tr><td><strong>Accuracy reward</strong></td><td>解が正しいかを確認する報酬</td><td>Reward 2</td></tr>
+          <tr><td><strong>Language consistency reward</strong></td><td>CoT 中の目標言語の単語割合</td><td>R1 で言語混在を抑えるために追加</td></tr>
+          <tr><td><strong>GRPO</strong></td><td>Group Relative Policy Optimization。群内の平均報酬をベースラインにする RL 手法</td><td>reasoning 学習のデファクト</td></tr>
+          <tr><td><strong>PPO</strong></td><td>Proximal Policy Optimization（Schulman et al., 2017）</td><td>比較対象。value function が必要</td></tr>
+          <tr><td><strong>Value function / critic</strong></td><td>「ここから先を生成し続けたときの報酬」を予測するモデル</td><td>PPO には必要、<strong>GRPO には不要</strong></td></tr>
+          <tr><td><strong>GAE</strong></td><td>Generalized Advantage Estimation。PPO で advantage を求める手法</td><td>「複雑な式」として言及のみ</td></tr>
+          <tr><td><strong>Advantage</strong></td><td>「期待よりどれだけ良かったか」</td><td>両アルゴリズムが最大化する量</td></tr>
+          <tr><td><strong>Ratio</strong></td><td><code>pi_θ / pi_θ_old</code>。<strong>報酬ではない</strong></td><td>clip の対象。記号の罠</td></tr>
+          <tr><td><strong>Clipping</strong></td><td>ratio を <code>[1−ε, 1+ε]</code> に切り詰めて更新幅を制限</td><td>GRPO・PPO 共通</td></tr>
+          <tr><td><strong>Clip-Higher</strong></td><td><code>ε_low</code> と <code>ε_high</code> を分ける非対称クリップ</td><td>多様性を促す調整（DAPO）</td></tr>
+          <tr><td><strong>KL divergence</strong></td><td>2 つの分布のずれ。reference から離れすぎるのを防ぐ</td><td>GRPO は明示項、PPO は報酬に混入</td></tr>
+          <tr><td><strong>Length bias</strong></td><td><code>1/|o_i|</code> による「長い誤答のほうが罰が軽い」歪み</td><td>出力長が伸び続ける原因の仮説</td></tr>
+          <tr><td><strong>DAPO</strong></td><td>Decoupled Clip and Dynamic sAmpling Policy Optimization</td><td>token レベルの寄与を均等化</td></tr>
+          <tr><td><strong>Dr. GRPO</strong></td><td>GRPO Done Right。<code>1/|o_i|</code> と <code>std</code> 除算を除去</td><td>length bias と difficulty bias の修正</td></tr>
+          <tr><td><strong>Budget forcing</strong></td><td><code>Wait</code> を挿入して思考を延長／終了デリミタで打ち切る</td><td>s1 論文の手法</td></tr>
+          <tr><td><strong>Continuous thought</strong></td><td>思考を token ではなく隠れ表現で持つ</td><td>Coconut 論文の方向性</td></tr>
+          <tr><td><strong>Cold start data</strong></td><td>R1-Zero の CoT を人手で書き直した少量の SFT データ</td><td>R1 レシピの第 2 段階</td></tr>
+          <tr><td><strong>Rejection sampling</strong></td><td>自己生成した応答をフィルタして高品質データを作る</td><td>R1 レシピの第 4 段階（約 600k）</td></tr>
+          <tr><td><strong>Aha moment</strong></td><td>学習中にモデルが自発的に「立ち止まって考え直す」挙動を獲得する現象</td><td>DeepSeek-R1 論文が命名</td></tr>
+          <tr><td><strong>MoE / MLA</strong></td><td>Mixture of Experts / Multi-head Latent Attention</td><td>V3-Base のアーキテクチャ（671B total / 37B active）</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    <section id="s32">
+      <h2>32. 関連レポート</h2>
+      <ul>
+        <li><a href="stanford-cme295-lecture5-llm-tuning-ja.html">Stanford CME295 Lecture 5「LLM Tuning」日本語要約</a> ― <strong>本講義の直接の前編</strong>。RLHF、Bradley-Terry、reward model、advantage・value function・GAE、PPO-Clip / PPO-KL Penalty、Best-of-N、DPO。今回の冒頭 12 分の復習パートはこの内容を指している。<strong>今回の内容で詰まったらまずここに戻るべき</strong>。</li>
+        <li><a href="stanford-cme295-lecture4-llm-training-ja.html">Stanford CME295 Lecture 4「LLM Training」日本語要約</a> ― pretraining、scaling law、SFT、LoRA・QLoRA。§1 の「pretraining → SFT」の詳細。</li>
+        <li><a href="stanford-cme295-lecture3-large-language-models-ja.html">Stanford CME295 Lecture 3「Large Language Models」日本語要約</a> ― <strong>CoT・self-consistency・temperature・MoE・MLA</strong> の回。§4（CoT）、§11（temperature）、§25（MoE / MLA）の前提知識がすべてここにある。</li>
+        <li><a href="stanford-cme295-lecture2-transformer-models-tricks-ja.html">Stanford CME295 Lecture 2「Transformer-Based Models &amp; Tricks」日本語要約</a> ― <strong>distillation（DistilBERT）</strong>と pre-norm の回。§28 の「Lecture 2 で見た distillation」の中身。</li>
+        <li><a href="stanford-cme295-lecture1-transformer-ja.html">Stanford CME295 Lecture 1「Transformer」日本語要約</a> ― Attention と Transformer の基礎。</li>
+        <li><a href="post-training-reasoning-models-foundry-dem321-ja.html">Post-training reasoning models on Microsoft Foundry（DEM321）日本語要約</a> ― <strong>GRPO を実際のクラウド環境で回す</strong>実務編。今回の理論をそのまま実装に落とす話。</li>
+        <li><a href="post-training-deploying-open-source-reasoning-models-foundry-ja.html">Post-training and deploying open-source reasoning models 日本語要約</a> ― reasoning model の post-training とデプロイのパイプライン全体。</li>
+        <li><a href="distilling-models-with-fine-tuning-dem322-ja.html">Distilling models with fine-tuning（DEM322）日本語要約</a> ― §28 の distillation を実務でやる話。</li>
+        <li><a href="shipping-custom-models-at-scale-finetuning-inference-ja.html">Shipping custom models at scale 日本語要約</a> ― fine-tuning と推論の運用面。</li>
+        <li><a href="huggingface-open-models-to-production-foundry-dem320-ja.html">Hugging Face open models to production（DEM320）日本語要約</a> ― オープンモデル（Qwen / Llama 系）を本番に載せる話。R1-Distill 系モデルの実運用に関連。</li>
+      </ul>
+    </section>
+
+    <section id="s33">
+      <h2>33. 出典・一次資料</h2>
+
+      <h3>本レポートの直接の出典</h3>
+      <ul class="refs">
+        <li><a href="https://www.youtube.com/watch?v=k5Fh-UgTuCo" target="_blank" rel="noopener">Stanford CME295 Transformers &amp; LLMs | Autumn 2025 | Lecture 6 - LLM Reasoning</a>（Stanford Online、2025年11月14日公開・講義 2025年11月7日／1:47:10）</li>
+        <li><a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture6.pdf" target="_blank" rel="noopener">公式スライド: fall25-cme295-lecture6.pdf</a>（cme295.stanford.edu・148ページ）</li>
+        <li><a href="https://cme295.stanford.edu/syllabus/" target="_blank" rel="noopener">CME295 Syllabus</a>（コース全体のスケジュールとスライド一覧）</li>
+        <li><a href="https://www.youtube.com/playlist?list=PLoROMvodv4rOCXd21gf0CF4xr35yINeOy" target="_blank" rel="noopener">コース再生リスト（YouTube）</a></li>
+      </ul>
+
+      <h3>講義スライドが挙げた原論文</h3>
+      <ul class="refs">
+        <li><a href="https://arxiv.org/abs/2201.11903" target="_blank" rel="noopener">Wei et al., 2022 — “Chain-of-Thought Prompting Elicits Reasoning in Large Language Models”</a>（CoT の原典。arXiv:2201.11903）</li>
+        <li><a href="https://arxiv.org/abs/2107.03374" target="_blank" rel="noopener">Chen et al., 2021 — “Evaluating Large Language Models Trained on Code”</a>（Codex 論文。<strong>pass@k と HumanEval（164 問）の出典</strong>。arXiv:2107.03374）</li>
+        <li><a href="https://arxiv.org/abs/2402.03300" target="_blank" rel="noopener">Shao et al., 2024 — “DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models”</a>（<strong>GRPO の原典</strong>。arXiv:2402.03300）</li>
+        <li><a href="https://arxiv.org/abs/2501.12948" target="_blank" rel="noopener">DeepSeek-AI, 2025 — “DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning”</a>（<strong>R1-Zero / R1 のレシピ、aha moment、distillation の出典</strong>。arXiv:2501.12948）</li>
+        <li><a href="https://arxiv.org/abs/2503.14476" target="_blank" rel="noopener">Yu et al., 2025 — “DAPO: An Open-Source LLM Reinforcement Learning System at Scale”</a>（arXiv:2503.14476）</li>
+        <li><a href="https://arxiv.org/abs/2503.20783" target="_blank" rel="noopener">Liu et al., 2025 — “Understanding R1-Zero-Like Training: A Critical Perspective”</a>（<strong>Dr. GRPO</strong>。arXiv:2503.20783）</li>
+        <li><a href="https://arxiv.org/abs/2501.19393" target="_blank" rel="noopener">Muennighoff et al., 2025 — “s1: Simple test-time scaling”</a>（<strong>budget forcing</strong>。arXiv:2501.19393）</li>
+        <li><a href="https://arxiv.org/abs/2412.06769" target="_blank" rel="noopener">Hao et al., 2024 — “Training Large Language Models to Reason in a Continuous Latent Space”</a>（<strong>Coconut / continuous thought</strong>。arXiv:2412.06769）</li>
+        <li><a href="https://arxiv.org/abs/2412.18547" target="_blank" rel="noopener">Han et al., 2024 — “Token-Budget-Aware LLM Reasoning”</a>（<strong>TALE / dynamic budget</strong>。arXiv:2412.18547）</li>
+        <li><a href="https://arxiv.org/abs/2412.19437" target="_blank" rel="noopener">DeepSeek-AI, 2024 — “DeepSeek-V3 Technical Report”</a>（V3-Base のアーキテクチャ図の出典。arXiv:2412.19437）</li>
+        <li>Amidi et al., 2024 — “Super Study Guide: Transformers and Large Language Models”（distillation 図の出典としてスライド脚注に記載）</li>
+      </ul>
+
+      <h3>本レポートが補足のために参照した一次資料・公式ドキュメント</h3>
+      <ul class="refs">
+        <li><a href="https://github.com/openai/human-eval/blob/master/human_eval/evaluation.py" target="_blank" rel="noopener">openai/human-eval — evaluation.py</a>（pass@k の数値的に安定な実装 <code>1.0 - np.prod(1.0 - k / np.arange(n - c + 1, n + 1))</code>）</li>
+        <li><a href="https://developers.openai.com/api/docs/guides/reasoning" target="_blank" rel="noopener">OpenAI — Reasoning models</a>（“reasoning tokens are not visible via the API, they still occupy space in the model's context window and are billed as output tokens”）</li>
+        <li><a href="https://platform.claude.com/docs/en/build-with-claude/thinking" target="_blank" rel="noopener">Anthropic — Extended thinking / Summarized thinking</a>（“You're charged for the full thinking tokens generated by the original request, not the summary tokens”）</li>
+        <li><a href="https://ai.google.dev/gemini-api/docs/thinking" target="_blank" rel="noopener">Google — Gemini thinking</a>（“When thinking is turned on, response pricing is the sum of output tokens and thinking tokens”）</li>
+        <li><a href="https://huggingface.co/docs/trl/main/en/grpo_trainer" target="_blank" rel="noopener">Hugging Face TRL — GRPO Trainer</a>（<code>num_generations</code>・<code>beta</code>・<code>epsilon</code>・<code>epsilon_high</code>（DAPO 推奨 0.28）・<code>loss_type</code>（<code>grpo</code> / <code>dr_grpo</code> / <code>dapo</code> ほか）・<code>scale_rewards</code>）</li>
+        <li><a href="https://github.com/deepseek-ai/DeepSeek-V3" target="_blank" rel="noopener">deepseek-ai/DeepSeek-V3 — README</a>（MoE・671B total / 37B activated・MLA・DeepSeekMoE）</li>
+        <li><a href="https://github.com/simplescaling/s1" target="_blank" rel="noopener">simplescaling/s1</a>（s1K データセット 1,000 例）</li>
+      </ul>
+    </section>
+
+    <footer class="page">
+      <p class="disclaimer">本レポートは、上記の出典元コンテンツを参照し、内容を省略せず日本語で要約・再構成した非公式まとめです。記述に誤りがある場合は出典元の表現が正となります。掲載した講義画面のキャプチャは内容理解のための少量の引用であり、各図版には出典タイムスタンプへのリンクを付しています。また「周辺情報」と明示したブロック、難所チートシート、用語集は、公開されている一次資料に基づく本レポート独自の補足であり、登壇者が講義内で述べた内容そのものではありません。</p>
+      <p>
+        出典: <a href="https://www.youtube.com/watch?v=k5Fh-UgTuCo" target="_blank" rel="noopener">https://www.youtube.com/watch?v=k5Fh-UgTuCo</a>
+        ／ 取得手段: yt-dlp 公式英語字幕（en-US・1,692 cues・12,960語を全文精読）＋ ffmpeg 動画フレーム抽出（講義スライド34枚・全点目視確認）＋ Stanford 公式スライド PDF 148ページ ＋ 原論文・公式ドキュメント
+        ／ 生成日: 2026年8月1日
+      </p>
+    </footer>
+  </main>
+</div>
+<div id="diagramModal" class="modal" role="dialog" aria-modal="true" aria-label="図と講義画面の拡大ビューア">
+  <div class="modal-toolbar">
+    <button class="modal-button" type="button" onclick="zoomCmd('in')">拡大</button>
+    <button class="modal-button" type="button" onclick="zoomCmd('out')">縮小</button>
+    <button class="modal-button" type="button" onclick="zoomCmd('reset')">リセット</button>
+    <button class="modal-button" type="button" onclick="closeModal()">閉じる</button>
+  </div>
+  <div id="modalBody" class="modal-body"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+<script>
+  const themeAttr = document.documentElement.getAttribute('data-theme');
+  const isDark = themeAttr ? themeAttr === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: true, theme: isDark ? 'dark' : 'default', securityLevel: 'loose' });
+
+  const tocPanel = document.querySelector('.toc-panel');
+  const mobileToc = window.matchMedia('(max-width: 900px)');
+  const syncTocState = (event) => {
+    if (!tocPanel) return;
+    if (event.matches) tocPanel.removeAttribute('open');
+    else tocPanel.setAttribute('open', '');
+  };
+  syncTocState(mobileToc);
+  mobileToc.addEventListener('change', syncTocState);
+
+  const toc = document.getElementById('toc');
+  const headings = [...document.querySelectorAll('main section[id] > h2, main section[id] > h3')];
+  if (toc && headings.length) {
+    toc.innerHTML = '';
+    headings.forEach((heading, index) => {
+      const section = heading.closest('section');
+      if (!heading.id) heading.id = section ? section.id + '-h' + index : 'heading-' + index;
+      const item = document.createElement('li');
+      item.className = heading.tagName === 'H3' ? 'lvl-3' : 'lvl-2';
+      const anchor = document.createElement('a');
+      anchor.href = '#' + heading.id;
+      anchor.textContent = heading.textContent.trim();
+      item.appendChild(anchor);
+      toc.appendChild(item);
+    });
+    const links = [...toc.querySelectorAll('a')];
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries.filter(entry => entry.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (!visible) return;
+      links.forEach(link => link.classList.toggle('active', link.getAttribute('href') === '#' + visible.target.id));
+    }, { rootMargin: '-20% 0px -65% 0px', threshold: [0, 1] });
+    headings.forEach(heading => observer.observe(heading));
+  }
+
+  let panZoomInstance = null;
+  function tightenViewBox(svg) {
+    if (!svg || !svg.getBBox) return;
+    try {
+      const bbox = svg.getBBox();
+      if (!Number.isFinite(bbox.width) || !Number.isFinite(bbox.height) || bbox.width === 0 || bbox.height === 0) return;
+      const padding = 20;
+      svg.setAttribute('viewBox', [bbox.x-padding, bbox.y-padding, bbox.width+padding*2, bbox.height+padding*2].join(' '));
+    } catch (error) {
+      console.warn('Unable to tighten Mermaid viewBox', error);
+    }
+  }
+  function openDiagramFromElement(diagram) {
+    const sourceSvg = diagram ? diagram.querySelector('svg') : null;
+    if (!sourceSvg) return;
+    const modal = document.getElementById('diagramModal');
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = '';
+    const clonedSvg = sourceSvg.cloneNode(true);
+    clonedSvg.removeAttribute('style');
+    clonedSvg.setAttribute('width', '100%');
+    clonedSvg.setAttribute('height', '100%');
+    modalBody.appendChild(clonedSvg);
+    tightenViewBox(clonedSvg);
+    modal.classList.add('is-open');
+    if (panZoomInstance) panZoomInstance.destroy();
+    panZoomInstance = svgPanZoom(clonedSvg, {
+      zoomEnabled: true, controlIconsEnabled: false, fit: true, center: true, minZoom: .4, maxZoom: 8
+    });
+    panZoomInstance.resize();
+    panZoomInstance.fit();
+    panZoomInstance.center();
+  }
+  function openImageFromElement(img) {
+    const modal = document.getElementById('diagramModal');
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = '';
+    const svgNamespace = 'http://www.w3.org/2000/svg';
+    const width = img.naturalWidth || 1280;
+    const height = img.naturalHeight || 720;
+    const svg = document.createElementNS(svgNamespace, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    const image = document.createElementNS(svgNamespace, 'image');
+    image.setAttributeNS('http://www.w3.org/1999/xlink', 'href', img.src);
+    image.setAttribute('href', img.src);
+    image.setAttribute('x', '0');
+    image.setAttribute('y', '0');
+    image.setAttribute('width', width);
+    image.setAttribute('height', height);
+    svg.appendChild(image);
+    modalBody.appendChild(svg);
+    modal.classList.add('is-open');
+    if (panZoomInstance) panZoomInstance.destroy();
+    panZoomInstance = svgPanZoom(svg, {
+      zoomEnabled: true, controlIconsEnabled: false, fit: true, center: true, minZoom: .4, maxZoom: 12
+    });
+    panZoomInstance.resize();
+    panZoomInstance.fit();
+    panZoomInstance.center();
+  }
+  function closeModal() {
+    const modal = document.getElementById('diagramModal');
+    const modalBody = document.getElementById('modalBody');
+    if (panZoomInstance) {
+      panZoomInstance.destroy();
+      panZoomInstance = null;
+    }
+    modal.classList.remove('is-open');
+    modalBody.innerHTML = '';
+  }
+  function zoomCmd(command) {
+    if (!panZoomInstance) return;
+    if (command === 'in') panZoomInstance.zoomIn();
+    if (command === 'out') panZoomInstance.zoomOut();
+    if (command === 'reset') {
+      panZoomInstance.resetZoom();
+      panZoomInstance.fit();
+      panZoomInstance.center();
+    }
+  }
+  window.closeModal = closeModal;
+  window.zoomCmd = zoomCmd;
+  document.querySelectorAll('.mermaid').forEach((diagram) => {
+    diagram.setAttribute('role', 'button');
+    diagram.setAttribute('aria-label', 'Mermaid図を拡大表示');
+    diagram.setAttribute('title', 'クリックで拡大表示');
+    if (!diagram.hasAttribute('tabindex')) diagram.tabIndex = 0;
+    diagram.addEventListener('click', () => openDiagramFromElement(diagram));
+    diagram.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openDiagramFromElement(diagram);
+      }
+    });
+  });
+  document.querySelectorAll('figure.shot img').forEach((img) => {
+    img.setAttribute('role', 'button');
+    img.setAttribute('aria-label', '講義画面を拡大表示');
+    img.setAttribute('title', 'クリックで拡大表示');
+    if (!img.hasAttribute('tabindex')) img.tabIndex = 0;
+    img.addEventListener('click', () => openImageFromElement(img));
+    img.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openImageFromElement(img);
+      }
+    });
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeModal();
+  });
+  document.getElementById('diagramModal').addEventListener('click', (event) => {
+    if (event.target.id === 'diagramModal') closeModal();
+  });
+</script>
+</body>
+</html>
