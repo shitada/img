@@ -616,11 +616,16 @@ flowchart TD
         <table>
           <thead><tr><th>粒度</th><th>利点</th><th>弱点</th></tr></thead>
           <tbody>
-            <tr><td>Word-level</td><td>単純で解釈しやすく、系列が比較的短い</td><td><code>bear</code> と <code>bears</code> を別物として覚える。語彙が膨らみ、OOV が増える。</td></tr>
+            <tr><td>Word-level</td><td>単純で解釈しやすく、系列が比較的短い</td><td><code>bear</code> と <code>bears</code> を別物として覚える。語彙が膨らみ、OOV（語彙にない未知語）が増える。</td></tr>
             <tr><td>Subword-level</td><td>接頭辞・接尾辞や共通部分を再利用し、OOV を減らしやすい</td><td>単語より系列が長くなり、処理量が増える。</td></tr>
             <tr><td>Character-level</td><td>綴り間違いや大小文字の揺れに強く、未知語がほぼない</td><td>系列が非常に長く、1文字の埋め込みを意味的に解釈しにくい。</td></tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="callout info">
+        <strong>OOV とは？</strong>
+        <p><strong>Out Of Vocabulary</strong> の略で、モデルが持つ語彙に登録されていない未知語を指す。例えば語彙に <code>bear</code> しかなければ、単語単位の方式では未登録の <code>bears</code> を個別に扱えず、従来は <code>&lt;UNK&gt;</code>（unknown token）へ置き換えることが多かった。Subword 方式なら <code>bear</code> と <code>s</code> のような既知の部分へ分けられるため、OOV を減らせる。</p>
       </div>
 
       <div class="callout info">
@@ -693,7 +698,56 @@ flowchart TD
       </ul>
 
       <h3>長距離依存と勾配</h3>
-      <p>情報を1本の state に順次圧縮すると、長い系列の初期情報を保ちにくい。学習では最終時刻の誤差を時間方向へ戻す BPTT（Backpropagation Through Time）を行うが、多数の微分を掛け続けるため、値が1未満なら勾配が0へ近づく <strong>vanishing gradient</strong>、1より大きければ増大する <strong>exploding gradient</strong> が起こり得る。</p>
+      <p>通常の RNN は、長さが固定された1本の hidden state を新しい token ごとに更新する。序盤の情報は後続の入力と何度も混ぜられ、限られた state の中で上書き・圧縮されるため、遠く離れた token 同士の関係（<strong>長距離依存</strong>）を保持しにくい。例えば、文頭の主語が文末の動詞や代名詞の解釈に必要でも、その情報は多数の更新を壊れずに通過しなければならない。</p>
+
+      <h3>Backpropagation（誤差逆伝播）とは</h3>
+      <p>Backpropagation は、モデルの予測誤差が各パラメータにどれだけ起因したかを、微分の<strong>連鎖律（chain rule）</strong>で出力側から入力側へ効率よく計算するアルゴリズムである。ニューラルネットワークの学習では、次の順序を繰り返す。</p>
+      <ol>
+        <li><strong>Forward pass（順伝播）</strong>：入力を層から層へ渡し、予測値を計算する。</li>
+        <li><strong>Loss の計算</strong>：予測と正解のずれを、Cross-entropy などの損失関数で1つの値にする。</li>
+        <li><strong>Backward pass（逆伝播）</strong>：損失から計算を逆向きにたどり、各重みについて勾配 <code>∂L/∂w</code> を求める。勾配は「重みを少し増やすと損失がどちらへ、どれだけ変わるか」を表す。</li>
+        <li><strong>パラメータ更新</strong>：SGD や Adam などの optimizer が、通常は損失が減る方向へ重みを動かす。</li>
+      </ol>
+
+      <div class="formula">
+        w ← w − η × ∂L/∂w
+        <small><code>w</code> は重み、<code>L</code> は損失、<code>η</code> は learning rate。Backpropagation が勾配を求め、optimizer がその勾配を使って重みを更新する。</small>
+      </div>
+
+      <div class="callout info">
+        <strong>Backpropagation と Gradient Descent は役割が異なる</strong>
+        <p>Backpropagation は勾配を<strong>計算する方法</strong>であり、それ自体は重みを更新しない。Gradient Descent、SGD、Adam などは、得られた勾配を使って重みを<strong>更新する方法</strong>である。現在の深層学習フレームワークは自動微分で逆伝播を実行するが、基礎にある考え方は同じである。</p>
+      </div>
+
+      <h3>BPTT：Backpropagation を時間方向へ適用する</h3>
+      <p>RNN の学習では、同じ RNN セルを時刻ごとに並べた深いネットワークとして計算グラフを展開する。これを <strong>unroll（時間展開）</strong> と呼ぶ。Forward pass では <code>h₁ → h₂ → … → hₜ</code> と順に state を計算し、BPTT（Backpropagation Through Time）では損失から逆向きに各時刻をたどる。全時刻のセルは同じ重みを共有するため、各時刻から届いた勾配を合計して、その共有重みを1回更新する。</p>
+
+      <div class="formula">
+        ∂L<sub>T</sub>/∂h<sub>k</sub>
+        = ∂L<sub>T</sub>/∂h<sub>T</sub>
+        × ∂h<sub>T</sub>/∂h<sub>T−1</sub>
+        × … × ∂h<sub>k+1</sub>/∂h<sub>k</sub>
+        <small>時刻 <code>k</code> の state が最終損失へ与える影響は、途中にある多数の微分（実際には行列である Jacobian）の積として伝わる。</small>
+      </div>
+
+      <p>この積が長くなることが問題の核心である。単純なスカラーの例では、各段の大きさが <code>0.9</code> なら50段で <code>0.9⁵⁰ ≈ 0.005</code> まで縮み、<code>1.1</code> なら <code>1.1⁵⁰ ≈ 117</code> まで増える。実際の RNN では重み行列と活性化関数の微分が繰り返し掛かるため、勾配が極端に小さくなる <strong>vanishing gradient（勾配消失）</strong>、または極端に大きくなる <strong>exploding gradient（勾配爆発）</strong> が起こり得る。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>課題</th><th>学習への影響</th><th>代表的な対策</th></tr></thead>
+          <tbody>
+            <tr><td>勾配消失</td><td>系列の序盤へ届く勾配がほぼ0になり、初期 token に関係する重みを更新できない。短期的な規則は学べても、長距離依存を学びにくい。</td><td>LSTM / GRU の gate と記憶経路、適切な初期化や正規化など。</td></tr>
+            <tr><td>勾配爆発</td><td>更新量が過大になって学習が不安定になり、損失の急増や数値的なオーバーフローを招く。</td><td>勾配の大きさに上限を設ける <strong>gradient clipping</strong> など。</td></tr>
+            <tr><td>長い時間展開</td><td>全時刻の中間結果を保持するため、系列が長いほど計算量とメモリ使用量が増える。</td><td>一定区間だけ逆伝播する <strong>truncated BPTT</strong>。ただし区間より遠い依存は直接学びにくくなる。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout">
+        <strong>「時間方向へ戻す」は、文章を逆順に読むことではない</strong>
+        <p>入力を読む Forward pass は通常どおり先頭から末尾へ進む。BPTT で逆向きになるのは、予測誤差の影響を計算グラフ上で末尾から過去へたどり、どの時刻・重みが損失へ寄与したかを計算する段階である。</p>
+      </div>
+
       <p>LSTM（Long Short-Term Memory）は hidden state に加えて cell state を持ち、何を保持・忘却・出力するかを gate で制御して、長期依存を学びやすくする。ただし逐次性は残る。時刻 <code>t</code> を計算するには前の state が必要なので、系列を一括並列化しにくく、長い入力では学習が遅い。</p>
 
       <div class="table-wrap">
@@ -852,7 +906,7 @@ flowchart TD
         </article>
         <article class="term">
           <h3>OOV / Subword / BPE</h3>
-          <p>OOV は語彙にない入力。BPE 系 subword は未知語を既知の部分へ分解し、有限語彙でも希少語を構成しやすくする。</p>
+          <p>OOV（Out Of Vocabulary）はモデルの語彙にない未知語。BPE 系 subword は未知語を既知の部分へ分解し、有限語彙でも希少語を構成しやすくする。</p>
           <a class="source" href="https://aclanthology.org/P16-1162/" target="_blank" rel="noopener">出典: Sennrich et al. (2016), ACL Anthology</a>
         </article>
         <article class="term">
@@ -872,7 +926,7 @@ flowchart TD
         </article>
         <article class="term">
           <h3>RNN / BPTT</h3>
-          <p>直前の state を再利用して系列を順番に処理するネットワーク。BPTT は展開した時系列に沿って誤差を逆伝播する。</p>
+          <p>直前の state を再利用して系列を順番に処理するネットワーク。BPTT は RNN を時間方向に展開し、連鎖律で損失の勾配を過去へ伝え、各時刻で共有される重みへの勾配を合計する。</p>
           <a class="source" href="https://cme295.stanford.edu/slides/fall25-cme295-lecture1.pdf" target="_blank" rel="noopener">出典: CME295 Lecture 1 slides</a>
         </article>
         <article class="term">
