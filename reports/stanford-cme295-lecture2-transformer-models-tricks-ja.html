@@ -373,7 +373,7 @@
       <ul>
         <li>Transformer の骨格は残ったまま、<strong>位置情報の入れ方、正規化の位置、Attention の疎化、K/V head の共有</strong>が効率と長文対応のために変化した。</li>
         <li>モデルは <strong>Encoder–Decoder、Encoder-only、Decoder-only</strong> の3系統へ分化し、T5 は text-to-text、BERT は双方向表現による分類、GPT 系は自己回帰生成を得意とする。</li>
-        <li>BERT は WordPiece、[CLS]/[SEP]、MLM・NSP の自己教師あり事前学習を組み合わせる。公式資料で照合すると、位置埋め込みは学習型で、標準fine-tuningはEncoderを凍結せず全パラメータを更新する。</li>
+        <li>BERT は、未知語を既知の部分へ分ける <strong>WordPiece</strong>、文全体・文境界を示す <strong>[CLS]/[SEP]</strong>、穴埋め学習の <strong>MLM</strong>、2文の連続性を判定する <strong>NSP</strong> を組み合わせる。公式資料で照合すると、位置埋め込みは学習型で、標準fine-tuningはEncoderを凍結せず全パラメータを更新する。</li>
       </ul>
     </div>
 
@@ -434,7 +434,12 @@
 
     <section id="position-modern">
       <h2>3. T5 bias・ALiBi・RoPE</h2>
-      <p>入力に位置ベクトルを足す代わりに、Attention の対応度を計算する場所へ位置を直接入れる方法が発展した。</p>
+      <p>入力に位置ベクトルを足す代わりに、Attention の対応度を計算する場所へ位置を直接入れる方法が発展した。<strong>Relative Position Bias（相対位置バイアス）</strong>は、2つの token が何個離れているかに応じた値を、Softmax 前の Query–Key score（logit）へ加える方式である。T5 は似た距離を bucket にまとめ、その bucket ごとの加算値を学習する。</p>
+
+      <div class="callout info">
+        <strong>ALiBi と RoPE を先にひとことで</strong>
+        <p><strong>ALiBi（Attention with Linear Biases）</strong>は、遠い token ほど不利になる距離比例の値を Attention score から引く方式で、位置ベクトル自体は作らない。<strong>RoPE（Rotary Position Embedding）</strong>は、位置に応じて Query と Key のベクトルを回転させ、両者の内積に相対的な距離を反映する方式である。</p>
+      </div>
 
       <div class="mermaid">
 flowchart TD
@@ -477,6 +482,7 @@ flowchart TD
     <section id="normalization">
       <h2>4. LayerNorm・Pre-Norm・RMSNorm</h2>
       <p>元 Transformer の “Add &amp; Norm” は、sub-layer の入力を residual connection で出力へ足し、その後で LayerNorm を適用する。LayerNorm は1サンプル内の特徴次元に沿って平均と分散を求め、学習可能な <code>γ</code> と <code>β</code> で再スケール・シフトする。</p>
+      <p><strong>Post-LN（Post-LayerNorm）</strong>は residual 加算の後に正規化し、<strong>Pre-LN（Pre-LayerNorm）</strong>は各 sub-layer へ入る前に正規化する配置を指す。<strong>RMSNorm（Root Mean Square Layer Normalization）</strong>は、平均を引かず二乗平均平方根でベクトルの大きさだけを整える、LayerNorm の軽量な変種である。</p>
 
       <div class="formula">
         LayerNorm(x) = γ ⊙ (x − μ) / √(σ² + ε) + β
@@ -510,23 +516,26 @@ flowchart TD
       <h2>5. Dense Attention の二乗コストと疎化</h2>
       <p>長さ <code>n</code> の各 token が全 token を見ると、score 行列は <code>n×n</code> になる。Self-attention の主要計算は <code>O(n²d)</code>、score/weight 行列の保存は head ごとに <code>O(n²)</code> で、長文ほど負担が急増する。</p>
 
+      <h3>Longformer と sliding window</h3>
+      <p><strong>Sliding-window Attention</strong>は、各 token の参照先を系列全体ではなく前後の一定範囲（window）に限定する疎な Attention である。窓を token とともに滑らせることで、近隣の文脈を保ちながら全組み合わせの計算を避ける。</p>
+
       <figure class="shot">
         <img src="../images/stanford-cme295-transformer-models-tricks-lecture2/04-sparse-attention.jpg" alt="Longformerのsliding-window attentionとCLS global attentionを疎な行列で示すスライド。" loading="lazy" />
         <figcaption>Longformer の疎なAttention。対角帯が局所window、先頭の行・列が [CLS] などのglobal tokenを表す。<a class="ts" href="https://www.youtube.com/watch?v=yT84Y5zCnaA&t=3092s" target="_blank" rel="noopener">51:32</a></figcaption>
       </figure>
 
-      <h3>Longformer と sliding window</h3>
       <ul>
         <li>各 token が近傍 <code>w</code> 個だけを見る sliding-window attention は <code>O(nw)</code>。</li>
         <li>[CLS] や質問 token など <code>g</code> 個を global にすると、全体は概ね <code>O(nw + ng)</code>。</li>
         <li>実装では巨大なdense行列を作って後から消すのではなく、必要blockだけを計算する tiling / sparse kernel が重要。</li>
       </ul>
-      <p>講義は、層ごとにlocalとglobalを交互に使う方式や、Mistralのように全層でwindowを使う方式を紹介する。後者では層を重ねるほど情報が伝播できる理論上の receptive field が広がるが、各層が直接見る範囲とモデルの実効context windowは同じではない。</p>
+      <p>講義は、層ごとにlocalとglobalを交互に使う方式や、Mistralのように全層でwindowを使う方式を紹介する。後者では層を重ねるほど情報が伝播できる理論上の <strong>receptive field（受容野）</strong>、すなわち「ある上位層の表現へ間接的に影響し得る入力範囲」が広がる。ただし、受容野は各層が直接 Attention する範囲や、実際に有効活用できる context window と同じではない。</p>
     </section>
 
     <section id="head-sharing">
       <h2>6. MHA・MQA・GQA と KV cache</h2>
       <p>Attention の別の効率化は、Query head の多様性を残しながら Key/Value head を共有すること。自己回帰Decoderは新tokenを生成するたびに過去のK/Vを再利用するため、K/Vのhead数がKV cacheの容量とmemory bandwidthへ直結する。</p>
+      <p><strong>MHA（Multi-Head Attention）</strong>は各 Query head が専用の Key/Value head を持つ。<strong>MQA（Multi-Query Attention）</strong>は全 Query head で1組の Key/Value を共有し、<strong>GQA（Grouped-Query Attention）</strong>は複数のグループ内で Key/Value を共有する。GQA は MHA の表現力と MQA の省メモリ性の中間を狙う方式である。</p>
 
       <div class="mermaid">
 flowchart TD
@@ -551,7 +560,7 @@ flowchart TD
 
       <div class="callout info">
         <strong>KV cache</strong>
-        <p>生成step <code>t</code> では新しいQだけを計算し、過去tokenのK/Vをlayerごとに保存して再利用する。概算容量は <code>2 × layers × sequence length × KV heads × head dimension × bytes</code>。MQA/GQAはKV headsを減らし、decode時のcache読込量を削減する。GQAは近年よく見られるが、全モデルに共通する既定ではない。</p>
+        <p><strong>KV cache（Key–Value cache）</strong>は、自己回帰生成で過去 token の Key と Value を layer ごとに保存し、次の token を生成するときの再計算を避けるメモリ領域である。生成step <code>t</code> では新しいQだけを計算して保存済みK/Vを再利用する。概算容量は <code>2 × layers × sequence length × KV heads × head dimension × bytes</code>。MQA/GQAはKV headsを減らし、decode時のcache読込量を削減する。GQAは近年よく見られるが、全モデルに共通する既定ではない。</p>
       </div>
     </section>
 
@@ -576,7 +585,7 @@ flowchart TD
       </div>
 
       <h3>T5 family</h3>
-      <p>T5（Text-to-Text Transfer Transformer）は全タスクをtext-to-textへ統一する。事前学習は、tokenの15%を平均長3の連続spanとして選び、sentinel token（<code>&lt;extra_id_0&gt;</code> 等）へ置き換え、Decoderが欠落spanをsentinel順に復元する <strong>span corruption</strong>。mT5は多言語版、ByT5は学習済みsubword tokenizerを使わずUTF-8 byte列を直接処理する。</p>
+      <p>T5（Text-to-Text Transfer Transformer）は全タスクをtext-to-textへ統一する。事前学習で使う <strong>span corruption</strong> は、文章から連続した複数 token のまとまり（span）を隠し、元の内容を復元させる自己教師あり課題である。隠した各箇所は <strong>sentinel token</strong> と呼ぶ固有の目印（<code>&lt;extra_id_0&gt;</code> 等）へ置き換え、Decoderはその目印の順に欠落spanを生成する。T5ではtokenの15%を平均長3のspanとして選ぶ。mT5は多言語版、ByT5は学習済みsubword tokenizerを使わずUTF-8 byte列を直接処理する。</p>
 
       <div class="callout warning">
         <strong>公式資料による補正：ByT5 の byte</strong>
@@ -594,15 +603,15 @@ flowchart TD
 
       <figure class="shot">
         <img src="../images/stanford-cme295-transformer-models-tricks-lecture2/06-bert-inputs.jpg" alt="BERTのWordPiece、約3万語彙、CLS、SEP、MASK tokenを説明するInput processingスライド。" loading="lazy" />
-        <figcaption>BERT入力処理。WordPiece、[CLS]、[SEP]、[MASK] と、MLM/NSP のための構造を示す。<a class="ts" href="https://www.youtube.com/watch?v=yT84Y5zCnaA&t=5120s" target="_blank" rel="noopener">1:25:20</a></figcaption>
+        <figcaption>BERT入力処理。未知語を既知のsubwordへ分けるWordPiece、文全体・境界・穴埋め位置を示す[CLS]、[SEP]、[MASK] と、MLM/NSP のための構造を示す。<a class="ts" href="https://www.youtube.com/watch?v=yT84Y5zCnaA&t=5120s" target="_blank" rel="noopener">1:25:20</a></figcaption>
       </figure>
 
       <h3>入力表現</h3>
       <ul>
-        <li><strong>WordPiece</strong>：約30,000のsubword語彙。未知語を共通部分へ分解する。</li>
+        <li><strong>WordPiece</strong>：単語を、学習済み語彙にある subword（単語より小さい文字列単位）へ分割する tokenization。BERT英語版は約30,000語彙で、未知語も既知の共通部分から表現しやすくする。</li>
         <li><strong>[CLS]</strong>：先頭のspecial token。最終stateを文全体の分類へ使う。</li>
         <li><strong>[SEP]</strong>：文末と文ペアの境界。</li>
-        <li><strong>Embedding</strong>：token + position + segment（token type A/B）を要素ごとに加算。</li>
+        <li><strong>Segment embedding</strong>：各 token が文Aと文Bのどちらに属するかを示す学習ベクトル。token embedding、position embedding と要素ごとに加算し、文ペアの境界情報をモデルへ渡す。</li>
         <li><strong>Cased / uncased</strong>：大文字小文字を保持するかをpreprocessingと語彙で選ぶ。</li>
       </ul>
 
@@ -642,6 +651,7 @@ flowchart TD
       </figure>
 
       <h3>Masked Language Model（MLM）</h3>
+      <p><strong>MLM（Masked Language Model）</strong>は、入力の一部を隠し、左右両方の文脈から元の token を当てさせる自己教師あり学習である。BERTでは次の規則で予測対象を作る。</p>
       <ol>
         <li>WordPiece token の15%を予測対象に選ぶ。</li>
         <li>選んだtokenの80%を <code>[MASK]</code>、10%をrandom token、10%を元のままにする。</li>
@@ -650,7 +660,7 @@ flowchart TD
       <p>常に[MASK]へ変えないのは、fine-tuningや推論では[MASK]が現れないというpretrain–downstream差を弱めるためである。</p>
 
       <h3>Next Sentence Prediction（NSP）</h3>
-      <p>文Aと文Bを[SEP]でつなぎ、50%は実際の次文（IsNext）、50%はcorpusから選んだrandom文（NotNext）とする。[CLS]の最終stateから二値分類し、文間関係を学ばせる狙いだった。</p>
+      <p><strong>NSP（Next Sentence Prediction）</strong>は、2つの文が原文で連続していたかを当てるBERTの事前学習課題である。文Aと文Bを[SEP]でつなぎ、50%は実際の次文（IsNext）、50%はcorpusから選んだrandom文（NotNext）とする。[CLS]の最終stateから二値分類し、文間関係を学ばせる狙いだった。</p>
 
       <div class="callout info">
         <strong>用語の精密化</strong>
@@ -686,7 +696,8 @@ flowchart TD
     <section id="extensions">
       <h2>11. DistilBERT と RoBERTa</h2>
       <h3>DistilBERT：知識蒸留で小型化</h3>
-      <p>teacher BERTのhard labelだけでなく、class間の相対関係を含むsoft probabilityをstudentへ学ばせる。temperatureで分布を柔らかくし、teacherとstudentの分布差をKL divergence等で縮める。DistilBERTはBERT-baseの12層から6層へ減らし、distillation loss、MLM loss、hidden stateを近づけるcosine lossを組み合わせる。</p>
+      <p><strong>Knowledge Distillation（知識蒸留）</strong>は、大きな teacher モデルの出力分布を教師信号として、小さな student モデルへ判断の傾向を移す圧縮手法である。正解を1クラスだけ示す hard label に加え、各classへの相対的な確信度を含む soft probability を学ばせる。</p>
+      <p>teacherとstudentの分布差は、<strong>KL divergence（Kullback–Leibler divergence）</strong>などで測る。これは一方の確率分布をもう一方で近似したときの情報のずれを表す非対称な量で、0に近いほど分布が近い。temperatureで分布を柔らかくしてからこの差を縮める。DistilBERTはBERT-baseの12層から6層へ減らし、distillation loss、MLM loss、hidden stateを近づけるcosine lossを組み合わせる。</p>
       <div class="stat-grid">
         <div class="stat-card"><div class="num">40%</div><div class="label">小型化（論文報告）</div></div>
         <div class="stat-card"><div class="num">60%</div><div class="label">高速化（論文報告）</div></div>
@@ -694,11 +705,12 @@ flowchart TD
       </div>
 
       <h3>RoBERTa：BERTの学習recipeを再検証</h3>
+      <p><strong>Dynamic masking</strong>は、同じ文章でもepochごとにMLMで隠す位置を選び直し、モデルへ多様な穴埋め問題を見せる方法である。元BERTの事前作成済みmaskを繰り返す方式に対し、RoBERTaはmask patternを動的に変える。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-transformer-models-tricks-lecture2/08-roberta.jpg" alt="RoBERTaがNSPを除去し、epochごとにdynamic maskingを行うことを示すスライド。" loading="lazy" />
         <figcaption>RoBERTaの主要変更。NSPを外し、固定maskをepochごとに変えるdynamic maskingへ変更する。<a class="ts" href="https://www.youtube.com/watch?v=yT84Y5zCnaA&t=6400s" target="_blank" rel="noopener">1:46:40</a></figcaption>
       </figure>
-      <p>RoBERTa は NSP を除去しても性能低下がなく、dynamic masking、より大きいbatch、長いsequence、より大量で多様なdata、byte-level BPEなど学習条件を強化した。BERTが「十分に訓練されていなかった」ことを示し、architectureだけでなくdataとtraining recipeが性能を大きく左右すると結論付ける。</p>
+      <p>さらにNSPを除去し、より大きいbatch、長いsequence、より大量で多様なdata、byte-level BPEなど学習条件を強化した。BERTが「十分に訓練されていなかった」ことを示し、architectureだけでなくdataとtraining recipeが性能を大きく左右すると結論付ける。</p>
     </section>
 
     <section id="takeaways">
