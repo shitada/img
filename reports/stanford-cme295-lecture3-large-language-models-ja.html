@@ -358,9 +358,9 @@
     <div class="tldr">
       <h2>3 行サマリ</h2>
       <ul>
-        <li>現代的なLLMは巨大なdecoder-only Transformerであり、<strong>MoEは総parameter数を増やしつつtokenごとのactive parameterと計算量を抑える</strong>。</li>
-        <li>生成品質はgreedy・beam・top-k・top-p・temperature・guided decodingで制御し、promptではcontext・instructions・input・constraintsを組み立て、ICL・CoT・self-consistencyを使い分ける。</li>
-        <li>推論はKV cache、GQA、PagedAttention、MLA、speculative decoding、MTPにより、再計算・memory断片化・帯域律速・逐次生成をそれぞれ減らす。</li>
+        <li>現代のLLMは、それまでにある文章を手掛かりに<strong>次の語を1つずつ予測する処理</strong>を大規模化したものである。モデルを賢くしながら計算量を抑えるため、入力ごとに必要な一部の処理だけを使う工夫も採用される。</li>
+        <li>同じモデルでも、次の語の選び方や指示文の書き方によって、回答の正確さ・多様さ・形式は変わる。背景情報、具体的な指示、入力例、制約を明確にし、必要に応じて推論例や複数回答の比較を使うことが重要である。</li>
+        <li>LLMの回答生成は、過去の計算結果を再利用し、メモリを効率よく管理し、複数の候補をまとめて予測・確認することで高速化できる。これらの工夫は、長い文章や多くの同時利用者を、限られた計算資源で処理するために使われる。</li>
       </ul>
     </div>
 
@@ -370,33 +370,48 @@
 
     <section id="overview">
       <h2>1. Transformer 3系統とLLMの定義</h2>
-      <p>冒頭では前2回を復習する。Transformer系モデルは、encoder-decoder、encoder-only、decoder-onlyの3系統に分かれる。</p>
+      <p>Transformerは、入力中のどのtoken（単語や単語片などの処理単位）を参照するかをattention（注意機構）で決めるmodel（モデル）である。ただし、入力をどう読み、何を出力するかによって3系統に分かれる。まず違いを整理し、そのうえで本講義が扱うLLMの動作と「大規模」の意味を順に説明する。</p>
+      <p>3系統の違いは、文章の理解と生成をどの部品に担当させるかにある。Encoder–Decoder型は、Encoderが入力全体を意味表現へ変換し、Decoderがそれを参照して出力を順番に作る。Encoder-only型は入力全体を前後両方向から見て意味表現を作ることに集中する。Decoder-only型は未来のtokenを見ないようにし、それまでのtokenだけから次tokenを繰り返し予測する。</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>系統</th><th>主な入出力・用途</th><th>講義の例</th></tr></thead>
+          <thead><tr><th>系統</th><th>何を受け取り、何を返すか／向いている用途</th><th>講義の例</th></tr></thead>
           <tbody>
-            <tr><td>Encoder–Decoder</td><td>入力textをencodeし、decoderが別のtextを生成する。</td><td>T5、mT5、ByT5</td></tr>
-            <tr><td>Encoder-only</td><td>文・documentを意味のあるembeddingへ変換し、<code>[CLS]</code>表現などをclassificationへ使う。</td><td>BERT、DistilBERT、RoBERTa</td></tr>
-            <tr><td>Decoder-only</td><td>causal masked self-attentionで次tokenを自己回帰生成する。encoderがないのでcross-attentionは除く。</td><td>GPT、LLaMA、Gemma、DeepSeek、Mistral、Qwen</td></tr>
+            <tr><td>Encoder–Decoder</td><td>入力文全体をEncoderが読み、その内容を参照しながらDecoderが別の文章を1語ずつ作る。英語から日本語への<strong>翻訳</strong>、長文から短文を作る<strong>要約</strong>、質問から回答文を作る処理に向く。</td><td>T5、mT5、ByT5</td></tr>
+            <tr><td>Encoder-only</td><td>文章全体を前後両方向から読み、各単語や文章全体を「意味を表す数値ベクトル」へ変換する。自由な文章を生成するより、<strong>感情分類、固有表現抽出、検索、文章の類似度判定、本文からの回答箇所抽出</strong>に向く。</td><td>BERT、DistilBERT、RoBERTa</td></tr>
+            <tr><td>Decoder-only</td><td>指示や会話履歴などのprompt（指示文）を受け取り、それまでの文章に続く次の語を予測する処理を繰り返して回答を作る。<strong>対話、文章作成、コード生成、続きを書く処理</strong>に向き、現在の生成型LLMで広く使われる。</td><td>GPT、LLaMA、Gemma、DeepSeek、Mistral、Qwen</td></tr>
           </tbody>
         </table>
       </div>
-      <p>講義でのLLMは、単にparameterが多いモデルではなく、<strong>token列へ確率を割り当て、次tokenを予測する大規模language model</strong>である。現代的な用法ではtextを生成するdecoder-only modelを指し、BERTのようなencoder-only modelはこの定義から外す。</p>
+      <p>大規模言語モデル（Large Language Model; LLM）は一般には、大量の文章で学習した大規模な言語modelを指し、特定の構造（architecture）だけに普遍的に限定される語ではない。一方、本講義は文章生成を主題とするため、以降では<strong>decoder-only型をLLMとして扱う</strong>。これは講義内の作業上の用法であり、Encoder–Decoder型などをLLMと呼ばないという一般定義ではない。</p>
+      <p>Decoder-only型の中心は、token列全体の起こりやすさを、次token予測の連鎖として表す自己回帰（autoregressive）modelである。長さ<code>T</code>の列を<code>x<sub>1:T</sub> = (x<sub>1</sub>, …, x<sub>T</sub>)</code>、現在予測する位置を<code>t</code>、その位置より前にあるprefix（接頭列）を<code>x<sub>&lt;t</sub> = (x<sub>1</sub>, …, x<sub>t−1</sub>)</code>と書く。条件付き確率<code>P(x<sub>t</sub> | x<sub>&lt;t</sub>)</code>は、「prefixが与えられたとき、位置<code>t</code>にそのtokenが続く確率」である。列が完成するには各段階の選択がすべて続けて起こる必要があるため、確率の連鎖律により各条件付き確率を掛け合わせる。</p>
       <div class="formula">
         P(x<sub>1:T</sub>) = ∏<sub>t=1</sub><sup>T</sup> P(x<sub>t</sub> | x<sub>&lt;t</sub>)
-        <small>自己回帰language modelは、各位置の「それまでのtokenを条件とした次token確率」の積としてsequence確率を表す。</small>
+        <small>自己回帰language modelは、各位置の「それまでのtokenを条件とした次token確率」の積としてtoken列の確率を表す。</small>
       </div>
+      <p>たとえばtoken列「猫／が／寝る」に、文頭で「猫」が出る確率<code>0.10</code>、「猫」の後に「が」が出る確率<code>0.40</code>、「猫 が」の後に「寝る」が出る確率<code>0.50</code>をmodelが与えたとする。この列全体の確率は<code>0.10 × 0.40 × 0.50 = 0.02</code>となる。実際のmodelは、はるかに多い候補tokenについてこの次token分布を計算し、生成時にはそこから1つを選んでprefixへ追加する。</p>
+      <p>では、何が「大規模」なのか。まずparameter（パラメータ）は学習で更新されるweight（重み）やbias（バイアス）で、parameter count（総パラメータ数）はmodelが保持できる変換の容量の目安になる。training corpus（学習コーパス）は学習に使う文書の集合であり、それをtokenへ分割して数えたtraining token数は、modelが学ぶ予測例の延べ量を表す。compute（計算予算）は学習や推論に使える演算量と計算機の稼働時間である。この3つは関連するが同じ尺度ではない。</p>
       <div class="stat-grid">
-        <div class="stat-card"><div class="num">10<sup>9</sup>+</div><div class="label">講義が示すparameter規模の目安。実際には数百billion級も一般的。</div></div>
-        <div class="stat-card"><div class="num">10<sup>11</sup>–10<sup>13</sup></div><div class="label">pretraining token数の概数。数百billionから数十trillion。</div></div>
-        <div class="stat-card"><div class="num">多数のGPU</div><div class="label">training・inferenceとも大きなcomputeを要するが、consumer GPU向け最適化も進む。</div></div>
+        <div class="stat-card"><div class="num">10<sup>9</sup>+</div><div class="label">講義が示すparameter規模の目安。10億以上で、数千億級のmodelもある。</div></div>
+        <div class="stat-card"><div class="num">10<sup>11</sup>–10<sup>13</sup></div><div class="label">事前学習token数の概数。数千億から数十兆tokenに相当する。</div></div>
+        <div class="stat-card"><div class="num">多数のGPU</div><div class="label">GPU（画像処理装置）による並列演算を使う一方、一般消費者向けGPUで動かす最適化も進む。</div></div>
       </div>
-      <p>「LLM」という呼称は比較的新しく、2018–2019年ごろには現在ほど定義が固まっていなかった。講義では、現代のLLMの90%以上はdecoder-onlyという概算も示す。</p>
+      <p>したがって、model scaling（parameterを増やすこと）、data scaling（学習tokenを増やすこと）、compute scaling（演算予算を増やすこと）は区別して読む必要がある。さらに、総parameterのうち1回の入力処理で実際に計算へ使われるものをactive parameter（稼働パラメータ）と呼ぶ。通常の密なmodelでは両者はほぼ一致するが、次節のSparse MoEでは一部だけを選ぶため大きく異なる。総parameterだけを見ても、学習量、品質、1 token当たりの計算量は分からない。</p>
+      <div class="callout info">
+        <strong>背景補足：scaling lawを規模の数字と混同しない</strong>
+        <p>Scaling law（スケーリング則）は、model・data・computeを増やすと、予測誤差を表すloss（損失）が一定範囲でおおむねpower law（べき乗則）に従って下がるという経験則である。これは「大きければ必ず賢い」という定義ではなく、追加予算をどこへ配ると改善しやすいかを予測する道具である。</p>
+        <p>固定computeで効率のよい配分を調べたChinchilla研究は、parameter数だけでなく学習token数も釣り合わせる必要を示した。この基準で、model規模に対して学習tokenが少ない状態をundertraining（学習不足）、効率上の最適点を越えてtokenを追加する状態をovertraining（追加学習）と呼ぶ。ただし、推論費用を下げるために小さいmodelを長く学習させることには実用上の価値があり、「overtraining」が常に無駄という意味ではない。</p>
+        <p>また、標準化した問題集合と採点法であるbenchmark（ベンチマーク）のscoreが、規模のある閾値で急上昇するemergent ability（創発的能力）も、連続的なloss改善を正誤のような離散metric（評価尺度）へ変換した結果、段差に見える場合がある。benchmarkは比較に有用だが、評価尺度、対象task、data contamination（評価問題が学習dataへ混入すること）を確認し、単一scoreを一般能力と同一視してはならない。本講義はスケーリング則自体を導出せず、以降はarchitecture、prompt、推論効率を扱うため、ここでの説明は冒頭の規模表示を読むための背景補足である。</p>
+      </div>
+      <p>「LLM」という呼称は比較的新しく、2018–2019年ごろには現在ほど用法が固まっていなかった。講義では「現代のLLMの90%以上はdecoder-only」という概算も示すが、これはdecoder-onlyを普遍的な定義にする主張ではなく、現在の生成modelで広く採用されているという実務上の傾向として読むべきである。</p>
     </section>
 
     <section id="moe-basics">
       <h2>2. Mixture of Experts：全parameterを毎回使わない</h2>
-      <p>巨大modelへ単純な質問をするたびに全parameterを動かす必要はあるのか。講義は「数学者・物理学者・化学者・歴史家がいる部屋で数学の質問を誰へ聞くか」という比喩を使う。input <code>x</code>からrouter（gate）<code>G</code>がexpertの重みを決め、expert <code>E<sub>i</sub></code>の出力を合成するのがMoEである。</p>
+      <p>Mixture of Experts（MoE、複数の専門家を組み合わせる方式）は、「modelの知識容量は増やしたいが、どのtokenにも全parameterを使うのは高価」という問題を解く。入力ごとに必要な一部の計算経路だけを選ぶことで、総parameterを大きくしながら、1 tokenを処理するときの演算量を抑える。</p>
+      <p>前提となるfeed-forward network（FFN、順伝播ネットワーク）は、Transformer block内で各token表現を独立に変換する層である。一般には、入力をより広い中間次元へ線形変換し、非線形な活性化関数を通して元の次元へ戻す。このFFNを複数個用意し、それぞれをexpert（専門家）と呼ぶ。expertは人間が「数学担当」などの規則を手で書くのではなく、routing（振り分け）と同時に学習する別々のFFNである。</p>
+      <p>講義の教室に、数学者・物理学者・化学者・歴史家がいると考える。数学の質問を全員へ毎回解かせる代わりに、受付係が質問を見て適任者へ渡せばよい。この受付係がrouter（ルーター）であり、各expertへ与える重みを計算する部分をgate（ゲート）<code>G</code>と呼ぶ。重みが大きい順に<code>k</code>人だけを選ぶ操作がtop-kである。全expertを使うDense MoEに対し、一部だけを動かす方式をSparse MoEという。</p>
+      <p>たとえば4 expertに対し、token「積分」のrouting score（振り分け得点）が<code>[0.70, 0.20, 0.06, 0.04]</code>だったとする。top-2なら第1・第2 expertだけがtokenを処理し、その出力を<code>0.70</code>と<code>0.20</code>に応じて合成する。別のtoken「王朝」では歴史寄りのexpertが選ばれるかもしれない。このようにtokenごとに経路を変えるのがMoEの仕組みである。</p>
+      <p>式では、入力tokenの表現を<code>x</code>、expertの総数を<code>N</code>、expertを指す番号を<code>i</code>とする。<code>E<sub>i</sub>(x)</code>はexpert <code>i</code>が出すベクトル、<code>G<sub>i</sub>(x)</code>はrouterがそのexpertへ与える重み、<code>ŷ</code>は重み付き合成後の出力である。Dense MoEでは全<code>N</code>個の項を計算する。Sparse MoEではtop-k外の<code>G<sub>i</sub>(x)</code>を0として、選ばれた項だけを計算する。</p>
       <div class="formula">
         ŷ = ∑<sub>i=1</sub><sup>N</sup> G<sub>i</sub>(x) E<sub>i</sub>(x)
         <small>Dense MoEは全expertを重み付き合成し、Sparse MoEはrouter確率のtop-k expertだけを計算する。</small>
@@ -405,7 +420,7 @@
         <img src="../images/stanford-cme295-lecture3-large-language-models/01-sparse-moe.jpg" alt="講義室の投影画面に、Sparse MoEのrouter G、選択されたexpert E2、top-k選択と重み付き出力式が示されている" loading="lazy" />
         <figcaption>「Overview of MoEs」のSparse MoEスライド。router出力の一部を×で除外し、選択されたexpertだけを重み付き合成する図と式が映る。<a class="ts" href="https://www.youtube.com/watch?v=Q5baLehv5So&t=840s" target="_blank" rel="noopener">14:00</a></figcaption>
       </figure>
-      <p><strong>画像の読み解き：</strong>左のgate <code>G</code>はtokenごとのrouting scoreを作り、top-k外の経路を切る。右の総和が全expertではなく選択集合へ限定されることが、総parameter数を増やしながら1 token当たりのactive computeを抑える核心である。</p>
+      <p><strong>画像の読み解き：</strong>左のgate <code>G</code>はtokenごとのrouting scoreを作り、top-k外の経路を切る。右の総和が全expertではなく選択集合へ限定されることが、総parameter数を増やしながら1 token当たりの実際の演算量を抑える核心である。</p>
       <div class="mermaid">
 flowchart LR
   X["token表現 x"] --> G["Router / Gate G(x)"]
@@ -419,32 +434,67 @@ flowchart LR
       <p class="diagram-hint">図をクリックすると拡大・移動できる。</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>方式</th><th>routerの扱い</th><th>compute上の含意</th></tr></thead>
+          <thead><tr><th>方式</th><th>routerの扱い</th><th>計算上の含意</th></tr></thead>
           <tbody>
-            <tr><td>Dense MoE</td><td>全expertに0–1の重みを与える。</td><td>専門性は分けられるが、全expertを計算するためcompute削減は限定的。</td></tr>
-            <tr><td>Sparse MoE</td><td>top-k（典型的にはk=1または2）だけを選ぶ。</td><td>総capacityを増やしながら、1 forward passのactive parameterを制御できる。</td></tr>
+            <tr><td>Dense MoE</td><td>全expertに0–1の重みを与える。</td><td>専門性は分けられるが、全expertを計算するため演算量の削減は限定的。</td></tr>
+            <tr><td>Sparse MoE</td><td>top-k（典型的にはk=1または2）だけを選ぶ。</td><td>総表現容量を増やしながら、1回の入力処理で使うparameterを制御できる。</td></tr>
           </tbody>
         </table>
       </div>
-      <p>講義は計算量の尺度としてFLOPを紹介する。forward pass中の浮動小数点addition・multiplicationなどの<strong>operation数</strong>を数え、Sparse MoEはDense MoEよりFLOPを減らせる。</p>
+      <p>ここで<strong>total parameter（総parameter）</strong>は全expertとrouterが持つparameterの合計、<strong>active parameter（稼働parameter）</strong>は1 tokenのforward pass（入力から出力までの計算）で選ばれたexpertなど、実際に使うparameterである。expertを増やすと総parameterと表現容量は増えるが、<code>k</code>を固定すればactive parameterの増加を抑えられる。ただし、使わないexpertもmemory（記憶装置）には保持する必要があり、routingやexpert間通信にも費用がかかる。</p>
+      <p>講義は演算量の尺度としてFLOP（floating-point operation、浮動小数点演算）を紹介する。これはforward pass中の加算・乗算などを<strong>何回行うか</strong>という演算回数であり、hardware（計算機）の違いを越えて手法の計算需要を比較するために使う。Sparse MoEは選ばれないexpertの演算を省くため、Dense MoEより1 token当たりのFLOPを減らせる。</p>
       <div class="callout info">
         <strong>一次資料による補足：FLOPとFLOP/s</strong>
-        <p>FLOPはfloating-point operation、FLOP/sは1秒あたりの実行率である。operation数が減っても、expert間通信・memory access・load imbalanceにより実時間が同率で短くなるとは限らない。</p>
+        <p>FLOPは演算の総回数、FLOP/sは1秒当たりに実行できる演算数、つまり処理速度である。FLOPが減っても、expert間通信、memory access（memoryからの読み書き）、load imbalance（expert間の負荷の偏り）により、実時間が同じ割合で短くなるとは限らない。</p>
       </div>
     </section>
 
     <section id="moe-transformer">
       <h2>3. Transformer内部のMoEとrouting collapse</h2>
+      <p>MoEをTransformerへ入れるときは、block全体ではなくFFNを複数のexpertへ置き換える。ただし、routerを自由に学習させるだけではtokenが一部expertへ集中しやすい。本節では、なぜFFNが置換対象なのか、偏りがなぜ拡大するのか、補助的なload-balancing loss（負荷均衡損失）がどう抑えるのかを説明する。</p>
       <h3>なぜFFNをexpertへ置き換えるのか</h3>
-      <p>decoder blockの候補はmasked self-attention、FFN、normalizationである。講義では、FFNが<code>d<sub>model</sub></code>から大きな<code>d<sub>ff</sub></code>へ拡張して戻すためparameterの大部分を占めることから、ここを複数FFN expertへ置き換える。</p>
+      <p>Decoderの各Transformer blockは主に、過去のtoken同士を関連付けるmasked self-attention（未来を隠した自己注意）、tokenごとの表現を変換するFFN、値の尺度を整えるnormalization（正規化）から成る。MoEの狙いは、parameter容量を増やしつつtoken当たりの計算を選択的にすることなので、parameterの多い部分を置き換えるのが効果的である。</p>
+      <p>FFNはtoken表現の幅<code>d<sub>model</sub></code>を、通常はより大きい中間幅<code>d<sub>ff</sub></code>へ広げ、もう一度<code>d<sub>model</sub></code>へ戻す。基本的な2つのweight行列はそれぞれおよそ<code>d<sub>model</sub> × d<sub>ff</sub></code>個のparameterを持つため、FFNはblock内のparameterの大部分を占めやすい。そこで1つの大きなFFNを複数のFFN expertへ置き換え、routerが一部だけを選ぶ。</p>
       <div class="formula">
         Params(FFN) ≈ 2 d<sub>model</sub>d<sub>ff</sub> + bias
-        <small>各Transformer blockにlayer固有のrouterとexpert群を置き、routingはattention後のcontextualized tokenごとに行う。</small>
+        <small><code>d<sub>model</sub> × d<sub>ff</sub></code> のweight行列を拡張時と縮小時に1枚ずつ使うため、biasを除くparameter数はおよそ <code>2d<sub>model</sub>d<sub>ff</sub></code> になる。</small>
       </div>
-      <p>同じsequence内でもtokenごと、blockごとに選ばれるexpertは異なる。attention headごとにrouterを置くのではない。multi-head attentionの出力をconcatenateして<code>d<sub>model</sub></code>へ戻した後、layer固有routerがtop-k expertを選ぶ。</p>
+      <p>各Transformer blockには、その層専用のrouterとexpert群を置く。routingはattention head（異なる関係を並列に見る注意機構の単位）ごとではない。multi-head attentionの各出力を連結して<code>d<sub>model</sub></code>へ戻した後、そのlayer（層）専用のrouterがcontextualized token（周囲の文脈を反映したtoken表現）ごとにtop-k expertを選ぶ。そのため、同じsequence（token列）内でもtokenごと、blockごとに選択先が変わる。</p>
+
+      <div class="mermaid">
+flowchart TD
+  X["入力token列<br/>例: A / teddy / bear"]
+  X --> H1["Attention head 1<br/>近くの語との関係を見る"]
+  X --> H2["Attention head 2<br/>遠くの語との関係を見る"]
+  X --> HH["Attention head H<br/>別の関係を見る"]
+  H1 --> C["全headの出力を連結<br/>各tokenを d_model 次元へ戻す"]
+  H2 --> C
+  HH --> C
+  C --> T1["文脈化token: A"]
+  C --> T2["文脈化token: teddy"]
+  C --> T3["文脈化token: bear"]
+  T1 --> R["このblock専用のRouter<br/>tokenごとにexpert得点を計算"]
+  T2 --> R
+  T3 --> R
+  R -->|"A: top-k"| E1["Expert 1<br/>FFN"]
+  R -->|"teddy: top-k"| E2["Expert 2<br/>FFN"]
+  R -->|"bear: top-k"| E3["Expert 3<br/>FFN"]
+  E1 --> Y["選ばれたexpertの出力を合成<br/>次のTransformer blockへ"]
+  E2 --> Y
+  E3 --> Y
+      </div>
+      <p class="diagram-hint">Attention headごとにexpertを選ぶのではなく、headを統合した後の各tokenをrouterへ渡す。図をクリックすると拡大できます。</p>
+
+      <div class="callout info">
+        <strong>図の要点</strong>
+        <p>上半分の複数Attention headは、同じtoken列から異なる関係を読み取る。その結果をtokenごとに1つの文脈化表現へまとめた後、下半分のrouterが各tokenの行き先を決める。したがって <code>teddy</code> と <code>bear</code> が同じexpertへ行く必要はなく、次のTransformer blockでは別のrouterが再び選び直す。</p>
+      </div>
 
       <h3>routing collapseとload-balancing loss</h3>
-      <p>共同学習を素朴に行うと、一部のexpertだけが選ばれ続け、他が学習されないrouting collapseが起こり得る。Switch Transformerの補助lossは、batch内のroutingをuniformへ近づける。</p>
+      <p>routerとexpertをそのまま共同学習すると、routing collapse（振り分けの崩壊）が起こり得る。たとえば4 expertへ1,000 tokenを送る場面で、割当が<code>700 / 200 / 80 / 20</code>なら、第1 expertに計算と学習例が集中し、第4 expertはほとんど学べない。これは単なる待ち時間の問題ではなく、せっかく用意したparameter容量を使えない状態である。</p>
+      <p>偏りは自己強化する。最初に偶然多く選ばれたexpertは、多くのtokenからgradient（lossを減らす更新方向）を受けて早く改善する。するとrouterはそのexpertをさらに高く評価し、他のexpertは選ばれないため改善できない。この循環を断つため、主task（本来解きたい課題）のlossに、batch内の割当を均等に近づける補助lossを加える。</p>
+      <p>式を読むために、<code>B</code>を1回の更新でまとめて処理するbatch（tokenの集合）、<code>T</code>をそのbatch内のtoken総数、<code>N</code>をexpert数とする。ここでの<code>T</code>は第1節の系列長ではなく、このbatchで数えるtoken数である。<code>f<sub>i</sub></code>はexpert <code>i</code>へhard routing（最終的な離散選択）で実際に送られたtokenの比率、<code>P<sub>i</sub></code>はrouterの得点を合計1の確率へ変換した値のbatch平均である。この変換を<strong>softmax</strong>と呼び、第4節で生成語彙の例を使って詳しく説明する。<code>α</code>は補助lossを主lossに対してどれだけ重くするかを決める係数である。</p>
+      <p>積<code>f<sub>i</sub>P<sub>i</sub></code>は、「実際によく使われ、routerも高い確率を与えるexpert」ほど大きくなる。これらの和を最小化すると、使われすぎたexpertの平均確率を下げ、使われていないexpertへ相対的に確率を移すgradientが生じる。共同学習の結果、各expertについて<code>f<sub>i</sub></code>と<code>P<sub>i</sub></code>をおよそ<code>1/N</code>へ近づけることを狙う。<code>α</code>が大きすぎれば主taskの品質を妨げ、小さすぎればcollapseを防げない。</p>
       <div class="formula">
         L<sub>aux</sub> = αN ∑<sub>i=1</sub><sup>N</sup> f<sub>i</sub>P<sub>i</sub><br />
         f<sub>i</sub> = (1/T)∑<sub>x∈B</sub> 1[argmax p(x)=i],&nbsp;
@@ -456,175 +506,269 @@ flowchart LR
         <figcaption>「Training challenges include routing collapse」の対策スライド。補助loss <code>αNΣfᵢPᵢ</code>と、<code>fᵢ</code>・<code>Pᵢ</code>の意味が投影されている。<a class="ts" href="https://www.youtube.com/watch?v=Q5baLehv5So&t=1340s" target="_blank" rel="noopener">22:20</a></figcaption>
       </figure>
       <p><strong>画像の読み解き：</strong>実際の割当比率 <code>fᵢ</code>とsoftな平均確率 <code>Pᵢ</code>を同時に見ることで、「同じexpertばかりが選ばれる」状態へ罰則を与える。hard assignment自体の微分可能性は、この直後の一次資料補足で区別する。</p>
-      <p>講義ではmini-batchごとにこれらを計算し、主lossと一緒にbackpropagationすると説明する。dropoutを併用でき、router logitへnoiseを加えて他expertにも機会を与えるnoisy gatingも紹介する。</p>
+      <h3>Routerとexpertは、実際にどう更新されるか</h3>
+      <p>学習では、まず複数のtokenをまとめた<strong>mini-batch</strong>をmodelへ入力する。modelは本来のtaskに対する誤差と、expertの利用偏りに対する補助lossを計算し、2つを足した値を小さくするようrouterとexpertのweightを更新する。</p>
+
+      <ol>
+        <li><strong>Forward pass</strong>：routerが各tokenの行き先を決め、選ばれたexpertがtokenを処理してmodelの予測を作る。</li>
+        <li><strong>主lossを計算</strong>：次token予測など、本来のtaskで予測が正解からどれだけ外れたかを測る。</li>
+        <li><strong>補助lossを計算</strong>：同じexpertへtokenが集中していないかを、<code>f<sub>i</sub></code>と<code>P<sub>i</sub></code>から測る。</li>
+        <li><strong>Backpropagation（誤差逆伝播）</strong>：合計lossを減らすには各weightをどちらへ動かすべきかを計算する。この「weightを少し変えたときlossがどれだけ変わるか」を表す値が<strong>gradient（勾配）</strong>である。</li>
+        <li><strong>Weightを更新</strong>：expertはtaskをより正しく解く方向へ、routerはtaskを解きつつ利用先の偏りも減らす方向へ調整される。</li>
+      </ol>
+
+      <p>例えばExpert 1へtokenが集中すると、補助lossはrouterに対して「Expert 1の選択確率を少し下げ、他のexpertの確率を上げる」方向のgradientを与える。一方、主lossは「そのtokenを正しく処理できるexpertを選ぶ」方向を求める。学習ではこの2つを同時に最適化するため、単に均等に配るのではなく、task性能を保ちながら極端な集中を防ぐことを目指す。</p>
+
+      <h3>Dropoutとnoisy gatingは何をするのか</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>方法</th><th>何を変えるか</th><th>目的</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Dropout</strong></td><td>学習中だけ、一部のactivation（層の出力値）をランダムに0へする。</td><td>特定の特徴や経路だけに頼らせず、別の情報からも予測できるようにする。</td></tr>
+            <tr><td><strong>Noisy gating</strong></td><td>routerがsoftmaxへ渡す前の生の得点である<strong>logit</strong>へ、小さな乱数noiseを加える。</td><td>毎回同じexpertだけが選ばれる状態を避け、選択確率の近い別expertにもtokenを送り、学習機会を与える。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>ただし、dropoutとnoisy gatingは利用率を直接均等にする規則ではない。探索や過度な依存の抑制には役立つが、「各expertへ何割送られたか」を測って偏りへ直接罰則を与えるload-balancing lossとは役割が異なる。</p>
       <div class="callout warning">
         <strong>一次資料による補足：hard routingはどう微分するか</strong>
         <p>講義Q&amp;Aでは<code>f<sub>i</sub></code>の微分が保留された。Switch Transformer論文は、argmax由来の<code>f</code> vectorは<strong>非微分可能</strong>、softmax確率由来の<code>P</code> vectorは微分可能と明記する。実装では選択件数<code>f</code>をbatch統計として扱い、勾配は<code>P</code>を通じてrouterへ流れる。論文では<code>α=10<sup>−2</sup></code>を使用した。</p>
         <p><a href="https://arxiv.org/abs/2101.03961" target="_blank" rel="noopener">一次資料: Switch Transformers, Eq. 4–6</a></p>
       </div>
-      <p>expert数を増やせば総parameter数とmodel capacityは増えるが、top-kを固定すればactive parameterは抑えられる。Switch Transformerはtrillion-parameterへscaleし、同じqualityへより早く到達するsample efficiencyも報告した。ただし講義が繰り返す通り、parameter・compute・communication・training安定性のtrade-offである。</p>
-      <p>最後にMixtral論文の可視化を示し、あるlayerで各tokenがどのexpertへ送られたかを色分けする。全tokenが同色ならcollapseの兆候で、複数色へ分散していればexpertが使い分けられている。</p>
+      <p>この設計により、expert数を増やして総parameterとmodel capacity（表現容量）を増やしながら、top-kを固定してactive parameterを抑えられる。Switch Transformerはtrillion-parameter（1兆parameter）規模への拡張と、同じquality（品質）へより少ない学習例で到達するsample efficiency（標本効率）を報告した。ただし、これはすべての環境で実時間が同じ比率で改善するという証拠ではない。parameter数、FLOP、expert間の通信、memory使用量、学習安定性のtrade-off（両立しにくい関係）が残る。</p>
+      <p>講義は最後にMixtral論文の可視化を示し、あるlayerで各tokenがどのexpertへ送られたかを色分けする。全tokenが同色ならcollapseの分かりやすい兆候で、複数色へ分散していればexpertが使い分けられている。ただし、色が均等という図だけで各expertが有用な専門性を獲得したとは断定できず、負荷、品質、計算時間も併せて評価する必要がある。</p>
     </section>
 
     <section id="decoding">
       <h2>4. 次token生成：greedy・beam・sampling</h2>
-      <p>decoder-only LLMは<code>[BOS] → A → teddy → bear → is → ...</code>と、生成済みprefixを再入力して次token分布を得る。ここで「どのtokenを選ぶか」はmodel本体とは別のdecoding policyである。</p>
+      <p>言語モデルは次に続きそうな語の候補と確率を出すが、最終的にどの候補を採るかは別の手順で決める。本節では、その候補の作られ方を先に確認し、代表的な選び方を具体例で比べる。</p>
+      <h3>確率分布ができるまで</h3>
+      <p><strong>語彙（vocabulary）</strong>は、modelが扱えるtokenの一覧である。tokenは単語そのものとは限らず、単語の一部、記号、空白なども含む。modelは生成済みの文脈を、意味や文法上の特徴を詰めた数値列である<strong>hidden state</strong>へまとめる。次に、学習済みの行列を掛けてhidden stateを語彙数と同じ個数のscoreへ写す。この処理が<strong>linear projection</strong>（線形射影）で、得られる各tokenの未正規化scoreが<strong>logit</strong>である。logitはそのままでは確率ではないため、softmaxが全候補を0から1の値へ変換し、合計1の<strong>次token確率</strong>にする。softmaxの分布を鋭くしたり平らにしたりするtemperatureは次節で詳しく扱う。</p>
+      <p>例えば <code>「そのteddy bearは」</code> の次に来るtokenとして、modelが <code>かわいい: 0.40、眠い: 0.30、賢い: 0.15、青い: 0.10、飛ぶ: 0.05</code> と予測したとする。これがmodelの予測した<strong>model distribution</strong>（model分布）である。modelが決めたのは各候補の起こりやすさまでで、実際にどのtokenを文章へ追加するかはまだ決まっていない。</p>
+      <p>この確率から最終的なtokenを選ぶ規則を<strong>decoding policy</strong>（復号方針）と呼ぶ。最有力だけを選ぶのか、文の続きを複数本残して比べるのか、確率に応じてくじを引くのかによって、同じmodelでも出力の安定性・品質・多様性が変わる。つまり、<strong>modelは候補を採点し、decoding policyが出力を決める</strong>。</p>
+      <h3>文全体の候補をどう比較するか</h3>
+      <p><strong>BOS</strong>（beginning-of-sequence）は文頭、<strong>EOS</strong>（end-of-sequence）は生成終了を表す特別なtokenである。decoder-only LLMは<code>[BOS] → A → teddy → bear → ... → [EOS]</code>のように、BOSから始め、すでに生成したtoken列を<strong>prefix</strong>（接頭列）として読み直しながら次の分布を作る。ある完成sequenceの確率は、各stepで実際に選んだtokenの条件付き確率を掛けたものになる。</p>
+      <p>ところが0から1の小数を何度も掛けると値が非常に小さくなり、計算機上で0へ丸められやすい。そこで積を<strong>log probability</strong>（対数確率）の和に置き換える。対数は単調増加なので候補の順位は変わらず、積より安定して計算できる。一方、各log確率は0以下なので、tokenを足すほど合計は下がりやすい。このため未補正のscoreは短いsequenceを過度に好む<strong>length bias</strong>（長さの偏り）を持ち、実用上は長さで正規化するlength penaltyなどを使う。</p>
+      <div class="formula">
+        log P(x<sub>1:T</sub>) = ∑<sub>t=1</sub><sup>T</sup> log P(x<sub>t</sub>|x<sub>&lt;t</sub>)
+        <small><code>x<sub>t</sub></code>はt番目のtoken、<code>x<sub>&lt;t</sub></code>はそれより前のprefix、<code>T</code>はEOSまでを含む比較対象の長さを表す。</small>
+      </div>
+      <p>ここで<code>P(x<sub>t</sub>|x<sub>&lt;t</sub>)</code>は「それまでのprefixが与えられたときに、次が<code>x<sub>t</sub></code>である確率」である。式は、sequence確率の掛け算を対数の足し算としてscore化している。</p>
+      <h3>次tokenを決める三つの考え方</h3>
+      <p>三つの方式は、同じ問題に対する別々の答えである。<strong>Greedy decoding</strong>は「今もっとも有力な1候補だけで進む」、<strong>Beam search</strong>は「有力な文章の続きを複数本残して、後から比較する」、<strong>Sampling</strong>は「確率を重みとしたくじで1候補を選ぶ」。用途に応じて、速さ・文全体のもっともらしさ・出力の多様性のどれを重視するかが異なる。</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>方式</th><th>操作</th><th>長所</th><th>限界</th></tr></thead>
+          <thead><tr><th>方式</th><th>どのように選ぶか</th><th>具体例</th><th>向く場面と注意点</th></tr></thead>
           <tbody>
-            <tr><td>Greedy decoding</td><td>毎stepで最大確率tokenを選ぶ。</td><td>単純・高速・理論上deterministic。</td><td>局所最適でsequence全体の最適を保証せず、同じ入力から同じ出力で多様性がない。</td></tr>
-            <tr><td>Beam search</td><td>beam width k本の高確率prefixを保持し、各stepで展開・剪定する。</td><td>greedyよりglobal optimumへ近い候補を探せる。</td><td>計算・memoryが増え、もっともらしさを優先して創造性に乏しい。翻訳などに向く。</td></tr>
-            <tr><td>Sampling</td><td>次token分布から確率的にsampleする。</td><td>自然さ・多様性・創造性を得やすい。</td><td>低確率の不自然なtokenも理論上は選ばれるため、候補制限が必要。</td></tr>
+            <tr><td><strong>Greedy decoding</strong></td><td>各stepで確率が最大のtokenを1つだけ選ぶ。最大の候補位置を返す操作を<strong>argmax</strong>と呼ぶ。</td><td>最初は40%の<code>かわいい</code>を選び、他の候補は捨てる。</td><td>高速で同じ結果を再現しやすい。短い分類結果などに使いやすいが、最初の選択を後から取り消せず、文章全体ではより良い続きがあった可能性を失う。</td></tr>
+            <tr><td><strong>Beam search</strong></td><td>完成前の文章を複数本残し、次のtokenを付けた後の文全体のscoreを比較する。</td><td>幅2なら、<code>そのbearは かわいい...</code> と <code>そのbearは 眠い...</code> の両方を残し、次step以降を見て優れた方を選ぶ。</td><td>翻訳など、文全体のもっともらしさを重視する処理に向く。ただし残す本数を増やすほど計算とmemoryが増え、すべての文章を調べるわけではない。</td></tr>
+            <tr><td><strong>Sampling</strong></td><td>確率を重みとしたくじを引き、1つを選ぶ。最大候補が必ず選ばれるわけではない。</td><td><code>かわいい</code>は40%、<code>眠い</code>は30%、<code>賢い</code>は15%の確率で選ばれる。</td><td>会話や物語など、毎回少し違う自然な出力を作りたい場合に向く。一方、<code>飛ぶ</code>のような低確率候補も選び得るため、top-kやtop-pで候補を絞ることが多い。</td></tr>
           </tbody>
         </table>
       </div>
-      <h3>Beam scoreとlength bias</h3>
-      <div class="formula">
-        log P(x<sub>1:T</sub>) = ∑<sub>t=1</sub><sup>T</sup> log P(x<sub>t</sub>|x<sub>&lt;t</sub>)
-        <small>0–1の確率を掛け続けるほど長いsequenceはscoreが小さくなるため、実用beam searchではlength penaltyなどで短文偏重を補正する。</small>
-      </div>
-      <p>講義例では、最初に0.8のbranchを選んでも後続確率が低ければ、最初は0.2でも後続が高いbranchのsequence確率が上回り得る。beam searchは複数branchを保持してこの局所性を和らげるが、完全探索ではないためglobal optimumを保証しない。</p>
+      <p><strong>Beam width</strong>は、各stepの後に残しておく未完成文の本数である。幅2なら、保持中の各文へ次token候補を付け、文全体のsequence scoreが高い2本だけを残す。それ以外を捨てる操作を<strong>pruning</strong>（枝刈り）という。例えば最初は <code>かわいい</code> が0.40、<code>眠い</code> が0.30でも、その次に自然なtokenが続く確率を掛けた結果、<code>かわいい</code>経路が<code>0.40×0.20=0.08</code>、<code>眠い</code>経路が<code>0.30×0.90=0.27</code>となれば順位が逆転する。Greedyは最初に<code>眠い</code>を捨てるが、Beam searchは候補として残していたため逆転を見つけられる。</p>
       <h3>Top-kとTop-p（nucleus）</h3>
-      <ul>
-        <li><strong>Top-k:</strong> 確率上位k tokenだけを残し、再正規化してsampleする。講義例は<code>k=4</code>。</li>
-        <li><strong>Top-p:</strong> 確率の高い順に足し、累積確率が<code>p</code>以上になる最小集合からsampleする。講義例は<code>p=0.9</code>。</li>
-      </ul>
+      <p>素のsamplingではEのような低確率候補も残るため、候補集合を先に狭める方法がtop-kとtop-pである。top-kは確率上位の<code>k</code>個だけを残す。top-pは確率の高い順に足し、累積確率が基準<code>p</code>以上になる最小の集合を残す。どちらも候補を削った後、残った確率の合計が1になるよう<strong>再正規化</strong>してからsamplingする。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>方法</th><th>残る候補</th><th>再正規化後の確率</th></tr></thead>
+          <tbody>
+            <tr><td>元の分布</td><td>かわいい、眠い、賢い、青い、飛ぶ</td><td>40%、30%、15%、10%、5%</td></tr>
+            <tr><td>Top-k（<code>k=2</code>）</td><td>上位2候補の<code>かわいい</code>と<code>眠い</code>を残し、他を除外する。</td><td>残った合計は0.70なので、<code>かわいい</code>は約57.1%、<code>眠い</code>は約42.9%へ調整する。</td></tr>
+            <tr><td>Top-p（<code>p=0.80</code>）</td><td>上から足す。40%+30%=70%では不足し、<code>賢い</code>まで足すと85%になるため3候補を残す。</td><td>合計0.85で割り、<code>かわいい</code>約47.1%、<code>眠い</code>約35.3%、<code>賢い</code>約17.6%へ調整する。</td></tr>
+          </tbody>
+        </table>
+      </div>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture3-large-language-models/03-top-k-top-p.jpg" alt="Sampling strategiesスライドに、top-kのk=4と、top-pの累積確率p=90パーセントの候補選択グラフが並ぶ" loading="lazy" />
         <figcaption>Sampling strategiesの比較。top-kは上位4 token、top-pは累積確率90%へ達する最小token集合を候補にする例が映る。<a class="ts" href="https://www.youtube.com/watch?v=Q5baLehv5So&t=3005s" target="_blank" rel="noopener">50:05</a></figcaption>
       </figure>
       <p><strong>画像の読み解き：</strong>top-kは棒の高さに関係なく候補数を4へ固定する一方、top-pは分布の質量を基準に集合sizeを変える。右下の棒グラフは、token順位ではなく累積確率がcutoffを決める点を可視化している。</p>
-      <p>固定kと違い、top-pの候補数は分布の確信度に応じて変わる。尖った分布では少数、平坦な分布では多数を残す。これらはtraining手法ではなく、学習済みmodelのresponse generation時に使う。</p>
+      <p>講義図の<code>k=4</code>、<code>p=0.9</code>でも手順は同じである。top-kは候補数を固定するため実装と計算量を予測しやすいが、分布が平らでも鋭くても同じ数を残す。top-pは鋭い分布では少数、平らな分布では多数を残して確信度へ適応する一方、候補数が変動する。いずれもtrainingではなく、学習済みmodelから回答を生成するときの方針である。</p>
     </section>
 
     <section id="temperature">
       <h2>5. Softmax temperatureと非決定性</h2>
-      <p>最終hidden stateをvocabulary size次元へlinear projectionしてlogit <code>z</code>を得て、temperature付きsoftmaxで次token確率へ変換する。</p>
+      <p>temperatureは、候補の有望さの順番を保ったまま、上位へどれだけ強く集中するかを調整するつまみである。低くすると堅い選択に、高くすると多様な選択になりやすい。</p>
+      <p>式に入る記号を先に定める。<code>V</code>は語彙全体、<code>i</code>は確率を求めたい候補token、<code>j</code>は語彙中の全候補を順に足すための添字である。<code>j∈V</code>の<code>∈</code>は「jがVに含まれる」、つまり語彙中の候補を一つずつ扱うことを表す。<code>z<sub>i</sub></code>は候補<code>i</code>のlogit、<code>z<sub>j</sub></code>は各候補のlogitを表す。<code>exp(x)</code>は自然対数の底<code>e</code>を<code>x</code>乗する関数で、値を正にする。<code>T</code>は0より大きいtemperature、<code>P(i)</code>は変換後にtoken <code>i</code>を選ぶ確率である。分母の<code>∑<sub>j∈V</sub></code>は全候補の値を合計し、確率の総和を1にそろえる。</p>
       <div class="formula">
-        P(i) = exp(z<sub>i</sub>/T) / ∑<sub>j</sub> exp(z<sub>j</sub>/T)
+        P(i) = exp(z<sub>i</sub>/T) / ∑<sub>j∈V</sub> exp(z<sub>j</sub>/T), &nbsp; T &gt; 0
       </div>
+      <p>logitが<code>[3, 2, 0]</code>の三候補を考える。<code>T=1</code>なら差はそのままで、順位は第1候補、第2候補、第3候補となる。<code>T=0.5</code>では割った値が<code>[6, 4, 0]</code>となり差が広がるため、第1候補へ確率が強く集まる。<code>T=2</code>では<code>[1.5, 1, 0]</code>となり差が縮み、下位候補にも確率が回る。正の同じ数で全logitを割るだけなので、<strong>tokenの順位は変わらず、分布の鋭さだけが変わる</strong>。そのためtemperatureは、modelが最有力と見た候補を別候補へ入れ替える設定ではなく、sampling時の選ばれやすさを調整する設定である。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture3-large-language-models/04-temperature-softmax.jpg" alt="講義室の投影画面に、decoder出力からsoftmaxへ進む図とtemperature Tでlogitを割る確率式が示されている" loading="lazy" />
         <figcaption>「Temperature allows to tweak output probabilities」のスライド。decoderのlogitをtemperature付きsoftmaxへ渡す流れと確率式が映る。<a class="ts" href="https://www.youtube.com/watch?v=Q5baLehv5So&t=3265s" target="_blank" rel="noopener">54:25</a></figcaption>
       </figure>
       <p><strong>画像の読み解き：</strong><code>T</code>はtoken候補の順位を直接入れ替えるのではなく、softmaxへ入るlogitの尺度を変える。小さい<code>T</code>は差を拡大し、大きい<code>T</code>は差を縮めるため、同じmodelから生成多様性を調整できる。</p>
+      <p>この直観を極限まで進めると、<code>T→0+</code>では最大logitだけへ確率が集中し、最大値が一意ならargmaxに近づく。逆に<code>T→∞</code>ではすべての<code>z/T</code>が0へ近づき、各候補の<code>exp(z/T)</code>が1へ近づくため、語彙全体の一様分布へ近づく。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Temperature</th><th>極限・形</th><th>生成の傾向</th></tr></thead>
           <tbody>
-            <tr><td><code>T → 0+</code></td><td>最大logitの確率が1へ近づくspiky distribution。</td><td>greedyに近く、保守的・再現性重視。</td></tr>
-            <tr><td>中程度の<code>T &gt; 0</code></td><td>元の順位を保ちつつ確率差を調整。</td><td>sampleごとに変化し、多様性とqualityを調整。</td></tr>
-            <tr><td><code>T → ∞</code></td><td>各<code>exp(z/T) → 1</code>なのでvocabulary上のuniform distributionへ近づく。</td><td>低確率tokenも選ばれやすく、よりcreativeだが不安定。</td></tr>
+            <tr><td><code>T → 0+</code></td><td>最大logitの確率が1へ近づく鋭い分布。</td><td>greedyに近く、保守的になる。</td></tr>
+            <tr><td>中程度の<code>T &gt; 0</code></td><td>元の順位を保ちつつ確率差を調整する。</td><td>品質と多様性の釣り合いを選べる。</td></tr>
+            <tr><td><code>T → ∞</code></td><td>語彙上の一様分布へ近づく。</td><td>低logit tokenも選ばれやすく、多様だが不安定になる。</td></tr>
           </tbody>
         </table>
       </div>
-      <p>講義の証明は最大logit <code>z<sub>k</sub></code>を分母からfactorし、<code>exp((z<sub>j</sub>−z<sub>k</sub>)/T)</code>を見る。<code>j≠k</code>なら差は負なので<code>T→0+</code>で0となり、最大要素だけが残る。<code>T→∞</code>では全項が1となり<code>1/|V|</code>へ近づく。tokenは順序を持たない離散categoryなので、低temperature分布をGaussianとして解釈するのは適切でない。</p>
+      <p>講義の証明では、最大logitを<code>z<sub>k</sub></code>として分母からくくり出し、<code>exp((z<sub>j</sub>−z<sub>k</sub>)/T)</code>を見る。<code>j≠k</code>なら差は負なので<code>T→0+</code>で0となり、最大要素だけが残る。<code>T→∞</code>では全項が1となり、各tokenの確率は語彙数<code>|V|</code>で割った<code>1/|V|</code>へ近づく。ただしtokenは連続した数直線上の値ではなく、順序を持たない離散categoryである。したがって、低temperatureの分布を平均の周囲へ連続値が集まるGaussian（正規分布）として解釈するのは誤りである。</p>
       <div class="callout warning">
         <strong>一次資料による補正：T=0でもAPI出力が変わる理由</strong>
-        <p>講義はGPU上の浮動小数点加算順序を直観として挙げた。Thinking Machinesの公式技術記事はさらに、LLM serverでbatch sizeに応じてkernel実装・reduction順が変わる<strong>batch invarianceの欠如</strong>が、同一requestから見た非決定性の主要因になり得ると説明する。modelの数学と実装上のbitwise reproducibilityは別問題である。</p>
+        <p>数学上、同じlogitにargmaxを適用し、最大値が一意なら選ばれるtokenは必ず同じである。多くのAPIがいう<code>T=0</code>も、この決定的な選択を意図する。一方、それはserverが毎回まったく同じbit列を返す<strong>bitwise reproducibility</strong>を保証しない。</p>
+        <p>講義はGPU上の浮動小数点加算順序を直観として挙げた。Thinking Machinesの公式技術記事はさらに、Application Programming Interface（API）を支えるLLM serverでbatch sizeに応じてkernel実装・reduction順が変わる<strong>batch invarianceの欠如</strong>を挙げる。これは、同じrequestの計算結果が同時処理される他requestの構成へ依存する性質であり、わずかな数値差がほぼ同点のlogitのargmaxを変え、その後の全prefixを変える主要因になり得る。したがって、数学的に決定的なargmaxと、実運用serverのbit単位の再現性は明確に別問題である。</p>
         <p><a href="https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/" target="_blank" rel="noopener">公式技術記事: Defeating Nondeterminism in LLM Inference</a></p>
       </div>
+      <p>低いtemperatureは回答の揺らぎを抑えやすく、高いtemperatureは表現の幅を広げやすいが、前者でもserver実装上の再現性は保証されず、後者では低品質tokenの選択も増える。用途に応じてdecoding方法や候補制限と合わせて調整する必要がある。</p>
     </section>
 
     <section id="guided-decoding">
       <h2>6. Guided decoding：invalid tokenを生成前に除く</h2>
-      <p>JSONを求めて失敗するたび再試行するのはnaiveである。guided decodingは、生成済みprefixとschema・grammarから次に許されるtokenだけを残し、invalid tokenの確率を0にする。たとえばJSON先頭なら<code>{</code>、property名の後なら<code>:</code>など、状態ごとに候補を制約する。複数候補がvalidなら、その集合内で通常のsamplingを行う。</p>
+      <p>「JSONで答えて」と頼むだけでは、括弧の閉じ忘れや項目の欠落が起こり得る。guided decodingは、形式に合わない候補を選択前に取り除き、決めた構造から外れないよう生成を進める。</p>
+      <p>promptによる指定は、望ましい形式を自然言語でmodelへ<strong>依頼</strong>する方法である。modelは依頼を学習済みpatternとして解釈するため、従う可能性は高められても強制はできない。これに対しguided decodingは、decoderが次tokenを選ぶ時点で規則違反の確率を0にし、候補集合から除外する。つまりmodelの協力を期待するのではなく、選択機構で構文を<strong>強制</strong>する。</p>
+      <p>ここで<strong>schema</strong>は、JSON objectに必要なproperty名、値の型、必須項目など、データの形を記述した仕様である。<strong>grammar</strong>（文法）は、「objectは<code>{</code>で始まり<code>}</code>で終わる」のように、正しい文字列を組み立てる規則を表す。生成済みprefixへつないでも少なくとも一つの正しい完成形へ到達できるtokenが<strong>valid token</strong>、規則違反になって到達できなくなるtokenが<strong>invalid token</strong>である。<strong>parser state</strong>（構文解析器の状態）は、「objectの開始直後」「property名の直後」「整数値の途中」のように、現在どこまで規則を満たしたかを記録する状態を指す。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture3-large-language-models/05-guided-decoding-json.jpg" alt="guided decodingスライドに、teddy bearの説明をJSON形式で求めるpromptとfirst_name・last_name・age・hobbyを持つJSON出力例が並ぶ" loading="lazy" />
         <figcaption>guided decodingの動機。左のpromptはJSON形式を要求し、右には <code>first_name</code>、<code>last_name</code>、<code>age</code>、<code>hobby</code>を持つ期待出力が映る。<a class="ts" href="https://www.youtube.com/watch?v=Q5baLehv5So&t=3960s" target="_blank" rel="noopener">1:06:00</a></figcaption>
       </figure>
       <p><strong>画像の読み解き：</strong>promptでformatを「お願い」するだけでは、property欠落や構文errorを防げない。guided decodingは右側のshapeをschemaやgrammarとして機械的な制約へ変え、違反tokenをsampling候補へ入れない。</p>
+      <h3><code>{"age": 7}</code>を生成する流れ</h3>
+      <p><code>age</code>という必須の整数propertyだけを持つschemaを考える。最初のparser stateではobject開始が必要なので<code>{</code>はvalid、<code>[</code>や通常の単語はinvalidである。<code>{</code>の後はschemaが認めるproperty名へ進むため<code>"age"</code>を選べるが、未定義の<code>"name"</code>は除外される。property名の後は区切りの<code>:</code>だけが正しく、続く値の位置では整数tokenの<code>7</code>を選べる一方、文字列の<code>"seven"</code>は型に反する。値の後は、他にpropertyがないため<code>}</code>で閉じ、完成後はEOSを許可する。このように、各stepでparser stateを更新し、その状態から正しい完成形へ進めるtokenだけをmodel分布に残す。複数の数字などvalidな候補があるときは、残った確率を再正規化し、その中で通常のgreedy選択やsamplingを行う。</p>
+      <p>実際のtokenは一文字ずつとは限らず、<code>{"</code>や文字列の一部をまとめて持つことがある。そのため実装は、候補tokenを追加した結果の文字列がgrammarと両立するかを調べる。制約はmodelの知識を増やすのではなく、出力経路を狭める働きをする。</p>
       <div class="callout info">
         <strong>一次資料による補足：FSM・regular expression・CFG</strong>
-        <p>Efficient Guided Generationは、regular expressionをfinite-state machineへ、JSON・Python・SQLなどをcontext-free grammar / parserへ対応付け、vocabulary indexからvalid token集合を効率的に取得する。単なる「JSONで答えて」というpromptより、構文的validityを生成過程で保証できる。</p>
+        <p>Efficient Guided Generationは、正規表現（regular expression）を有限状態機械（finite-state machine; FSM）へ、JSON・Python・SQLなどを文脈自由文法（context-free grammar; CFG）とparserへ対応付け、vocabulary indexからvalid token集合を効率的に取得する。FSMは有限個の状態遷移、CFGは入れ子を扱える生成規則で次tokenを判定するため、単なる「JSONで答えて」というpromptより構文的validityを生成過程で保証できる。</p>
         <p><a href="https://arxiv.org/abs/2307.09702" target="_blank" rel="noopener">一次資料: Efficient Guided Generation for Large Language Models</a></p>
       </div>
+      <p>guided decodingは構文違反や再試行を減らし、後段のprogramが読み取れる形式を保証しやすい。一方、schemaが許す内容でも事実として正しいとは限らず、意味上の品質までは保証しない。複雑なgrammarではvalid token判定の計算も増え、制約を厳しくしすぎるとmodelが本来出せた有用な表現を失うため、必要な構造だけを強制する設計が重要である。</p>
     </section>
 
     <section id="context-prompt">
       <h2>7. Context lengthとpromptの4要素</h2>
-      <p><strong>context length / context size / window size</strong>は、1 passでmodelが扱う入力token数を指す同義語として紹介される。現代modelは数万・数十万・million token級を掲げるが、windowが長いほど常に情報利用能力が高いわけではない。self-attentionが見るtoken範囲に対応し、標準attentionの計算量はlengthに対してquadraticなので、前回扱ったsparse attention等の工夫も関係する。</p>
+      <p>modelが一度に読める量には上限があり、質問だけでなく、指示、資料、会話履歴、これから生成する回答も同じ枠を使う。本節では、この枠をどう配分し、必要な情報を読み違えにくいpromptへ整理するかを扱う。</p>
+      <h3>上限と、実際に使いこなせる長さは別</h3>
+      <p><strong>Context length / context size / context window</strong>は、一回の推論で扱えるtoken数の枠を指す。たとえば上限が4,096 tokenで、system instruction、会話履歴、参照資料、今回の質問を合わせた入力が3,000 tokenなら、生成に使えるのは最大1,096 tokenである。2,000 tokenの回答を要求しても枠に収まらないため、入力を削るか、出力上限を下げる必要がある。生成が進むたびに出力tokenもcontextへ加わるので、最初から回答分の余白を確保しなければならない。</p>
+      <p>この4,096 tokenのような値はmodelが<strong>技術的に対応する最大長</strong>であり、その範囲の情報を等しく正確に使えるという意味ではない。実際の<strong>有効な利用</strong>は、必要情報の位置、似た情報による妨害、taskの複雑さ、modelの学習方法などに左右される。長い資料を上限内へ入れられても、中央の事実を見落としたり、無関係な記述へ引かれたりする可能性がある。</p>
+      <p>標準self-attentionでは、各tokenが他のすべてのtokenとの関係を調べる。token数が2倍になると、調べる組み合わせはおよそ4倍になるため、計算時間とattention scoreを置くmemoryが急増する。これが「長さに対してquadratic（二次的）に増える」という意味であり、長いwindowは便利でも、compute、memory、latencyの代価を伴う。sparse attentionなどは、この全組み合わせを減らすための工夫である。</p>
       <div class="callout warning">
         <strong>公式研究による補足：Context Rot</strong>
-        <p>Chromaの2025年technical reportは18モデルを評価し、task complexityを固定してinput lengthだけを増やしてもperformanceが非一様に低下すると報告した。単純なlexical Needle-in-a-Haystackは長文能力を過大評価しやすく、semantic match、類似distractor、haystack構造が加わると劣化が強まる。したがってretrievalでは「全部入れる」より、関連contextを絞る動機がある。</p>
+        <p>Chromaの2025年technical reportは18モデルを評価し、task complexityを固定してinput lengthだけを増やしてもperformanceが非一様に低下すると報告した。単純なlexical Needle-in-a-Haystackは長文能力を過大評価しやすく、semantic match、類似distractor、haystack構造が加わると劣化が強まる。これはすべてのmodelやtaskが同じ割合で劣化するという主張ではないが、最大長と有効利用を分ける根拠になる。したがってretrievalでは「全部入れる」より、関連contextを絞る動機がある。</p>
         <p><a href="https://www.trychroma.com/research/context-rot" target="_blank" rel="noopener">一次資料: Context Rot</a></p>
       </div>
       <h3>Promptのmental model</h3>
+      <p>ここでは「疲れたteddy bearへ、Country of Teddy Bearsを舞台にした就寝前の物語を作る」という一つの依頼を、役割の異なる四要素へ分ける。内容をばらばらにするためではなく、背景、実行する操作、操作へ渡す値、守る条件を混同しないための整理である。</p>
       <div class="grid-cards">
-        <article class="card"><h4>Context</h4><p>役割・状況・日時・背景。「疲れたteddy bearにbedtime storyが必要」など。</p></article>
-        <article class="card"><h4>Instructions</h4><p>modelに実行してほしい操作。「特定の場所を舞台に物語を生成」など。</p></article>
-        <article class="card"><h4>Input</h4><p>instructionへ渡す具体値。「Location: Country of teddy bears」など。</p></article>
-        <article class="card"><h4>Constraints</h4><p>出力条件・safety rule。「疲れたteddy bear向け」「有害contentを生成しない」など。</p></article>
+        <article class="card"><h4>Context（背景）</h4><p>読み手は一日の終わりで疲れた子どものteddy bearで、眠る前に安心できる短い物語を必要としている。</p></article>
+        <article class="card"><h4>Instructions（操作）</h4><p>指定された場所を舞台に、主人公が家へ帰って眠りにつく就寝前の物語を日本語で作る。</p></article>
+        <article class="card"><h4>Input（具体値）</h4><p>場所は「Country of Teddy Bears」、主人公の名前は「Teddy」。この値を物語へ反映する。</p></article>
+        <article class="card"><h4>Constraints（条件）</h4><p>400字以内、穏やかな語調、怖い場面や有害な内容なし、最後はTeddyが安心して眠る一文で終える。</p></article>
       </div>
-      <p>これは厳密なprompt理論ではなく、system prompt・user query・入力data・policyを目的別に点検するための実務的分解である。</p>
+      <p>四要素をつなぐと、「疲れた子どものteddy bear向け」という背景のもと、「物語を作る」という操作へ「場所と主人公」という値を渡し、「長さ、語調、安全性、結末」という条件で出力を絞る一貫したpromptになる。もし場所だけを変えたいならInputだけを差し替えられ、物語が長すぎるならConstraintsを見直せる。安全方針と素材も区別できるため、矛盾や不足を見つけやすく、templateとして再利用しやすい。</p>
+      <p>この分解は厳密なprompt理論ではなく、system prompt、user query、入力data、policyを目的別に点検するための実務的な見方である。見出しを付ければ必ず性能が上がるわけではなく、短い依頼を無理に四分割するとかえって冗長になる。また、整理されたpromptでもmodelの事実誤認や指示無視を完全には防げない。contextには回答に必要な情報だけを残し、十分な出力枠を確保しながら、taskの複雑さに見合う最小限の構造を選ぶのが実用上のtrade-offである。</p>
     </section>
 
     <section id="icl">
-      <h2>8. In-Context Learning：weight更新なしでtaskを教える</h2>
-      <p>ICLではmodel parameterを更新しない。「learning」は、prompt contextにtaskの記述やexampleを置き、pretrainingで得た能力をその場で引き出すという意味である。</p>
+      <h2>8. In-Context Learning：weightを変えずにtaskへ適応する</h2>
+      <p>学習済みmodelを新しい分類や文章生成へ使いたいが、model本体は固定したままにしたいことがある。本節では、指示と例をpromptへ入れ、その一回の推論中だけmodelの応答をtaskへ合わせるIn-Context Learning（ICL）を、同じ感情分類taskのzero-shot・one-shot・few-shotで順に説明する。</p>
+      <h3>「推論時に例を読む」と「modelを再学習する」は別</h3>
+      <p>Pretrained modelは、大量のdataであらかじめ学習されたmodelである。ここでいう<strong>frozen（固定済み）</strong>とは、そのmodelが入力から出力を計算するときに使う数値であるparameter（weight）を変えないという意味だ。trainingやfine-tuningでは、正解との誤差をもとにこの数値を更新し、変更後のmodelを次の入力にも使う。対してICLは、promptにある指示や例を手掛かりに<strong>inference（推論）時</strong>の出力を変えるだけで、推論が終わってもweightへ新しい知識は書き込まれない。</p>
+      <p>したがって、ICLの「learning」はmodelの再学習ではない。modelはprompt内の例から、入力と出力の対応関係、使用できるlabelの語彙、回答形式、文体などを推定し、続く入力をそのpatternに合わせて補完する。この違いにより、modelを再配布せずにtaskをすぐ切り替えられる一方、例はrequestごとにcontextへ入れる必要がある。</p>
+      <h3>一つの感情分類taskを段階的に教える</h3>
+      <p>商品reviewを肯定的なら<code>POS</code>、否定的なら<code>NEG</code>と返すtaskを考える。違うのは、正解例をpromptへ何件置くかだけである。</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>方式</th><th>Prompt</th><th>利点</th><th>cost・注意</th></tr></thead>
+          <thead><tr><th>方式</th><th>具体的なprompt</th><th>modelが利用する手掛かり</th></tr></thead>
           <tbody>
-            <tr><td>Zero-shot</td><td>例を与えずinstructionとinputだけ。</td><td>準備が少なく、未知分布へinstructionからgeneralizeしやすい場合がある。</td><td>base modelの能力とinstruction品質へ強く依存。</td></tr>
-            <tr><td>Few-shot</td><td>複数のinput/output exampleを先に示す。</td><td>期待format・taskを具体的にsteerしやすく、一般にはperformanceが上がる。</td><td>example収集、context token、compute、latencyが増え、有限exampleへ過適合する場合もある。</td></tr>
+            <tr><td>Zero-shot</td><td>「reviewを<code>POS</code>か<code>NEG</code>で分類し、labelだけを答えてください。review: 操作が簡単で満足です。」</td><td>正解例はなく、自然言語の指示からtask、label、出力形式を解釈する。</td></tr>
+            <tr><td>One-shot</td><td>「review: 電池がすぐ切れました。→ <code>NEG</code><br />review: 操作が簡単で満足です。→」</td><td>一つの対応例から、reviewの後に大文字のlabelだけを置くpatternを具体化する。</td></tr>
+            <tr><td>Few-shot</td><td>「重くて持ちにくい。→ <code>NEG</code><br />音がきれいです。→ <code>POS</code><br />電池がすぐ切れました。→ <code>NEG</code><br />操作が簡単で満足です。→」</td><td>肯定・否定の対応、許されるlabelの語彙、改行形式を複数例から推定する。</td></tr>
           </tbody>
         </table>
       </div>
-      <p>講義のteddy bear例では、TeddyやBobへのqueryとstoryの組を示してから新しいbearのstoryを求める。近年のreasoning modelでは、良い自然言語instructionがfew-shotと同等または上回る場合もあり、「few-shotが常に最善」ではない。</p>
+      <p>Zero-shotは例を準備せず短いpromptで始められる。One-shotは少ない追加tokenで形式を実演でき、few-shotは判断境界や文体まで具体的に示しやすい。ただし、例が多ければ常に良いわけではない。例の順番や品質が出力を左右し、誤った例や偏った例へ引かれることがある。例と本番入力の性質が違うdistribution mismatch、つまり「例は短い明確なreviewだが、本番は皮肉を含む長文」といったずれにも弱い。また、提示した少数例の表面的なpatternへ合わせすぎる過適合が起こり得る。</p>
+      <p>さらに、各例は利用可能なcontextを消費し、入力token数に応じて計算量、料金、待ち時間を増やす。そのため、代表的で正確な例を少数選び、順番を変えて結果が安定するか、例を外したzero-shotと比べて本当に改善するかを確かめる必要がある。良い自然言語instructionだけでfew-shotと同等以上になるmodelやtaskもあり、ICLはfine-tuningを不要にする万能な代替ではない。</p>
+      <h3>一度に解きにくいtaskは、先に手順へ分ける</h3>
+      <p>分類のように一段で答えられるtaskと異なり、複数の条件を追う問題では、modelが必要な計算を飛ばしたり、途中の条件を落としたりする。この場合は、単に例を増やすだけでなく、「まず何を解くかを分け、次に各段階を実行する」とpromptで作業順を与える方法がある。</p>
       <div class="callout info">
         <strong>一次資料による補足：Plan-and-Solve</strong>
-        <p>PS promptingは、まずproblemをsubtaskへ分解するplanを作り、次にplanに沿ってsolveする。PS+は計算とintermediate stepを明示するinstructionを加える。ACL 2023論文ではZero-shot-CoTの誤りをcalculation、missing-step、semantic misunderstandingへ分析し、特にmissing-stepを減らす目的で提案された。</p>
+        <p>Plan-and-Solve（PS）promptingは、まず問題を小さなsubtaskへ分けたplanを作り、次にそのplanに沿って解く。PS+は計算と途中のstepを明示する指示も加える。ACL 2023論文はZero-shot CoTの誤りを計算間違い、stepの欠落、意味の取り違えに分け、特に必要なstepを飛ばす問題を減らすためにこの方法を提案した。</p>
         <p><a href="https://aclanthology.org/2023.acl-long.147/" target="_blank" rel="noopener">一次資料: Plan-and-Solve Prompting</a></p>
       </div>
     </section>
 
     <section id="cot">
       <h2>9. Chain-of-ThoughtとSelf-Consistency</h2>
-      <h3>Chain-of-Thought（CoT）</h3>
-      <p>最終回答だけでなく中間reasoningを生成させると、多段問題のperformanceが改善し得る。講義例では「bearは2020年生まれで今年4歳。来年は1歳増えるので5歳」とstepを出し、そのpatternをfew-shot exampleとして別queryへ転用する。</p>
-      <p>講義はCoTの利点として説明・interpretability・debuggingを挙げる。たとえば誤答のreasoningに「現在は2019年」とあれば、contextのdateが誤っていた可能性を追える。一方、token数が増えるためcostとlatencyも増す。</p>
+      <p>暗算一回では終わらず、複数の数量や条件を順に結び付ける問題では、最終回答だけをすぐ生成すると途中を取り落としやすい。本節では、途中の解法を文章として生成するChain-of-Thought（CoT）と、複数のCoTを投票でまとめるSelf-Consistencyを、その効用と限界を含めて説明する。</p>
+      <h3>途中をtokenとして書き出すChain-of-Thought</h3>
+      <p>CoT（思考の連鎖）が対象とするのは、多段の算術、年齢、論理、常識推論のように、答えまでに複数の操作が必要な問題である。たとえば「Mikaは12歳。弟はMikaより3歳年下。2年後、弟は何歳か」には、まず現在の弟の年齢を求め、次に2年を足す二段階がある。直接なら<code>11歳</code>だけを返すところを、CoTでは「弟は今 <code>12−3=9</code>歳。2年後は <code>9+2=11</code>歳。答えは11歳」のように生成する。</p>
+      <p>ここで<strong>intermediate reasoning token</strong>とは、最終回答までの計算や条件を表す、出力上の途中の文字列を構成するtokenである。tokenはmodelが文章を処理する小さな単位であり、上の<code>12−3=9</code>や「2年後」といった部分もtoken列として一つずつ生成される。途中を明示することで次の生成が直前の結果を参照でき、計算や条件の欠落を減らせる場合がある。</p>
+      <h3>Zero-shot CoTとFew-shot CoT</h3>
+      <p><strong>Zero-shot CoT</strong>は解答例を置かず、「段階的に考えてから答えてください」のような指示だけを問題へ加える。<strong>Few-shot CoT</strong>は、途中の計算と最終回答を含む解答例を複数示してから新しい問題を与える。前者はpromptが短く準備も少ないが、model任せの手順になりやすい。後者は期待する分解方法や回答形式まで実演できるが、例の品質と追加contextに左右される。どちらも、途中の生成tokenが増えるぶん料金と待ち時間が増す。</p>
+      <p>CoTは出力を改善し、誤答の原因を探す手掛かりになることがある。たとえば途中に<code>12−3=10</code>とあれば算術誤りを特定できる。しかし、生成された説明が、modelの出力を実際に決めた因果を忠実に表すとは限らない。もっともらしい理由を後から組み立てたり、誤った途中式の後に偶然正答したりすることもあるため、CoTを正しさの証明や内部処理の完全な記録として扱ってはいけない。</p>
       <div class="callout warning">
         <strong>一次資料による重要な注意：CoTは内部因果の忠実な説明とは限らない</strong>
-        <p>Turpinら（NeurIPS 2023）は、choice順やsuggested answerのようなbiasing featureにpredictionが影響されても、CoTがその影響を述べず、誤答をもっともらしく合理化する例を示した。CoTはdebuggingの手掛かりにはなるが、model内部の「真の思考過程」を保証する監査logではない。</p>
+        <p>Turpinら（NeurIPS 2023）は、選択肢の順番や、答えをほのめかす情報にpredictionが影響されても、CoTがその影響を述べず、誤答をもっともらしく合理化する例を示した。CoTはdebuggingの手掛かりにはなるが、model内部の「真の思考過程」を保証する監査logではない。</p>
         <p><a href="https://arxiv.org/abs/2305.04388" target="_blank" rel="noopener">一次資料: Language Models Don’t Always Say What They Think</a></p>
       </div>
-      <h3>Self-Consistency</h3>
-      <p>同じqueryから複数のCoT pathを独立sampleし、reasoning部分を除いたfinal answerを抽出してmajority voteする。講義例では「5、5、4」から5を選ぶ。answer位置を最後に固定するinstruction、regex、別LLMによるextractなどで集計する。</p>
+      <h3>複数経路を集約するSelf-Consistency</h3>
+      <p>一つのCoTだけでは、最初の解釈や途中の小さな計算間違いが、その後の全stepへ伝わる。Self-Consistencyはこの弱さを補うため、同じ問題とpromptから複数のCoT path（解答経路）を<strong>互いを見せずに独立して</strong>生成し、最終回答が最も多かったものを採用する方法である。正しさを保証するのではなく、異なる経路が同じ答えへ集まるかを利用する。</p>
+      <p>手順は、(1) 同じpromptを複数回sampleする、(2) 各出力から最終回答だけを抽出する、(3) 同じ回答を数えてmajority vote（多数決）する、の三段階である。sampling時には、次tokenの確率のばらつきを調節するtemperatureを0より大きくし、経路に多様性を持たせる。temperature 0の決定的な生成では同じpathが繰り返されやすく、投票する意味が薄い。回答抽出には、末尾を<code>答え: ...</code>へ固定する指示、正規表現、別のLLMなどを使える。</p>
+      <p>講義の例では三つのpathから抽出した答えが<code>5、5、4</code>なので、2票の<code>5</code>を返す。同数なら結果は未確定であるため、「追加sampleを取る」「あらかじめ決めた規則で選ぶ」「回答を保留する」のいずれかを事前に定め、都合よく選ばないことが重要である。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture3-large-language-models/06-self-consistency.jpg" alt="Self-consistencyスライドに、同じLLMから3本のreasoning pathが分岐し、答え5・5・4から5へ投票する図が示されている" loading="lazy" />
         <figcaption>Self-consistencyの集約図。同じLLMから3本のreasoning pathをsampleし、2本が5、1本が4を出したため最終回答5へ集約している。<a class="ts" href="https://www.youtube.com/watch?v=Q5baLehv5So&t=4950s" target="_blank" rel="noopener">1:22:30</a></figcaption>
       </figure>
-      <p><strong>画像の読み解き：</strong>同一pathを長くするのではなく、独立した複数pathの最終回答をvoteする点が要点である。図の分岐は並列化できるが、3本なら生成computeも概ね3本分必要になる。</p>
-      <ul>
-        <li>各generationは互いをcontextへ入れず、並列にsampleできるためwall-clock latencyは概ね最遅branchに支配される。</li>
-        <li>正答率向上を主張するにはground truth付きbenchmarkが必要で、元論文は算術・数学reasoning taskなどを評価する。</li>
-        <li>sample数に比例してtotal compute・costは増える。performanceとcostのtrade-offである。</li>
-      </ul>
+      <p><strong>画像の読み解き：</strong>同一pathを長くするのではなく、独立した複数pathの最終回答をvoteする点が要点である。各pathは並列生成できるため、十分なhardwareがあれば利用者が待つ時間を短くできるが、計算自体は消えない。3本なら生成computeと料金も概ね3本分となり、sample数を増やすほどtotal costは増える。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>方法</th><th>生成するもの</th><th>狙い</th><th>主な限界</th></tr></thead>
+          <tbody>
+            <tr><td>Direct answer</td><td>最終回答を1本</td><td>短く、低costで答える</td><td>途中の取り落としを見つけにくい</td></tr>
+            <tr><td>CoT</td><td>途中のstepと最終回答を1本</td><td>多段問題を順に処理する</td><td>一つの誤ったpathに依存し、説明も必ずしも忠実ではない</td></tr>
+            <tr><td>Self-Consistency</td><td>複数のCoTと投票結果</td><td>一つのpathへの依存を減らす</td><td>多数派も誤り得るうえ、抽出処理と複数本分のcostが必要</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>改善を評価するときは、問題ごとにground truth（採点基準となる正解）が付いたbenchmark（共通の問題集合）で、direct answer、CoT、Self-Consistencyの正答率とcostを同じ条件で比べる。元論文は算術・数学reasoning taskなどで評価しているが、あるbenchmarkでの改善は、その問題分布と採点方法での結果であり、別のtaskでの正しさや一般能力を保証しない。</p>
     </section>
 
     <section id="inference-map">
       <h2>10. 推論最適化の全体像</h2>
-      <p>講義は最適化を、結果を変えず冗長計算・memory管理・数式を改善する「exact」系と、architecture・embedding・token predictionを変える「approximation」系に分ける。その後、attention側とoutput token側の順に各手法を配置する。</p>
+      <p>まず、1件のrequestが回答を返すまでを追う。<strong>tokenization</strong>で入力文をmodelが扱うtoken列へ分け、<strong>prefill</strong>でpromptの全token位置を並列に処理して各layerのKV cacheを作る。その後の<strong>decode</strong>では、直前までの結果を使って新しいtokenを1個ずつ生成し、終了tokenに達するまでcacheへ追記する（layer間の計算には順序があるが、prefillでは同一layer内のprompt位置をまとめて処理できる）。</p>
+      <p>prefillは大きなmatrix計算をまとめやすいため、演算器の処理能力が上限になる<strong>compute-bound</strong>になりやすい。一方、decodeは各stepでmodel weightや増え続けるKV cacheを読みながら1 tokenだけ進めるため、単位時間にmemoryから運べるdata量である<strong>memory bandwidth</strong>が上限になる<strong>memory-bandwidth-bound</strong>になりやすい。ただし、これはmodel size、batch size、prompt・出力長、quantization、GPUなどに依存する傾向であり、普遍的な断定ではない。</p>
+      <p><strong>latency</strong>は1件のrequestが待つ時間、<strong>throughput</strong>はsystem全体が単位時間に処理できるrequest数またはtoken数である。また、毎stepに大量のdataを読み出す<strong>bandwidth pressure</strong>と、KV cacheなどがdevice memoryへ収まるかという<strong>memory capacity pressure</strong>は別問題である。前者は転送速度、後者は保存可能量の制約を指す。</p>
       <div class="mermaid">
 flowchart TD
-  A["LLM推論のbottleneck"] --> B["Attention / KV側"]
-  A --> C["Token生成側"]
-  B --> D["KV cache: 再計算を除く"]
-  B --> E["GQA: K/V headを共有"]
-  B --> F["PagedAttention: memory断片化を抑える"]
-  B --> G["MLA: cache表現を圧縮"]
-  C --> H["Speculative decoding: 小modelでdraft"]
-  C --> I["MTP: 同一model内で複数未来token head"]
+  A["Request"] --> B["Tokenization"]
+  B --> C["Prefill: promptを並列処理しKV cacheを構築"]
+  C --> D["Decode: 1 tokenずつ生成"]
+  D -->|"未終了"| D
+  D -->|"EOS"| E["Response"]
       </div>
       <p class="diagram-hint">図をクリックすると拡大・移動できる。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>手法</th><th>主に狙うbottleneck</th><th>結果分布との関係</th></tr></thead>
+          <tbody>
+            <tr><td>KV cache</td><td>decodeで過去のK/Vを再計算する演算とlatency</td><td>同じmodelの計算結果を再利用する実装最適化。理想的には分布を変えない。</td></tr>
+            <tr><td>GQA</td><td>KV cacheのcapacityと読み出しbandwidth</td><td>K/V headを共有するarchitecture変更。MHA modelへ後付けして同一分布を保証する手法ではない。</td></tr>
+            <tr><td>PagedAttention</td><td>可変長requestによるmemory断片化とcapacity利用率</td><td>KVの配置を変えるsystem最適化。attentionの数学は変えない。</td></tr>
+            <tr><td>MLA</td><td>KV表現のcapacityと読み出しbandwidth</td><td>低rank表現を学習するarchitecture変更であり、元のMHA modelと同一分布を保証しない。</td></tr>
+            <tr><td>Speculative decoding</td><td>memory-bandwidth-boundな逐次decodeのlatency</td><td>modified rejection samplingを正しく使えば、target modelの出力分布を保存する。</td></tr>
+            <tr><td>MTP</td><td>training signalと、推論利用時の逐次step数</td><td>training objective・architectureを変える。推論時の分布保存はvalidation方法次第。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>したがって「exact」は同じ乱数なら必ず同じtoken列という意味ではなく、sampleされる<strong>確率分布</strong>を保つという意味で使う。KV cacheやPagedAttentionは実装上の再利用・配置変更、speculative decodingは補正付きsamplingによってこれを目指す。対してGQA、MLA、MTPはmodelの学習済みarchitectureまたはobjective自体を変えるため、単なる無損失な後処理ではない。ただしarchitecture変更を一律に「低品質な近似」とみなすのも誤りで、qualityは学習と評価によって確かめる必要がある。</p>
     </section>
 
     <section id="kv-cache">
       <h2>11. KV cache・GQA・PagedAttention</h2>
+      <p>この3手法は同じcacheを別の角度から改善する。KV cacheは「過去を再計算しない」、GQAは「token当たりに保存するK/V headを減らす」、PagedAttentionは「requestごとのcacheを無駄なく配置する」ための仕組みである。</p>
       <h3>KV cache</h3>
-      <p>自己回帰生成では、新tokenのqueryは毎回新しく必要だが、過去tokenのkey・valueは既に計算済みである。各layerのK/Vをcacheし、次stepで再利用すれば同じprojectionを繰り返さずに済む。trainingではteacher forcingでsequence全体を並列入力するため、逐次decode時と同じcache問題は通常生じない。</p>
+      <p>各tokenはlayerごとに数値vectorへ変換され、attentionではそこから<strong>query（Q）</strong>、<strong>key（K）</strong>、<strong>value（V）</strong>を作る。Qは「今の位置が何を探しているか」、Kは「各過去位置が何を持つかを照合する索引」、Vは「照合後に取り出す内容」と考えるとよい。現在位置のQと過去位置のKの近さから重みを決め、その重みでVを混ぜる。</p>
+      <p>たとえば4 tokenのpromptをprefillすると、全layerにtoken 1〜4のK/Vが保存され、最後の位置の出力確率から5番目をsampleできる。選ばれたtoken 5を次のdecode stepへ入力するときは、token 1〜4のK/Vを再計算せず読み出し、token 5のQ/K/Vだけを新しく計算する。新しいQをcache内のK 1〜4とtoken 5のKへ照合し、対応するVから情報を集めた後、token 5のK/Vをcacheへ1行分追加する。以後も同じ要領で1 tokenずつ進む。</p>
+      <p>cache量が増える軸は、<strong>layer数 × 保存済みtoken数 × KV head数 × 1 headの次元</strong>であり、KとVの両方を持つため概ねさらに2倍、実際のbyte数はdata型にも依存する。再計算を減らしてdecode latencyを下げる代わりに、出力が長いほどmemory capacityと読み出しbandwidthを使う。対照的にtrainingの<strong>teacher forcing</strong>は正解の前tokenを与えて全位置の予測を並列計算する方法であり、ここで扱う逐次生成時の再利用とは目的が異なる。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture3-large-language-models/07-kv-cache.jpg" alt="KV cachingスライドに、新tokenのqueryと、cacheから再利用される過去tokenのkey・valueを示す色付きベクトルが並ぶ" loading="lazy" />
         <figcaption>KV cachingによる再利用。新tokenではqueryを計算する一方、過去tokenのkey・valueには「From cache」と表示され、再計算せずattentionへ渡す構造が映る。<a class="ts" href="https://www.youtube.com/watch?v=Q5baLehv5So&t=5355s" target="_blank" rel="noopener">1:29:15</a></figcaption>
@@ -632,16 +776,20 @@ flowchart TD
       <p><strong>画像の読み解き：</strong>赤い新queryに対し、青・緑のK/V列は前stepの結果を保持する。decodeが1 token進むたびに過去全tokenのK/V projectionをやり直す無駄を消す代わりに、sequence長に比例するcache memoryを使う。</p>
       <div class="callout info">
         <strong>公式documentによる補足：cacheはspeedとmemoryの交換</strong>
-        <p>Hugging Face TransformersはDynamic、Static、Quantized、offloaded cacheを提供する。cacheは再計算を減らす一方、contextとlayer数に応じてmemoryを消費する。Static cacheはcompileしやすいが未使用slotをmaskする無駄があり、quantization・offloadはmemoryを減らす代わりにthroughputへ影響し得る。</p>
+        <p>Hugging Face TransformersはDynamic、Static、Quantized、offloaded cacheを提供する。cacheは再計算を減らす一方、contextとlayer数に応じてmemoryを消費する。Static cacheはshapeを固定してcompileしやすいが未使用slotをmaskする無駄がある。QuantizationはK/Vを低bit表現へ変換し、offloadは一部をCPU memoryへ退避してGPU memoryを減らすが、変換や転送により単位時間当たりの処理token数であるthroughputへ影響し得る。</p>
         <p><a href="https://huggingface.co/docs/transformers/main/en/kv_cache" target="_blank" rel="noopener">公式document: Transformers Cache strategies</a></p>
       </div>
       <h3>GQAでK/V head数を減らす</h3>
-      <p>MHAはquery・key・valueを各h head持つ。GQAはh個のquery headをG groupへ分け、group内でK/V headを共有する。<code>G=h</code>ならMHA、<code>G=1</code>ならMQAであり、中間のGQAはqualityとKV cache量の折衷になる。</p>
+      <p><strong>Multi-Head Attention（MHA）</strong>は複数のQ headそれぞれに対応するK/V headを持つ。<strong>Multi-Query Attention（MQA）</strong>は全Q headでK/Vを1組だけ共有する。その中間の<strong>Grouped-Query Attention（GQA）</strong>はQ headをgroupに分け、各group内で1組のK/Vを共有する。headとは、異なる関係を並行して捉えるattentionの部分空間である。</p>
+      <p>例としてQが32 headあるとする。MHAならK/Vも各32 head、MQAなら各1 head、GQAで8 groupなら各8 headである。このGQAのKV cacheは、head数だけを比べればMHAの<code>8 / 32 = 1/4</code>になる。読み出すK/Vも減るためbandwidth pressureを下げられる一方、共有を強くするほどK/V headごとの表現の多様性は減り得る。したがってMHAに近いqualityとMQAに近いcache・bandwidth削減の間を選ぶarchitecture上のtrade-offであり、比率はmodel設計と学習で決める。</p>
       <div class="formula">
         #Q heads = h,&nbsp; #K heads = #V heads = G ≤ h
+        <small><code>h</code>はQ head数、<code>G</code>はK/Vを共有するgroup数。<code>G=h</code>がMHA、<code>G=1</code>がMQA、その間がGQA。</small>
       </div>
       <h3>PagedAttentionで予約領域を細分化する</h3>
-      <p>naive serverは生成lengthがEOSまで不明なためrequestごとに最大context長のcontiguous memoryを予約し、internal・external fragmentationを生む。PagedAttentionはOSのvirtual memoryに似てKV cacheを固定size blockへ分け、logical token blockを非連続physical blockへmapする。</p>
+      <p>requestごとに出力長は異なり、end-of-sequence（EOS）tokenがいつ出るかは生成前には分からない。naiveなserverが各requestへ最大長ぶんの連続領域を先に予約すると、短く終わるrequestは大半を使わず、長いrequestを安全に置ける大きな連続領域も見つけにくくなる。</p>
+      <p>固定数のtokenが入る箱を並べる倉庫で考える。最後の箱が半分空いたまま割り当て済みになるのが<strong>internal fragmentation</strong>（割当領域の内部の余り）。空き箱は合計で足りるのに棚の各所へ分散し、連続した大きな置き場として使えないのが<strong>external fragmentation</strong>（割当領域の間の隙間）である。</p>
+      <p>PagedAttentionはKV cacheを固定sizeのblockへ分ける。requestから見えるtoken順の<strong>logical block</strong>と、GPU memory上の実際の置き場である<strong>physical block</strong>を分離し、<strong>block table</strong>に「logical block 0はphysical block 7」のような対応を記録する。physical blockは連続していなくてよく、生成が伸びた時だけ追加するため、予約と断片化を抑えて同じcapacityへより多くのrequestを収容できる。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture3-large-language-models/08-paged-attention.jpg" alt="PagedAttentionスライドに、複数requestの予約memory、internal fragmentation、external fragmentationを色分けした横長の配置図が示されている" loading="lazy" />
         <figcaption>naiveなKV cache管理の断片化。複数requestのtoken領域、未使用予約領域、internal fragmentation、領域間のexternal fragmentationが横棒で色分けされている。<a class="ts" href="https://www.youtube.com/watch?v=Q5baLehv5So&t=5700s" target="_blank" rel="noopener">1:35:00</a></figcaption>
@@ -659,134 +807,143 @@ flowchart TD
       </div>
       <div class="callout info">
         <strong>一次資料による補足：論文での効果</strong>
-        <p>PagedAttention論文はvLLM上でKV cache wasteをnear-zeroへ近づけ、同等latencyで既存systemより2–4倍のthroughputを報告した。効果はlong sequence・large model・複雑なdecodingで大きい。</p>
+        <p>PagedAttention論文はvLLM上でKV cache wasteをnear-zeroへ近づけ、論文の評価workload・hardware・比較systemにおいて、同等latencyで既存systemより2–4倍のthroughputを報告した。効果はlong sequence・large model・複雑なdecodingで大きかったが、この倍率はあらゆる環境にそのまま当てはまる保証ではない。</p>
         <p><a href="https://arxiv.org/abs/2309.06180" target="_blank" rel="noopener">一次資料: Efficient Memory Management for LLM Serving with PagedAttention</a></p>
       </div>
     </section>
 
     <section id="mla">
       <h2>12. Multi-head Latent Attention（MLA）</h2>
-      <p>MHAでは各token・各layerについて多数のK/V head vectorをcacheする。DeepSeek-V2のMLAは、hidden stateを低次元latent <code>c<sub>t</sub><sup>KV</sup></code>へdown-projectし、必要時に別matrixでK/Vへup-projectする。compression matrixをKとVで、さらに全headで共有するため、cacheする表現を大幅に減らす。</p>
+      <p>GQAは複数のQ headに同じK/V headを<strong>共有</strong>させて保存本数を減らす。Multi-head Latent Attention（MLA）は別の発想で、各tokenのK/Vを作る元の<strong>表現そのものを低次元へ圧縮</strong>する。共有するhead数を選ぶGQAに対し、MLAは情報をどの小さな座標へ畳み込むかを学習する。</p>
+      <p>式の前に用語を整理する。<strong>hidden state</strong> <code>h<sub>t</sub></code>は、あるlayerのtoken位置<code>t</code>が持つ文脈込みのvectorである。<strong>down-projection</strong>は大きなvectorへmatrixを掛けて小さな次元へ写す処理、その小さなvectorが<strong>latent（潜在表現）</strong>である。元の表現が少数の潜在成分の組合せで近似できるよう学ぶことを<strong>low-rank</strong>表現と呼ぶ。反対に、latentからattentionで使うK/Vの次元へ広げる処理が<strong>up-projection</strong>である。</p>
+      <p>概念例として、hidden stateが4,096次元、全K/V headを連結した表現が4,096次元だとしても、architectureでlatent次元を512に選べば、各tokenについてまず512個の値へdown-projectし、必要なK/V表現へup-projectできる。512という圧縮次元は学習が勝手に決める可変値ではなく、quality、memory、計算量を見ながらmodel設計者が選ぶhyperparameterである。</p>
       <div class="formula">
         c<sub>t</sub><sup>KV</sup> = W<sup>DKV</sup>h<sub>t</sub><br />
         k<sub>t</sub><sup>C</sup> = W<sup>UK</sup>c<sub>t</sub><sup>KV</sup>,&nbsp;
         v<sub>t</sub><sup>C</sup> = W<sup>UV</sup>c<sub>t</sub><sup>KV</sup>
-        <small>d<sub>c</sub> ≪ d<sub>h</sub>n<sub>h</sub>。低rank次元d<sub>c</sub>は学習中に自動決定される値ではなくarchitectureのdesign choice。</small>
+        <small><code>t</code>はtoken位置、<code>h<sub>t</sub> ∈ R<sup>d<sub>model</sub></sup></code>はhidden state、<code>W<sup>DKV</sup> ∈ R<sup>d<sub>c</sub>×d<sub>model</sub></sup></code>はdown-projection、<code>c<sub>t</sub><sup>KV</sup> ∈ R<sup>d<sub>c</sub></sup></code>は圧縮latentである。<code>W<sup>UK</sup></code>と<code>W<sup>UV</sup></code>はlatentをcontent用key <code>k<sub>t</sub><sup>C</sup></code>とvalue <code>v<sub>t</sub><sup>C</sup></code>へ戻すup-projection。<code>d<sub>c</sub></code>は圧縮次元で、展開後の全head次元より十分小さく選ぶarchitecture上のdesign choice。</small>
       </div>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture3-large-language-models/09-mla-latent-cache.jpg" alt="MLAスライドに、teddyとbearのtoken表現をshared down-projectionで細いlatentへ圧縮し、shared up-projectionで展開する図が示されている" loading="lazy" />
         <figcaption>MLAのlatent圧縮。token表現をshared matrixで低次元の細いlatentへ縮約し、必要時にshared up-projectionでK/V表現へ戻す模式図が映る。<a class="ts" href="https://www.youtube.com/watch?v=Q5baLehv5So&t=5955s" target="_blank" rel="noopener">1:39:15</a></figcaption>
       </figure>
-      <p><strong>画像の読み解き：</strong>cacheへ残すのは右端の大きなhead別表現ではなく、中央の細いlatentである。K/Vとhead間で圧縮表現を共有するため、GQAとは異なるlow-rank方向からmemoryを削減する。</p>
+      <p><strong>画像の読み解き：</strong>右端の大きなhead別content表現をそのまま全て保存する代わりに、中央の細いlatentを再利用できる形で保持する。K/Vとhead間で圧縮基底を共有するため、GQAとは異なるlow-rank方向からmemoryを削減する。ただし実際のcache内容は次のdecoupled RoPE用keyも含む。</p>
       <div class="callout warning">
         <strong>一次資料による精密化：実際のcacheはlatentだけではない</strong>
-        <p>講義は「layerごとにtoken当たり1つの共有表現」と直観化する。DeepSeek-V2論文では、通常のRoPEをcompressed keyへ直接適用するとup-projectionをquery側へ吸収できないため、RoPE用のshared keyを分離する<strong>decoupled RoPE</strong>を導入する。実装上はcompressed latentに加え、この小さなRoPE keyもcache対象になる。なおスライド表記の“DeepSeek-V2, 2023”に対し、arXiv初版は2024年5月である。</p>
+        <p>講義は「layerごとにtoken当たり1つの共有表現」と直観化する。DeepSeek-V2論文では、token位置に応じてqueryとkeyを回転させ相対位置をattentionへ入れるRotary Position Embedding（RoPE）をcompressed keyへ直接適用すると、up-projectionをquery側へ吸収できない。そのためRoPE用のshared keyを分離する<strong>decoupled RoPE</strong>を導入する。実装上はcompressed latentに加え、この小さなRoPE keyもcache対象になる。なおスライド表記の“DeepSeek-V2, 2023”に対し、arXiv初版は2024年5月である。</p>
         <p><a href="https://arxiv.org/abs/2405.04434" target="_blank" rel="noopener">一次資料: DeepSeek-V2, §2.1</a></p>
       </div>
     </section>
 
     <section id="speculative">
       <h2>13. Speculative decoding：小modelのdraftを大modelが検証</h2>
-      <p>draft model <code>p</code>がk tokenを高速に自己回帰生成し、target model <code>q</code>へdraft列をまとめて入力する。Transformerは短いcontinuationを並列scoreでき、memory-bandwidth-boundな大modelではk tokenを一括評価するlatencyが1 token評価に近い場合がある。</p>
+      <p>通常のdecodeは、1 tokenを出すまで次のtokenを計算できない。この逐次依存があるため、target modelをtoken数だけ呼ぶlatencyが生じる。特に1 stepごとに大きなweightを読み、演算器を使い切る前にmemory転送を待つmemory-bandwidth-boundな条件では、複数のdraft位置をtarget modelの1回のforward passでまとめてscoreすると、weight読み出しを共有して逐次呼び出し回数を減らせる。追加のscore計算は必要であり「計算が無料」なのではない。compute-boundな条件や大きなbatchでは利点が小さくなることもある。</p>
+      <p>ここでdraft model <code>p</code>は、現在のprefixに続く各tokenの候補確率を安く出す分布、target model <code>q</code>は最終的に再現したい大modelの確率分布である。<code>p</code>で複数tokenを先読みし、<code>q</code>で各draft位置を一括評価する。ただしdraftをそのまま採用すると分布が<code>p</code>寄りになるため、accept/rejectと補正samplingが必要になる。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture3-large-language-models/10-speculative-decoding.jpg" alt="speculative decodingスライドに、BOS・A・teddy・bearに続いてDraft LLMがis・cute・and・smartを予測する図が示されている" loading="lazy" />
         <figcaption>Draft LLMによる先読み。prefix「BOS A teddy bear」に続く <code>is / cute / and / smart</code> の4 token候補を小modelが順に作る段階が映る。<a class="ts" href="https://www.youtube.com/watch?v=Q5baLehv5So&t=6175s" target="_blank" rel="noopener">1:42:55</a></figcaption>
       </figure>
       <p><strong>画像の読み解き：</strong>図の4候補はまだ確定出力ではない。draft modelは安く先読みし、次段でtarget modelが各位置をまとめてscoreしてaccept/rejectするため、qualityの基準をtarget側へ残したまま逐次呼び出し回数を減らせる。</p>
       <ol>
-        <li>draft modelで<code>x̃<sub>1:k</sub></code>を生成する。</li>
-        <li>target modelを1回呼び、各位置の<code>q<sub>1:k+1</sub></code>を並列計算する。</li>
-        <li>左からaccept/rejectし、全acceptなら<code>q<sub>k+1</sub></code>から追加1 tokenもsampleする。</li>
+        <li>draft分布<code>p</code>から候補<code>x̃<sub>1:k</sub></code>を順にsampleし、その各位置で使った確率を保存する。</li>
+        <li>target modelを1回呼び、同じprefixとdraft列に対する各位置の分布<code>q<sub>1:k+1</sub></code>を並列に計算する。</li>
+        <li>左から候補<code>x̃<sub>i</sub></code>を確認する。targetがdraft以上の確率を置く候補は必ずacceptし、低い場合は比<code>q<sub>i</sub>(x̃<sub>i</sub>) / p<sub>i</sub>(x̃<sub>i</sub>)</code>の確率でacceptする。</li>
+        <li>最初のreject位置では、各tokenについてtargetに不足していた確率だけを残す<strong>positive residual</strong>、すなわち<code>max(q-p, 0)</code>を合計1へ正規化した分布から代替tokenをsampleし、そこでdraft列の採用を止める。全候補をacceptした場合は<code>q<sub>k+1</sub></code>から追加1 tokenもsampleする。</li>
       </ol>
       <div class="formula">
         a(x̃<sub>i</sub>) = min(1, q<sub>i</sub>(x̃<sub>i</sub>) / p<sub>i</sub>(x̃<sub>i</sub>))<br />
         reject時: x ∼ normalize([q<sub>i</sub>(x) − p<sub>i</sub>(x)]<sub>+</sub>)
-        <small>q≥pなら必ずaccept。そうでなければq/pでacceptし、reject時はpositive residual distributionからsampleする。</small>
+        <small><code>a</code>はdraft候補のaccept確率、<code>[z]<sub>+</sub> = max(z, 0)</code>、<code>normalize</code>は全tokenの確率和を1にする操作。</small>
       </div>
+      <p>2 tokenだけの例で、<code>p(A)=0.6, p(B)=0.4</code>、<code>q(A)=0.3, q(B)=0.7</code>とする。draftがAならaccept確率は<code>0.3 / 0.6 = 0.5</code>。rejectした場合、positive residualはAが0、Bが<code>0.7−0.4=0.3</code>なのでBを選ぶ。最終的にAとなる確率は<code>0.6×0.5=0.3</code>、Bはdraft Bのaccept 0.4とA reject後の0.3を足した0.7で、target分布<code>q</code>と一致する。これがmodified rejection samplingで<code>p</code>の高速な提案を使いながら<code>q</code>を保存できる理由である。</p>
       <div class="callout info">
         <strong>一次資料による補足：近似ではなくtarget分布を保存する</strong>
-        <p>modified rejection samplingにより、最終sample分布はhardware numericsの範囲でtarget model <code>q</code>と一致する。DeepMind論文はChinchilla 70Bでqualityを損なわず2–2.5倍のdecoding speedupを報告した。draftとtargetの一致率が低いとaccept数が減り、speedupも小さくなる。</p>
+        <p>modified rejection samplingにより、最終sample分布はhardware numerics（浮動小数点の丸め、演算順序、kernel差など）の範囲でtarget model <code>q</code>と一致する。ここでChinchilla 70Bは、parameter数とtraining token数を固定compute内で釣り合わせるcompute-optimal scaling研究から生まれた70 billion parameterのtarget modelであり、この節ではscaling則の証拠ではなく高速化の評価対象として登場する。DeepMind論文はqualityを損なわず2–2.5倍のdecoding speedupを報告したが、draftとtargetの一致率が低くaccept数が少ない、draft生成自体が重い、またはtarget評価がmemory bandwidthではなくcomputeに律速される場合、検証のoverheadを回収できずspeedupは小さくなるか消える。</p>
         <p><a href="https://arxiv.org/abs/2302.01318" target="_blank" rel="noopener">一次資料: Accelerating LLM Decoding with Speculative Sampling</a></p>
       </div>
     </section>
 
     <section id="mtp">
       <h2>14. Multi-Token Prediction（MTP）</h2>
-      <p>MTPはshared Transformer trunkの上に、<code>t+1, t+2, …, t+k</code>を予測する複数headを付けてtraining objective自体を変える。test時には追加head群を同一model内のdraftとして使い、main next-token headで検証するself-speculative decodingが可能になる。</p>
+      <p>Multi-Token Prediction（MTP）には、まず<strong>training objective</strong>としての役割があり、その追加headを<strong>inference</strong>にも使える、という2段階を分けて考える必要がある。training時の主目的は学習信号を複数の未来位置へ広げること、推論時の利用は候補を先読みして逐次stepを減らすことである。MTPを学習しただけで自動的に高速化するわけではない。</p>
+      <p><strong>shared trunk</strong>は入力prefixを文脈表現へ変換するmodel本体で、複数の予測に共通して使われる。<strong>head</strong>はその共通表現から特定の未来位置のtoken確率を出す出力部分である。通常は位置<code>t</code>までを見て次の<code>t+1</code>だけを教師信号にするが、MTPでは<code>t+1</code>、<code>t+2</code>、…、<code>t+k</code>のlossを同時に学ぶ。1 token先の局所patternだけでなく、より先の構造も表現へ要求するのが動機である。</p>
+      <p>たとえばprefixが位置<code>t</code>まであるとき、head 1は<code>t+1</code>の「is」、head 2は<code>t+2</code>の「very」、head 3は<code>t+3</code>の「cute」を予測する。trainingでは3位置それぞれの正解と比較してlossを作る。inferenceではこれらを<code>t+1:t+3</code>のdraft候補として使い、main next-token head側の計算でvalidateできる。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture3-large-language-models/11-multi-token-prediction.jpg" alt="MTPスライドに、shared Transformer trunkの上でt+1からt+kまでを予測する複数のprediction headが並ぶ" loading="lazy" />
         <figcaption>Multi-Token Predictionのarchitecture。shared trunkの上に <code>t+1 … t+k</code> の未来位置を担当する複数headを置き、複数tokenを同時に予測する構成が映る。<a class="ts" href="https://www.youtube.com/watch?v=Q5baLehv5So&t=6435s" target="_blank" rel="noopener">1:47:15</a></figcaption>
       </figure>
-      <p><strong>画像の読み解き：</strong>別のdraft modelを用意するspeculative decodingと違い、MTPはtraining時から同じtrunkに未来token headを持たせる。追加headをin-model draftとして使える一方、training objectiveとarchitectureの変更が必要になる。</p>
+      <p><strong>画像の読み解き：</strong>通常のspeculative decodingがtargetとは別の小さなdraft modelを走らせるのに対し、MTPはtraining時から同じshared trunkに未来token headを持たせ、その内部表現からdraftを作る。別modelのweightを読み込む必要を減らせる一方、target側のtraining objectiveとarchitectureをあらかじめ変更する必要がある。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th></th><th>通常のspeculative decoding</th><th>MTP</th></tr></thead>
           <tbody>
             <tr><td>Draft</td><td>別の小model</td><td>同一model内の未来token prediction heads</td></tr>
             <tr><td>Training</td><td>target modelは変更不要</td><td>複数未来tokenを予測するobjectiveへ変更</td></tr>
-            <tr><td>Validation</td><td>rejection samplingでtarget分布を厳密保存</td><td>講義で扱う論文実装はgreedy validationで、同じ分布保存式をそのまま使わない</td></tr>
+            <tr><td>Validation</td><td>modified rejection samplingでtarget分布を保存できる</td><td>exactな分布保存はvalidation方法次第。講義で扱う論文実装はgreedy validationで、同じ分布保存式をそのまま使わない</td></tr>
           </tbody>
         </table>
       </div>
       <div class="callout info">
         <strong>一次資料による補足：qualityとspeedの両面</strong>
-        <p>Gloeckleらはmulti-token objectiveがsample efficiencyを高め、13B modelでHumanEvalを12%、MBPPを17%多く解き、4-token prediction modelで最大3倍のinference speedupを報告した。一方、小modelではbaselineより悪い場合もあり、scaleとhead数に依存する。</p>
+        <p>Gloeckleらはmulti-token objectiveがsample efficiencyを高め、13B modelでcode generation benchmarkのHumanEvalを12%、Mostly Basic Python Problems（MBPP）を17%多く解き、4-token prediction modelで最大3倍のinference speedupを報告した。「12%・17%多く」は論文条件における解けた問題数の相対改善、「最大3倍」は特定のmodel・hardware・decoding設定での上限的な報告である。これらは特定dataset・sampling条件・pass metricでの結果であり、全taskの一般能力や常時3倍を意味しない。小modelではbaselineより悪い場合もあり、効果はscaleとhead数に依存する。</p>
         <p><a href="https://arxiv.org/abs/2404.19737" target="_blank" rel="noopener">一次資料: Better &amp; Faster LLMs via Multi-token Prediction</a></p>
       </div>
     </section>
 
     <section id="qa">
       <h2>15. 講義内Q&amp;A総覧</h2>
-      <p>発話中に挟まれた質問を、重複をまとめつつ全論点が残る形で整理する。</p>
+      <p>本節では、講義中に出た質問を、本文の説明へ戻りやすい言葉で整理する。振り分けを使うmodel、出力tokenの選び方、長い入力、複数の解答経路、cache、未来tokenの先読みという全論点を残し、講義内で保留された点は一次資料による補足も含めて答える。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>質問</th><th>講義での回答</th></tr></thead>
           <tbody>
-            <tr><td>Router <code>G</code>とexpert <code>E</code>はどう学習するか。</td><td>通常のforward、loss、backpropでjoint trainingする。MoE固有のcollapse対策を補助loss等で加える。</td></tr>
-            <tr><td>Expertのarchitectureは何か。</td><td>一般式では任意networkだが、Transformer LLMでは各expertはFFNで、通常FFNをMoE layerへ置換する。</td></tr>
-            <tr><td>Load balanceの<code>f<sub>i</sub></code>と<code>P<sub>i</sub></code>はいつ計算するか。</td><td>mini-batchをmodelへ通した後にbatch統計として計算し、主lossと合わせてbackpropする。</td></tr>
-            <tr><td>Dropoutを使えるか。</td><td>併用可能。関連手法としてrouter scoreへnoiseを加えるnoisy gatingもある。</td></tr>
-            <tr><td>Hard assignmentの<code>f<sub>i</sub></code>は微分可能か。</td><td>講義では保留。原論文では<code>f</code>は非微分、<code>P</code>は微分可能で、勾配は後者を通る。</td></tr>
-            <tr><td>Expert数を増やすとparameterは増えるか。</td><td>総parameterとcapacityは増えるが、top-kを固定すればactive parameterと1 passのcomputeは制御できる。</td></tr>
-            <tr><td>MoEはattention headごとにあるのか。</td><td>headとは独立。head出力を連結・射影した後に1つのlayer-specific routerがtokenをexpertへ送る。</td></tr>
-            <tr><td>各blockにexpertがあり、weightは共有するか。</td><td>通常各blockに別のrouter・expert群がありweightは共有しない。layerごとに別expertが選ばれ得る。</td></tr>
-            <tr><td>Inferenceでroutingはいつ決まるか。</td><td>masked self-attention後のcontextualized token表現をrouterへ入れ、softmax確率のtop-kを選ぶ時点。</td></tr>
-            <tr><td>Samplingはtraining時か。</td><td>ここでのsamplingは学習済みmodelのresponse generation時。trainingでは予測分布とground-truth labelをlossで比較する。</td></tr>
-            <tr><td>低temperatureをGaussianとして考えられるか。</td><td>tokenは順序のない離散categoryなので、連続x軸を持つGaussianより「最大候補へspikeする」と理解する。</td></tr>
-            <tr><td>Context lengthはself-attentionが見る範囲か。</td><td>その通り。長くなると標準attentionのquadratic complexityが効き、sparse attention等の工夫が必要になる。</td></tr>
-            <tr><td>Self-consistencyが良いとどう判定するか。</td><td>ground truth付き算術・数学benchmark等で評価する。answer抽出は末尾指定、regex、別LLMなどで行う。</td></tr>
-            <tr><td>複数CoT sampleは互いをcontextへ入れるか。</td><td>入れず、同一requestから独立に並列sampleする。最後にanswerだけを集約する。</td></tr>
-            <tr><td>TrainingでもKV cacheを使うか。</td><td>teacher forcingで全tokenを一括処理するため、逐次generationと同じ意味のKV cachingは通常不要。</td></tr>
-            <tr><td>KV cache削減にsparse attentionを使えるか。</td><td>別の選択肢ではあるが、講義の問いはK/V head数に着目し、GQA/MQAを答えとした。</td></tr>
-            <tr><td>MLAのlow-rank次元は学習で決まるか。</td><td>次元sizeは固定のarchitecture design choice。layer間で変えることも可能だが、実装では同一値を使うことが多い。</td></tr>
-            <tr><td>Speculative decodingのrejectはrejection samplingか。</td><td>その理解でよい。accept/rejectとresidual再sampleでtarget分布を回復する。</td></tr>
-            <tr><td>なぜdraft列の後ろに追加位置もtargetへ入れるか。</td><td>1回のtarget forwardで<code>q<sub>k+1</sub></code>も「無料で」得て、draftが全acceptならさらに1 token進めるため。</td></tr>
+            <tr><td>Router <code>G</code>とexpert <code>E</code>はどう学習するか。</td><td>Mixture of Experts（MoE、複数のexpertから一部を選ぶ方式）では、routerとexpertを一つのmodelとして同時に学習する。通常の入力処理で予測とlossを求め、誤差逆伝播で両方のparameterを更新する。さらに、第3節で説明した振り分けの偏りを抑える補助lossを加える。</td></tr>
+            <tr><td>Expertのarchitectureは何か。</td><td>一般式では任意のnetworkを使える。Transformerを扱う本講義では、各expertはfeed-forward network（FFN、tokenごとの表現を変換する層）であり、通常のFFNを複数のFFNとrouterから成るMoE layerへ置き換える。</td></tr>
+            <tr><td>Load balanceの<code>f<sub>i</sub></code>と<code>P<sub>i</sub></code>はいつ計算するか。</td><td>mini-batchをmodelへ通した後、そのbatch内で各expertへ実際に送られたtokenの比率<code>f<sub>i</sub></code>と、routerが与えた平均確率<code>P<sub>i</sub></code>を集計する。この補助lossを本来のtaskのlossへ足し、一度の誤差逆伝播で更新する。</td></tr>
+            <tr><td>Dropoutを使えるか。</td><td>使える。学習中に一部の層出力を確率的に無効にするdropoutを併用でき、routerのsoftmax前の得点へ小さな乱数を加えるnoisy gatingも探索を促す。ただし、どちらも負荷を均等にする補助lossと同じ働きや保証を持つわけではない。</td></tr>
+            <tr><td>Hard assignmentの<code>f<sub>i</sub></code>は微分可能か。</td><td>講義では保留された。第3節の一次資料補足のとおり、最終的な離散選択から数える<code>f</code>は微分できない。一方、softmax確率の平均<code>P</code>は微分できるため、補助lossのgradientは<code>P</code>を通ってrouterへ流れる。</td></tr>
+            <tr><td>Expert数を増やすとparameterは増えるか。</td><td>増える。expertを追加すると総parameterと表現容量が増え、使わないexpertもmemoryへ保持する必要がある。ただし、tokenごとに選ぶ上位<code>k</code>個を固定すれば、1回の入力処理で動くparameterとexpert計算の増加は抑えられる。通信や振り分けの費用までは消えない。</td></tr>
+            <tr><td>MoEはattention headごとにあるのか。</td><td>attention headとは独立である。各headの出力を連結してmodelの幅へ戻した後、そのlayerに一つあるrouterが、文脈を反映したtokenごとにexpertを選ぶ。</td></tr>
+            <tr><td>各blockにexpertがあり、weightは共有するか。</td><td>通常はMoEを置くTransformer blockごとに、別のrouterとexpert群を持ち、weightをblock間で共有しない。そのため同じtokenでもlayerが変われば別のexpertへ送られ得る。</td></tr>
+            <tr><td>Inferenceでroutingはいつ決まるか。</td><td>推論時は、そのlayerの未来を隠した自己注意を終えたtoken表現をrouterへ渡した時点で決まる。routerがexpertごとの確率を出し、その上位<code>k</code>個だけを選んでFFN計算へ進む。</td></tr>
+            <tr><td>Samplingはtraining時か。</td><td>この質問でのsamplingは、学習済みmodelが回答を生成するとき、次token確率から候補を選ぶ処理を指す。学習では、正解の前tokenを与えて各位置の予測分布を正解tokenと比較し、lossを計算する。生成時のsampling方針とは別である。</td></tr>
+            <tr><td>低temperatureをGaussianとして考えられるか。</td><td>考えないほうがよい。tokenは数直線上に並ぶ連続値ではなく、互いに別の離散的な候補である。第5節のsoftmaxで説明したように、temperatureを下げると最大logitの候補へ確率が集中すると理解する。</td></tr>
+            <tr><td>Context lengthはself-attentionが見る範囲か。</td><td>その理解でよい。入力、会話履歴、参照資料、生成済みtokenを含め、自己注意が一度の推論で参照できる範囲である。ただし標準の自己注意は長さの二乗に近い計算とmemoryを要するため、長い範囲にはsparse attentionなど別の工夫が必要になる。</td></tr>
+            <tr><td>Self-consistencyが良いとどう判定するか。</td><td>正解が用意された算術・数学などの共通問題で、通常の回答や単一経路より正答率が上がるかを、生成本数と費用も含めて比べる。各出力の最終回答は、所定の末尾形式、正規表現、または別の言語modelなどで抽出するが、抽出方法自体の誤りにも注意する。</td></tr>
+            <tr><td>複数CoT sampleは互いをcontextへ入れるか。</td><td>入れない。Chain-of-Thought（CoT、途中の解法を文章として出す方法）の各経路は、同じ問題から互いを見ずに独立して生成する。最後に各経路の最終回答だけを取り出して多数決する。</td></tr>
+            <tr><td>TrainingでもKV cacheを使うか。</td><td>通常の学習では、正解の前tokenを各位置へ与えるteacher forcingにより全位置をまとめて計算できる。そのため、生成時のように1 tokenずつkey/value（KV）cacheへ追記して過去を再利用する必要は通常ない。学習用のmemory節約技術とは区別する。</td></tr>
+            <tr><td>KV cache削減にsparse attentionを使えるか。</td><td>参照する過去位置を減らすsparse attentionも別の選択肢になり得る。ただし講義の問いは、保存するK/V head数を減らす方法を尋ねており、Grouped-Query Attention（GQA、Q headをgroup化してK/Vを共有）やMulti-Query Attention（MQA、全Q headで一組のK/Vを共有）が答えである。</td></tr>
+            <tr><td>MLAのlow-rank次元は学習で決まるか。</td><td>Multi-head Latent Attention（MLA）で圧縮後に何次元を使うかは、学習が自動で増減させる値ではなく、設計者が先に決める。layerごとに変える設計も可能だが、実装を単純にするため同じ値を使うことが多い。学習で決まるのは、その次元へ縮め、戻す変換のweightである。</td></tr>
+            <tr><td>Speculative decodingのrejectはrejection samplingか。</td><td>その理解でよい。小modelの候補をtarget modelの確率に応じて採用または棄却し、棄却時はtarget側に不足していた確率だけを残した分布から選び直す。第13節の補正付きrejection samplingにより、最終的な確率分布をtarget modelへ戻す。</td></tr>
+            <tr><td>なぜdraft列の後ろに追加位置もtargetへ入れるか。</td><td>target modelへprefixと<code>k</code>個のdraft候補をまとめて渡すと、同じforward passで各候補の分布<code>q<sub>1:k</sub></code>に加えて次位置の<code>q<sub>k+1</sub></code>も得られる。全候補を採用できたときは、そこからさらに1 token進める。追加位置のscore計算は必要なので計算が「無料」なのではないが、target modelをもう一度逐次呼び出す場合に比べ、追加の逐次latencyは小さい。</td></tr>
           </tbody>
         </table>
       </div>
     </section>
 
     <section id="summary">
-      <h2>16. まとめ：各手法はどのbottleneckを解くか</h2>
+      <h2>16. まとめ：各手法はどの問題を解くか</h2>
+      <p>本節では、講義で扱った方法を「何に困るのか」「なぜ起こるのか」「何を変えるのか」の順で結び付ける。方法の名前だけでなく、減らしたい待ち時間、計算、memory使用量と、代わりに生じる費用を見て選ぶための一覧である。</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>課題</th><th>手法</th><th>中心idea</th></tr></thead>
+          <thead><tr><th>問題</th><th>なぜ起こるか</th><th>手法</th><th>何が変わるか</th><th>費用・限界</th></tr></thead>
           <tbody>
-            <tr><td>総parameterを増やすとcomputeも増える</td><td>Sparse MoE</td><td>tokenごとにtop-k FFN expertだけactivateする。</td></tr>
-            <tr><td>出力が単調・不自然・format違反</td><td>Sampling / temperature / guided decoding</td><td>分布の多様性とvalid token集合を別々に制御する。</td></tr>
-            <tr><td>Taskをweight更新なしで適応させたい</td><td>ICL / Plan-and-Solve / CoT / self-consistency</td><td>instruction・example・reasoning path・voteで推論をsteerする。</td></tr>
-            <tr><td>過去tokenのK/Vを再計算する</td><td>KV cache</td><td>過去K/Vを保存して再利用する。</td></tr>
-            <tr><td>KV cacheが大きい</td><td>GQA / MLA</td><td>K/V head共有、低rank joint compression。</td></tr>
-            <tr><td>Serving memoryが断片化する</td><td>PagedAttention</td><td>固定size blockを非連続配置してlogical/physical memoryを分離。</td></tr>
-            <tr><td>大modelが1 tokenずつ逐次decodeする</td><td>Speculative decoding / MTP</td><td>複数候補をdraftし、大modelまたはmain headでまとめて検証する。</td></tr>
+            <tr><td>modelの表現容量を増やすと、tokenごとの計算まで重くなる。</td><td>通常は全parameterを毎回使うため。</td><td>一部のexpertだけを使うSparse Mixture of Experts（Sparse MoE）</td><td>routerがtokenごとに上位のFFN expertだけを動かし、総parameterと実際に動くparameterを分ける。</td><td>全expertを保存するmemory、expert間通信、振り分けの偏りを防ぐ学習が必要。</td></tr>
+            <tr><td>出力が単調になる、低確率の不自然な語を選ぶ、指定形式を壊す。</td><td>modelの確率分布と、そこからtokenを選ぶ規則は別であり、自然言語の依頼だけでは構文を強制できないため。</td><td>temperature、上位候補に絞るtop-k・top-p、schemaやgrammarで制約するguided decoding</td><td>確率の集中度、sampling候補、選択可能なtokenをそれぞれ調整する。</td><td>多様性と安定性は両立しにくい。構文を保証しても内容の正しさは保証せず、制約判定にも計算が要る。</td></tr>
+            <tr><td>modelのweightを更新せず、新しいtaskや多段問題へ合わせたい。</td><td>質問だけでは、望むlabel、形式、解く順序がmodelへ十分伝わらないため。</td><td>prompt内学習（In-Context Learning; ICL）、Plan-and-Solve、途中の解法を出すChain-of-Thought（CoT）、複数解答の多数決</td><td>指示、少数の例、作業計画、途中の解法、複数経路をpromptと生成処理へ加える。</td><td>contextと生成token、料金、待ち時間が増える。例や多数派が誤ることもあり、生成された説明は内部処理の証明ではない。</td></tr>
+            <tr><td>回答を1 token進めるたび、過去tokenのattention用情報を計算し直す。</td><td>次tokenは過去全体を参照するが、過去位置のkeyとvalueは前のstepから変わらないため。</td><td>key/value（KV）cache</td><td>prompt処理時と各生成stepで作った過去のK/Vを保存し、次stepで再利用する。</td><td>再計算は減るが、長いcontextほど保存容量と読み出しbandwidthを使う。</td></tr>
+            <tr><td>KV cacheが大きく、保存や読み出しが上限になる。</td><td>token、layer、K/V headが増えるほど保存値が増え、生成のたびに読み出すため。</td><td>K/Vをgroupで共有するGrouped-Query Attention（GQA）、低次元表現を保存するMulti-head Latent Attention（MLA）</td><td>GQAはK/V head数を減らし、MLAはK/Vの元になる圧縮表現を保存する。</td><td>どちらもarchitectureと学習を変える。共有や圧縮の強さと品質の釣り合いが必要。</td></tr>
+            <tr><td>長さの違う複数requestを処理すると、GPU memoryに未使用領域や使いにくい隙間ができる。</td><td>出力長を事前に決められず、最大長の連続領域を予約すると余りと分散した空きが生じるため。</td><td>PagedAttention</td><td>KV cacheを小さなblockへ分け、token順の見え方と実際の非連続な配置を対応表で結ぶ。</td><td>block管理が必要で、最後のblock内には少量の余りが残る。attention計算そのものを軽くする方法ではない。</td></tr>
+            <tr><td>大きなmodelが次tokenを1個ずつ計算するため、逐次的な待ち時間が長い。</td><td>次のtokenは直前の結果が出るまで確定せず、とくに各stepでweightを読む時間が支配的になりやすいため。</td><td>小modelが先読みするspeculative decoding、同じmodelに未来token用headを持たせるMulti-Token Prediction（MTP）</td><td>複数の候補を先に作り、target modelまたはmain headでまとめて検証して、一度に進めるtoken数を増やす。</td><td>候補作成と検証の計算は残る。候補の採用率が低い場合や計算能力が上限の環境では速くならず、MTPは事前の学習変更も要る。</td></tr>
           </tbody>
         </table>
       </div>
-      <p>講義全体の軸は、LLMを「巨大なdecoder-only model」として終わらせず、<strong>どのparameterを動かすか、どのtokenを選ぶか、どのcontextを渡すか、どの計算・memoryを再利用するか</strong>へ分解することにある。quality、capacity、latency、throughput、memory、costは常にtrade-offであり、手法名ではなくbottleneckとの対応で選ぶ必要がある。</p>
+      <p>講義全体は一つの流れとして読める。まずMoEで「どのparameterを動かすか」を選び、出力制御で「どのtokenを選べるか」を決め、promptで「どの情報と手順を渡すか」を整える。推論時にはKV cacheで同じ計算を繰り返さず、GQA・MLA・PagedAttentionで保存量、読み出し量、配置の無駄を減らす。それでも回答は前のtokenに依存して順番に進むため、speculative decodingやMTPで複数位置をまとめて検証する。表現容量、出力の確実さ、memory容量、転送速度、1件の待ち時間、system全体の処理量は互いに影響するので、解きたい問題と費用を対応させることが重要である。</p>
     </section>
 
     <section id="references">
       <h2>17. 出典・一次資料</h2>
+      <p>本節には、講義内容を確認するための公式スライドと、本文の補足・訂正・数値の出典に使った原論文および公式資料をまとめる。各資料が示す条件や範囲は本文の該当箇所と合わせて確認されたい。</p>
       <ol class="refs">
         <li>Stanford CME295, <a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture3.pdf" target="_blank" rel="noopener"><em>Lecture 3: Large Language Models</em>（125 slides）</a>.</li>
         <li>Fedus, Zoph &amp; Shazeer (2021/2022), <a href="https://arxiv.org/abs/2101.03961" target="_blank" rel="noopener"><em>Switch Transformers</em></a>.</li>
@@ -805,7 +962,50 @@ flowchart TD
         <li>Willard &amp; Louf (2023), <a href="https://arxiv.org/abs/2307.09702" target="_blank" rel="noopener"><em>Efficient Guided Generation for Large Language Models</em></a>.</li>
         <li>Thinking Machines Lab (2025), <a href="https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/" target="_blank" rel="noopener"><em>Defeating Nondeterminism in LLM Inference</em></a>.</li>
         <li>Hugging Face, <a href="https://huggingface.co/docs/transformers/main/en/kv_cache" target="_blank" rel="noopener"><em>Transformers Cache strategies</em></a>.</li>
+        <li>Kaplan et al. (2020), <a href="https://arxiv.org/abs/2001.08361" target="_blank" rel="noopener"><em>Scaling Laws for Neural Language Models</em></a>.</li>
+        <li>Hoffmann et al. (2022), <a href="https://arxiv.org/abs/2203.15556" target="_blank" rel="noopener"><em>Training Compute-Optimal Large Language Models</em></a>.</li>
+        <li>Schaeffer, Miranda &amp; Koyejo (2023), <a href="https://arxiv.org/abs/2304.15004" target="_blank" rel="noopener"><em>Are Emergent Abilities of Large Language Models a Mirage?</em></a>.</li>
       </ol>
+    </section>
+
+    <section id="glossary">
+      <h2>18. 用語集</h2>
+      <p>本節では、本文で使った用語を後から引き直せるよう、何を指し、何と区別すべきかを平易な言葉でまとめる。略語は正式名とともに示し、似た用語は違いが分かるように整理する。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>用語</th><th>要点</th></tr></thead>
+          <tbody>
+            <tr><td>LLM / Transformer family</td><td>Large Language Model（LLM、大規模言語モデル）は一般には、大量の文章で学習した大規模な言語modelを指し、特定の構造だけに限る普遍的な用語ではない。本講義では作業上、過去のtokenから次tokenを生成するdecoder-only Transformerを主にLLMと呼ぶ。これはencoder-onlyやencoder–decoderを一般にLLMから除外する定義ではない。</td></tr>
+            <tr><td>Token / training corpus</td><td>Tokenは、文章をmodelが処理できる単位へ分けたもの。単語だけでなく、単語の一部、記号、空白もあり得る。Training corpusは学習元となる文書の集合で、training token数は学習に使ったtokenの延べ量を表す。</td></tr>
+            <tr><td>Parameter / active parameter</td><td>Parameterは、学習で調整されるweightやbiasである。Active parameterは、一回の入力処理で実際に計算へ使われるparameterを指す。Sparse MoEでは全expertのparameterが総数に入るが、tokenごとに選ばれたexpertだけがactiveになる。</td></tr>
+            <tr><td>FLOP / FLOP/s</td><td>FLOPは浮動小数点の加算や乗算を1回行うこと、または文脈によりその総回数を指す。FLOP/sは1秒に何回実行できるかという処理速度である。必要な演算回数が減っても、memory転送や通信が遅ければ実時間が同じ割合で短くなるとは限らない。</td></tr>
+            <tr><td>Scaling law / compute-optimal training</td><td>Scaling lawは、model規模、学習data、計算量を増やしたときに予測誤差がどう下がるかを表す経験則である。Compute-optimal trainingは、限られた計算予算の中でparameter数と学習token数を釣り合わせる考え方であり、「大きければ必ず良い」という意味ではない。</td></tr>
+            <tr><td>MoE / router / expert</td><td>Mixture of Experts（MoE）は、複数の処理部分であるexpertを用意し、routerが入力tokenごとに使うexpertを選ぶ構造である。Sparse MoEは少数だけを動かすため、model全体の表現容量を増やしつつ、tokenごとのexpert計算を抑えられる。</td></tr>
+            <tr><td>Routing collapse</td><td>MoEでtokenが一部のexpertへ集中し、他のexpertがほとんど使われず学べなくなる現象。実際の割当とrouter確率を均等へ近づける補助lossなどで偏りを抑える。</td></tr>
+            <tr><td>Logit / softmax</td><td>Logitは、modelが各token候補へ付ける、まだ確率になっていない得点である。Softmaxは全logitを0から1の値へ変え、合計が1になる次token確率を作る。logitの差が大きいほど上位候補へ確率が集まりやすい。</td></tr>
+            <tr><td>Decoding / temperature</td><td>Decodingは、次token確率から実際の出力tokenを選び、これを繰り返す処理である。Temperatureはsoftmaxへ入るlogitの差を伸縮し、候補の順位を保ったまま確率の集中度を変える。</td></tr>
+            <tr><td>Decoding policy</td><td>Modelが出した次token確率から、実際のtokenをどう選ぶかという規則。毎回最大確率を選ぶgreedy decoding、複数経路を残すbeam search、確率に従ってくじを引くsamplingなどがある。同じmodel分布でも、この規則により出力は変わる。</td></tr>
+            <tr><td>Top-k / top-p</td><td>どちらもsampling前に低確率候補を除く方法。Top-kは確率上位の決まった<code>k</code>個を残す。Top-pは確率の高い順に足し、累積確率が基準<code>p</code>へ達する最小集合を残す。残した候補の確率は合計1へ調整してから使う。</td></tr>
+            <tr><td>Guided decoding</td><td>生成済みの文字列に続けると指定形式を壊すtokenを、選ぶ前に候補から外す方法。JSONなどの構文は保証しやすいが、形式の中に書かれた内容の事実性までは保証しない。</td></tr>
+            <tr><td>Schema / grammar</td><td>Schemaは、項目名、値の型、必須項目などデータの形を定めた仕様。Grammarは、正しい文字列をどの順序で組み立てられるかを定めた規則である。Guided decodingは現在の生成位置とこれらの規則を照合し、次に選べるtokenを決める。</td></tr>
+            <tr><td>Context window</td><td>一度の推論で自己注意が参照できるtoken数の枠。指示、会話履歴、資料、質問、生成中の回答が同じ枠を使う。最大長まで入ることと、その全情報を正しく利用できることは別であり、長くなるほど計算とmemoryも増える。</td></tr>
+            <tr><td>ICL / zero・one・few-shot</td><td>In-Context Learning（ICL）は、modelのweightを更新せず、prompt内の指示や例からtaskと回答形式を読み取らせる方法。Zero-shotは正解例なし、one-shotは1例、few-shotは複数例を示す。例はそのrequestだけで使われ、学習済みweightへ保存されない。</td></tr>
+            <tr><td>CoT / Self-Consistency</td><td>Chain-of-Thought（CoT）は、最終回答までの途中の計算や手順も文章として生成する方法。Self-Consistencyは同じ問題から複数のCoTを独立に作り、最終回答を多数決する方法である。多段問題を助ける場合があるが、計算費用が増え、説明がmodel内部の因果を忠実に示す保証もない。</td></tr>
+            <tr><td>Prefill / decode</td><td>Prefillはpromptのtokenをまとめて処理し、最初の次token確率と各layerのKV cacheを作る段階。Decodeは、そのcacheを使いながら新しいtokenを通常1個ずつ生成し、cacheへ追加する段階である。</td></tr>
+            <tr><td>Compute-bound / memory-bandwidth-bound</td><td>Compute-boundは、演算器が計算できる速さが処理時間の上限になっている状態。Memory-bandwidth-boundは、weightやcacheをmemoryから運ぶ速さが上限になっている状態。Prefillは前者、1 tokenずつのdecodeは後者になりやすいが、model、batch、hardwareによって変わる。</td></tr>
+            <tr><td>Latency / throughput</td><td>Latencyは、1件のrequestを送ってから結果が返るまでの待ち時間。Throughputは、system全体が1秒などの単位時間に処理できるrequest数またはtoken数である。複数requestをまとめるとthroughputが上がっても、個々のlatencyが増える場合がある。</td></tr>
+            <tr><td>Memory capacity / memory bandwidth</td><td>Memory capacityは「何byte保存できるか」という容量、memory bandwidthは「1秒に何byte読み書きできるか」という転送速度である。KV cacheがdeviceへ収まらない問題と、decodeでcacheの読み出しが間に合わない問題は分けて考える。</td></tr>
+            <tr><td>Teacher forcing</td><td>学習時に、各位置へmodel自身の前の出力ではなく正解の前tokenを与え、複数位置の予測をまとめて計算する方法。生成時のように1 tokenずつ結果を待つ必要がないため、逐次生成向けKV cacheとは役割が異なる。</td></tr>
+            <tr><td>KV cache / GQA / PagedAttention</td><td>KV cacheは、過去tokenのattention用keyとvalueを保存して再計算を省く。Grouped-Query Attention（GQA）は複数のquery headでK/V headを共有し、token当たりのcache量を減らす。PagedAttentionはcacheを小blockに分けて非連続に配置し、可変長requestによるmemoryの無駄を減らす。</td></tr>
+            <tr><td>Internal / external fragmentation</td><td>Internal fragmentationは、割り当てたblockの内側に残る未使用部分。External fragmentationは、空き容量の合計は十分でも小さな隙間へ分散し、大きな連続領域として使えない状態である。PagedAttentionは非連続blockを使って後者を避け、前者を最後のblock程度へ抑える。</td></tr>
+            <tr><td>MLA</td><td>Multi-head Latent Attention（MLA）は、各tokenのK/Vをheadごとにそのまま保存せず、K/Vの元になる小さな共有表現へ圧縮してcacheするattention方式。必要な計算時にその表現からK/Vを作り、cacheの容量と読み出し量を減らす。</td></tr>
+            <tr><td>Low-rank / latent / down・up-projection</td><td>Low-rank表現は、大きなvectorの情報を、より少ない成分の組合せで近似する考え方。Down-projectionは大きな次元から小さな次元へ縮め、その小さな表現をlatentと呼ぶ。Up-projectionはlatentを必要な大きさへ広げる。MLAでは圧縮次元を設計者が決め、変換方法を学習する。</td></tr>
+            <tr><td>Speculative decoding / MTP</td><td>Speculative decodingは、小さなdraft modelが未来token候補を先に作り、大きなtarget modelが複数位置をまとめて検証する方法。Multi-Token Prediction（MTP）は、同じmodel内の複数headで未来位置を予測するよう学習し、そのheadを先読みにも使える。どちらも候補がよく採用されると逐次stepを減らせる。</td></tr>
+            <tr><td>Rejection sampling / positive residual</td><td>Rejection samplingは、別の分布が提案した候補を目的の分布に合う確率で採用または棄却する方法。Speculative decodingで候補を棄却したときは、target確率からdraft確率を引き、正の差だけを残したpositive residualを合計1へ調整して代替tokenを選ぶ。これによりtarget分布を保つ。</td></tr>
+            <tr><td>Benchmark</td><td>共通の問題集合と採点方法を使い、modelや手法を同じ条件で比べる枠組み。scoreは対象task、data、prompt、sampling、採点方法に依存し、modelの一般能力や実運用での品質そのものではない。</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <footer class="page">

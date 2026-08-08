@@ -379,6 +379,7 @@
 
     <section id="intro">
       <h2>1. 導入・前回の復習・今回の射程</h2>
+      <p>この節では、Lecture 2 全体の構成を示したうえで、前回扱ったSelf-attention、Query・Key・Value、Multi-head Attentionを短く復習し、この講義でどのTransformerの改良点とモデル系統を扱うのかを整理する。</p>
       <p>冒頭では、Lecture 1 の録音品質を受けて音響設定を変更したことと、当時12月10日を仮日程としていた期末試験を週前半へ移せるか検討中だと案内する。本編は前半を Afshine Amidi が Transformer の「変わった部品」、後半を Shervine Amidi がモデル系統と BERT に分けて解説する。</p>
 
       <div class="related">
@@ -401,7 +402,8 @@
 
     <section id="position-basics">
       <h2>2. なぜ位置情報が必要か</h2>
-      <p>Self-attention は token 同士を直接結ぶため、RNN のような計算順序から位置を得られない。そこで token embedding に位置情報を注入する。Lecture 2 はまず、絶対位置を入力へ加える2方式を比較する。</p>
+      <p>この節では、Self-attentionだけでは語順を区別できない理由を確認し、tokenへ絶対位置を与えるLearned Position EmbeddingとSinusoidal Positional Encodingを比較する。さらにsin/cosの式の各記号、異なる周期を組み合わせる意味、相対距離を読み取れる仕組みを説明する。</p>
+      <p>Self-attention は token 同士を直接結ぶため、RNN のような計算順序から位置を得られない。そこで token embedding に位置情報を注入する。</p>
 
       <div class="table-wrap">
         <table>
@@ -416,8 +418,31 @@
       <div class="formula">
         PE(pos, 2i) = sin(pos / 10000<sup>2i/d<sub>model</sub></sup>)<br />
         PE(pos, 2i+1) = cos(pos / 10000<sup>2i/d<sub>model</sub></sup>)
-        <small>Vaswani et al. (2017), §3.5</small>
+        <small>Sinusoidal Positional Encoding。Vaswani et al. (2017), §3.5</small>
       </div>
+
+      <h3>この式は何を計算しているのか</h3>
+      <p>これは、系列内の各 token に「何番目にあるか」を伝えるための <strong>Sinusoidal Positional Encoding（正弦波による位置エンコーディング）</strong>である。位置 <code>pos</code> ごとに長さ <code>d<sub>model</sub></code> のベクトル <code>PE(pos)</code> をこの式で作り、同じ位置の token embedding に要素ごとに加算する。学習で値を覚える表ではなく、位置と次元から毎回計算する固定値なので、追加の学習パラメータはない。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>記号</th><th>意味</th></tr></thead>
+          <tbody>
+            <tr><td><code>PE</code></td><td>Positional Encoding。tokenの位置を表すために作るベクトル。</td></tr>
+            <tr><td><code>pos</code></td><td>系列内の位置番号。通常は先頭を0として、<code>0, 1, 2, …</code> と増える。</td></tr>
+            <tr><td><code>d<sub>model</sub></code></td><td>token embedding と位置ベクトルの次元数。両者を加算するため同じ長さにする。</td></tr>
+            <tr><td><code>i</code></td><td>次元を2個ずつ選ぶ番号。<code>2i</code> 番目には sin、隣の <code>2i+1</code> 番目には同じ周波数の cos を入れる。</td></tr>
+            <tr><td><code>10000</code></td><td>次元ごとの波長を短いものから長いものまで幾何級数的に広げるため、元論文で固定された基準値。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout info">
+        <strong>直観：位置を複数の速さで動く「時計の針」に変える</strong>
+        <p><code>i=0</code> のペアは <code>[sin(pos), cos(pos)]</code> となり、位置が1進むたびに速く変化する。大きい <code>i</code> のペアほど分母が大きくなり、ゆっくり変化する。短い周期から長い周期まで多数の波を組み合わせることで、各位置は異なるパターンを持ち、モデルは近い位置と遠い位置の両方を区別する手掛かりを得る。<code>pos=0</code> では、すべての sin 成分が0、cos 成分が1になる。</p>
+      </div>
+
+      <p>sin と cos を同じ周波数のペアにする利点は、位置を一定量ずらす操作を、そのペアに対する線形変換として表せることにある。また、同じ周波数の2位置を比べると <code>sin(a)sin(b) + cos(a)cos(b) = cos(a−b)</code> となり、絶対位置 <code>a</code> と <code>b</code> から相対差 <code>a−b</code> に関する情報が現れる。これにより Attention は、token 自身の意味だけでなく「何個離れているか」も学習に利用できる。</p>
 
       <figure class="shot">
         <img src="../images/stanford-cme295-transformer-models-tricks-lecture2/01-sinusoidal-relative.jpg" alt="sinとcosの位置表現について、位置mとnの差に依存する三角関数の恒等式を示す講義スライド。" loading="lazy" />
@@ -434,12 +459,32 @@
 
     <section id="position-modern">
       <h2>3. T5 bias・ALiBi・RoPE</h2>
+      <p>この節では、位置ベクトルを入力へ足す方式から一歩進み、位置情報をAttention計算へ直接反映する3方式を扱う。T5 Relative Position Biasの学習可能な距離bucket、ALiBiの固定された線形ペナルティ、RoPEのQ/K回転を順に説明し、各方式が相対距離へどのような意味を与えるかを比較する。</p>
       <p>入力に位置ベクトルを足す代わりに、Attention の対応度を計算する場所へ位置を直接入れる方法が発展した。<strong>Relative Position Bias（相対位置バイアス）</strong>は、2つの token が何個離れているかに応じた値を、Softmax 前の Query–Key score（logit）へ加える方式である。T5 は似た距離を bucket にまとめ、その bucket ごとの加算値を学習する。</p>
 
       <div class="callout info">
         <strong>ALiBi と RoPE を先にひとことで</strong>
         <p><strong>ALiBi（Attention with Linear Biases）</strong>は、遠い token ほど不利になる距離比例の値を Attention score から引く方式で、位置ベクトル自体は作らない。<strong>RoPE（Rotary Position Embedding）</strong>は、位置に応じて Query と Key のベクトルを回転させ、両者の内積に相対的な距離を反映する方式である。</p>
       </div>
+
+      <h3>T5 Relative Position Bias：距離ごとの加点・減点を学ぶ</h3>
+      <p>T5 の方式は、tokenの表現そのものへ位置ベクトルを足さず、token <code>i</code> が token <code>j</code> をどれだけ参照するか決める Attention logit に、相対距離 <code>j−i</code> に応じた scalar（1個の数値）を加える。値が正ならその距離を参照しやすく、負なら参照しにくくなる。加算値は attention head ごとに学習されるため、近距離を重視するheadと遠距離を見るheadのような役割分担が可能になる。</p>
+      <p>すべての距離へ別々の値を持つと表が大きくなるため、T5 は距離を <strong>bucket</strong> に分類する。近距離は1、2、3…のように細かく区別し、遠距離は対数的にまとめる。これにより「すぐ隣」と「2語先」は区別しつつ、非常に遠い距離は同じ種類として扱える。意味としては、<strong>内容の類似度だけで決めていたAttentionへ、相対的な近さ・遠さという学習可能な手掛かりを追加する</strong>方法である。</p>
+
+      <div class="formula">
+        score<sub>ij</sub> = q<sub>i</sub> · k<sub>j</sub> / √d<sub>k</sub> + b<sub>bucket(j−i), head</sub>
+        <small><code>b</code> が、相対距離bucketとheadごとに学習されるT5の位置bias。</small>
+      </div>
+
+      <h3>ALiBi：遠い位置へ線形ペナルティを与える</h3>
+      <p>ALiBi は <strong>Attention with Linear Biases</strong> の略で、Query と Key の距離が遠いほど大きくなるペナルティを、Softmax前のAttention logitから引く。学習する位置embeddingや距離表を持たず、headごとにあらかじめ決めた傾き <code>m<sub>h</sub></code> を使う。傾きが大きいheadは近傍を強く優先し、傾きが小さいheadは遠方も比較的参照しやすい。</p>
+
+      <div class="formula">
+        score<sub>ij,h</sub> = q<sub>i,h</sub> · k<sub>j,h</sub> / √d<sub>k</sub> − m<sub>h</sub>|i−j|
+        <small>距離 <code>|i−j|</code> が大きいほどscoreを下げる。因果Attentionでは参照可能な過去位置に適用する。</small>
+      </div>
+
+      <p>ALiBiが持つ意味は、モデルへ「一般に近いtokenほど関連しやすい」という単調な事前バイアスを直接与えることにある。式は学習時に見た系列長を超える位置でもそのまま計算できるため、長さ外挿を狙いやすい。ただし、式を適用できることと、未学習の長さで常に品質を維持できることは同じではない。</p>
 
       <div class="mermaid">
 flowchart TD
@@ -470,22 +515,58 @@ flowchart TD
       </div>
 
       <h3>RoPE の直観</h3>
-      <p>RoPE（Rotary Position Embedding）は、Q と K の隣接する2次元ずつを、位置に比例する角度で回す。2次元の回転行列は次の形になる。</p>
+      <p>RoPE（Rotary Position Embedding）は、Query と Key の数値を直接加減するのではなく、隣接する2次元ずつを位置に比例する角度で回転させる。位置0なら回転せず、位置が進むほど角度が変わるため、同じtoken表現でも置かれた位置によってQ/Kの向きが変わる。2次元の回転行列は次の形になる。</p>
       <div class="formula">
         R(θ) = [[cos θ, −sin θ], [sin θ, cos θ]]<br />
         ⟨R(mθ)q, R(nθ)k⟩ = ⟨q, R((n−m)θ)k⟩
         <small>絶対位置 m/n を入れた回転が、内積では相対差 n−m へ変わる。</small>
       </div>
-      <p>高次元ではQ/Kを2次元ペアへ分け、ペアごとに異なる周波数で回転する。Value は回転しない。多くの近年モデルで採用されるが、RoPE の類似度も sin/cos から成るため単調な近接biasではなく、長さ外挿の品質は追加のスケーリングや訓練条件にも依存する。</p>
+      <p>回転後のQとKの内積は、個々の絶対位置ではなく位置差 <code>n−m</code> に依存する。つまりRoPEは、<strong>「各tokenがどこにあるか」をQ/Kの向きへ埋め込み、Attention scoreを計算したときに「互いに何個離れているか」が現れる</strong>ようにする。T5 biasやALiBiのようにscoreへ別の数値を足す方式ではなく、scoreを作るQ/Kそのものへ位置を組み込む点が違いである。</p>
+      <p>高次元ではQ/Kを2次元ペアへ分け、ペアごとに異なる周波数で回転する。短い周期のペアは細かな位置差、長い周期のペアは大きな位置差を表す手掛かりになる。Value は回転しない。多くの近年モデルで採用されるが、RoPE の類似度も sin/cos から成るため単調な近接biasではなく、長さ外挿の品質は追加のスケーリングや訓練条件にも依存する。</p>
     </section>
 
     <section id="normalization">
       <h2>4. LayerNorm・Pre-Norm・RMSNorm</h2>
-      <p>元 Transformer の “Add &amp; Norm” は、sub-layer の入力を residual connection で出力へ足し、その後で LayerNorm を適用する。LayerNorm は1サンプル内の特徴次元に沿って平均と分散を求め、学習可能な <code>γ</code> と <code>β</code> で再スケール・シフトする。</p>
-      <p><strong>Post-LN（Post-LayerNorm）</strong>は residual 加算の後に正規化し、<strong>Pre-LN（Pre-LayerNorm）</strong>は各 sub-layer へ入る前に正規化する配置を指す。<strong>RMSNorm（Root Mean Square Layer Normalization）</strong>は、平均を引かず二乗平均平方根でベクトルの大きさだけを整える、LayerNorm の軽量な変種である。</p>
+      <p>この節では、深いTransformerの値と勾配を安定させる正規化について、LayerNormがhidden stateをどう整えるか、Post-NormとPre-Normで正規化を置く位置がどう違うか、RMSNormが何を省略して軽量化するかを、数式と構成図で比較する。</p>
+      <p>深いTransformerでは、層を通るたびにhidden stateの値の大きさや分布が変わる。極端に大きい・小さい値が続くと勾配や最適化が不安定になりやすいため、各tokenのhidden stateを扱いやすいスケールへ整える <strong>normalization（正規化）</strong>を挟む。ここでは「どう正規化するか」と「sub-layerのどこで正規化するか」を分けて考える必要がある。</p>
+
+      <h3>LayerNorm：各tokenの特徴量を平均0・分散1相当に整える</h3>
+      <p><strong>LayerNorm（Layer Normalization）</strong>は、1つのtokenが持つhidden stateの全特徴次元を対象に、平均 <code>μ</code> と分散 <code>σ²</code> を計算する。各値から平均を引き、標準偏差で割ることで中心とスケールをそろえた後、学習可能な <code>γ</code>（拡大率）と <code>β</code>（ずらす量）で必要な表現力を戻す。</p>
 
       <div class="formula">
         LayerNorm(x) = γ ⊙ (x − μ) / √(σ² + ε) + β
+        <small><code>μ</code> と <code>σ²</code> は各tokenの特徴次元から計算し、<code>ε</code> は0除算を防ぐ小さな定数。</small>
+      </div>
+
+      <p>例えばhidden sizeが768なら、各tokenについて768個の値から平均と分散を求める。別の文や別のtokenの統計には依存しないため、batch sizeや系列長が変わっても同じ方法で動作し、学習時と推論時の処理も同じである。目的は情報を消すことではなく、層へ入る値の尺度をそろえて最適化しやすくすることにある。</p>
+
+      <h3>Post-NormとPre-Norm：正規化を置く場所の違い</h3>
+      <p><strong>Post-Norm（Post-LayerNorm）</strong>と<strong>Pre-Norm（Pre-LayerNorm）</strong>は別の正規化計算ではなく、LayerNormをsub-layerとresidual connectionのどこへ配置するかという設計の違いである。ここで <code>F</code> はSelf-attentionまたはFFN、<code>x</code> はその入力を表す。</p>
+
+      <div class="grid-cards">
+        <div class="card">
+          <h4>Post-Norm</h4>
+          <p><code>LN(x + F(x))</code>。Attention/FFNの出力へ元の入力を足してから正規化する。元TransformerとBERTの配置だが、非常に深いモデルではresidual経路にも正規化が入り、初期学習の勾配が不安定になりやすい。</p>
+        </div>
+        <div class="card">
+          <h4>Pre-Norm</h4>
+          <p><code>x + F(LN(x))</code>。先に入力を正規化してからAttention/FFNへ渡し、その結果を未加工のresidual経路へ加える。勾配が恒等経路を通りやすく、深いTransformerを比較的安定して学習しやすい。</p>
+        </div>
+      </div>
+
+      <p>Pre-Normは学習安定性のため近年よく採用されるが、常に最終性能が高いとは限らない。また実装によっては最後にもう一度normalizationを置く。したがって「Pre-Norm」は正規化手法の名前ではなく、<strong>正規化の配置</strong>を表す言葉である。</p>
+
+      <h3>RMSNorm：平均を引かず大きさだけを整える</h3>
+      <p><strong>RMSNorm（Root Mean Square Normalization）</strong>は、hidden stateの二乗平均平方根（RMS）で各値を割り、ベクトル全体の大きさをそろえる。LayerNormと異なり平均を引くre-centeringを行わず、通常は加算bias <code>β</code> も持たない。そのため計算がやや単純で、現代のLLMで広く使われる。</p>
+
+      <div class="formula">
+        RMSNorm(x) = g ⊙ x / √(mean(x²) + ε)
+        <small><code>g</code> は学習可能な次元別scale。方向を大きく変えず、主にベクトルの大きさを整える。</small>
+      </div>
+
+      <div class="callout info">
+        <strong>3語の関係</strong>
+        <p><strong>LayerNorm</strong>と<strong>RMSNorm</strong>は「値をどう整えるか」の選択肢で、<strong>Pre-Norm</strong>はそれらを「sub-layerの前に置く」という配置である。したがって、実際のモデルは「Pre-Norm構成でRMSNormを使う」のように両者を組み合わせられる。</p>
       </div>
 
       <figure class="shot">
@@ -514,6 +595,8 @@ flowchart TD
 
     <section id="sparse-attention">
       <h2>5. Dense Attention の二乗コストと疎化</h2>
+      <p>この節では、通常のSelf-attention（Dense Attention）で文章が長くなると計算量とメモリ使用量が二乗で増える理由を確認する。続いて、参照先を近傍へ限定するSliding-window Attention、重要なtokenだけ全体を参照するglobal attention、両者を組み合わせるLongformerを説明し、層を重ねたときのreceptive fieldと疎な計算を高速化へつなげる実装上の要点まで扱う。</p>
+
       <p>長さ <code>n</code> の各 token が全 token を見ると、score 行列は <code>n×n</code> になる。Self-attention の主要計算は <code>O(n²d)</code>、score/weight 行列の保存は head ごとに <code>O(n²)</code> で、長文ほど負担が急増する。</p>
 
       <h3>Longformer と sliding window</h3>
@@ -534,8 +617,27 @@ flowchart TD
 
     <section id="head-sharing">
       <h2>6. MHA・MQA・GQA と KV cache</h2>
+      <p>この節では、自己回帰生成で大きなメモリ帯域を消費するKey/Valueをどこまで共有できるかを扱う。MHA、MQA、GQAのhead構成と品質・速度のトレードオフを比較し、過去tokenのKey/Valueを再利用するKV cacheの仕組みと容量への影響を説明する。</p>
       <p>Attention の別の効率化は、Query head の多様性を残しながら Key/Value head を共有すること。自己回帰Decoderは新tokenを生成するたびに過去のK/Vを再利用するため、K/Vのhead数がKV cacheの容量とmemory bandwidthへ直結する。</p>
-      <p><strong>MHA（Multi-Head Attention）</strong>は各 Query head が専用の Key/Value head を持つ。<strong>MQA（Multi-Query Attention）</strong>は全 Query head で1組の Key/Value を共有し、<strong>GQA（Grouped-Query Attention）</strong>は複数のグループ内で Key/Value を共有する。GQA は MHA の表現力と MQA の省メモリ性の中間を狙う方式である。</p>
+
+      <h3>前提：なぜ複数のAttention headを使うのか</h3>
+      <p>1つのAttentionは、入力から作ったQuery（何を探すか）とKey（何を持つか）の一致度で参照先を決め、対応するValue（取り出す情報）を混ぜる。複数headを使うと、あるheadは近くの構文、別のheadは遠い照応のように、異なる射影空間で複数の関係を並列に捉えられる。MHA・MQA・GQAの違いは、<strong>複数のQuery headを維持したまま、Key/Value headを何組用意するか</strong>にある。</p>
+
+      <h3>MHA：各Queryが専用のKey/Valueを持つ</h3>
+      <p><strong>MHA（Multi-Head Attention）</strong>は、<code>H</code> 個のheadそれぞれに独立したQuery、Key、Valueの射影を用意する。例えば32 headなら、Q/K/Vをそれぞれ32組作る。各headが独自のK/V表現を持てるため表現容量は大きいが、自己回帰生成では過去tokenについて32組のK/Vをlayerごとに保存し、次のtokenを生成するたびに読み出す必要がある。</p>
+
+      <h3>MQA：すべてのQueryで1組のKey/Valueを共有する</h3>
+      <p><strong>MQA（Multi-Query Attention）</strong>は、Query headを<code>H</code> 個残しながら、KeyとValueを全headで1組だけ共有する。各Queryは異なる「探し方」を維持するが、検索対象となるK/V表現は共通になる。MHAが32組のK/Vを持つ例ならMQAは1組だけなので、KV cacheの理論上の主要部分とその読込み量はおよそ<code>1/32</code>になる。</p>
+      <p>decodeでは1 stepごとの計算量が小さくても、大きなKV cacheをGPUメモリから読む時間がボトルネックになり得る。MQAはこのmemory bandwidthを大幅に減らし、同じメモリで長いcontextや多い同時requestを扱いやすくする。一方、全Queryが同じK/Vを使うため、MHAより表現の自由度が下がり、モデルや学習条件によっては品質へ影響し得る。</p>
+
+      <h3>GQA：複数QueryのグループごとにKey/Valueを共有する</h3>
+      <p><strong>GQA（Grouped-Query Attention）</strong>はMHAとMQAの中間で、<code>H</code> 個のQuery headを<code>G</code> グループへ分け、グループごとに1組のK/Vを共有する。例えばQueryが32 head、KVが8 headなら、4個のQuery headが1組のK/Vを共有する。MHAは<code>G=H</code>、MQAは<code>G=1</code>という両端の特殊ケースとして捉えられる。</p>
+      <p>GQAはK/Vの種類を複数残すことでMQAより表現力を保ちつつ、MHAよりKV cacheを小さくする。上の32 Query / 8 KVの例では、KV cacheの主要部分はMHAのおよそ<code>8/32 = 1/4</code>になる。この品質と推論効率の折衷から、近年のDecoder-only LLMで採用されることが多い。</p>
+
+      <div class="callout info">
+        <strong>覚え方</strong>
+        <p>Query head数を32とすると、<strong>MHAは「32人が各自の資料を持つ」</strong>、<strong>MQAは「32人が1冊の資料を共有する」</strong>、<strong>GQAは「数人ずつの班で1冊を共有する」</strong>構成である。共有を増やすほどK/Vの保存・読込みは減るが、各Query専用の情報表現は少なくなる。</p>
+      </div>
 
       <div class="mermaid">
 flowchart TD
@@ -566,7 +668,7 @@ flowchart TD
 
     <section id="families">
       <h2>7. Transformerモデルの3系統</h2>
-      <p>後半は、元TransformerのEncoderとDecoderをどこまで残すかでモデルを3群に整理する。</p>
+      <p>この節では、元TransformerのEncoderとDecoderをどこまで残すかを基準に、Encoder–Decoder、Encoder-only、Decoder-onlyの3系統を整理する。それぞれが使うAttention、代表モデル、得意なタスクを比較した後、T5のtext-to-text設計とspan corruptionを詳しく見る。</p>
 
       <figure class="shot">
         <img src="../images/stanford-cme295-transformer-models-tricks-lecture2/05-transformer-families.jpg" alt="Encoder-Decoder、Encoder-only、Decoder-onlyの3系統と代表モデルを示す表。" loading="lazy" />
@@ -585,7 +687,36 @@ flowchart TD
       </div>
 
       <h3>T5 family</h3>
-      <p>T5（Text-to-Text Transfer Transformer）は全タスクをtext-to-textへ統一する。事前学習で使う <strong>span corruption</strong> は、文章から連続した複数 token のまとまり（span）を隠し、元の内容を復元させる自己教師あり課題である。隠した各箇所は <strong>sentinel token</strong> と呼ぶ固有の目印（<code>&lt;extra_id_0&gt;</code> 等）へ置き換え、Decoderはその目印の順に欠落spanを生成する。T5ではtokenの15%を平均長3のspanとして選ぶ。mT5は多言語版、ByT5は学習済みsubword tokenizerを使わずUTF-8 byte列を直接処理する。</p>
+      <p><strong>T5（Text-to-Text Transfer Transformer）</strong>は、翻訳・要約・分類・質問応答など、形式の異なるタスクをすべて「テキストを入力し、テキストを出力する問題」として統一するために提案されたEncoder–Decoderモデルである。タスクごとに専用の出力構造を設計する代わりに、入力の先頭へ指示を付け、同じモデル・同じ学習損失・同じ生成処理を再利用できる。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>タスク</th><th>T5への入力例</th><th>出力例</th></tr></thead>
+          <tbody>
+            <tr><td>翻訳</td><td><code>translate English to German: That is good.</code></td><td><code>Das ist gut.</code></td></tr>
+            <tr><td>要約</td><td><code>summarize: 長い記事本文...</code></td><td><code>記事の短い要約</code></td></tr>
+            <tr><td>感情分類</td><td><code>sentiment: この映画は素晴らしい</code></td><td><code>positive</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>この統一形式が必要になった背景は、従来のNLPでタスクごとにモデル構造・損失関数・出力headを作り分けていたため、知識や実装を再利用しにくかったことにある。T5では分類ラベルさえ文字列として生成するため、大規模な事前学習で得た知識を多様なタスクへ同じ手順で転用できる。</p>
+
+      <h3>Span corruption：欠けた文章を生成して復元する</h3>
+      <p>T5の事前学習では、正解ラベルを人が用意する代わりに、元の文章から自動的に問題と正解を作る。文章内の連続した複数tokenをランダムに選んで隠し、その欠落部分をDecoderに生成させる。この課題を<strong>span corruption</strong>と呼ぶ。単語を1個ずつ隠すだけでなく、連続したまとまりを復元させることで、Encoderは前後の文脈を読み、Decoderは複数tokenからなる自然なフレーズを生成する練習を同時に行う。</p>
+
+      <div class="callout info">
+        <strong>具体例</strong>
+        <p>元の文が <code>The cute dog walks in the park.</code> の場合、入力を <code>The &lt;extra_id_0&gt; walks in &lt;extra_id_1&gt;.</code> とし、正解出力を <code>&lt;extra_id_0&gt; cute dog &lt;extra_id_1&gt; the park &lt;extra_id_2&gt;</code> とする。<code>&lt;extra_id_0&gt;</code> などは<strong>sentinel token</strong>と呼ぶ欠落位置の目印であり、どの復元文字列がどの穴に入るかをEncoderとDecoderへ伝える。</p>
+      </div>
+
+      <p>元論文の設定では、入力tokenのおよそ15%を隠し、1か所あたり平均3 tokenのspanにまとめる。15%という値は文章の大部分を文脈として残しながら、十分な予測問題を作るための設定であり、spanは意味的な句を人が選ぶのではなくランダムに作る。学習後は、翻訳や要約のように入力を読んで別の文字列を生成するタスクへfine-tuningする。</p>
+
+      <h3>mT5とByT5：言語と入力単位を変えた派生モデル</h3>
+      <ul>
+        <li><strong>mT5</strong>：T5のtext-to-text設計を多言語データへ拡張したモデル。1つのモデルで多数の言語を扱い、言語間で学習した知識を共有する用途を狙う。</li>
+        <li><strong>ByT5</strong>：WordPieceやSentencePieceのような学習済みsubword語彙を使わず、UTF-8のbyte列を直接入力するモデル。綴り揺れや未知語、言語ごとのtokenizer設計を避けられる一方、同じ文章でも系列が長くなり計算量が増えやすい。</li>
+      </ul>
 
       <div class="callout warning">
         <strong>公式資料による補正：ByT5 の byte</strong>
@@ -596,10 +727,25 @@ flowchart TD
 
     <section id="bert">
       <h2>8. BERT：Encoder-only の双方向表現</h2>
-      <p>BERT は <strong>Bidirectional Encoder Representations from Transformers</strong>。Decoderを外し、因果maskのないEncoder Self-attentionにより、各tokenが左右両方の文脈を見る。生成は不得意だが、分類や抽出に適したcontextual representationを作る。</p>
+      <p>この節では、BERTがEncoder-only構成で左右両方の文脈を読む仕組みを説明する。ELMoとの違い、WordPieceとspecial token、token・position・segment embeddingから成る入力表現、BERT-baseの層数・hidden size・最大位置を順に確認する。</p>
+      <p>BERT は <strong>Bidirectional Encoder Representations from Transformers</strong> の略で、文章を生成するDecoderを持たず、入力を理解するTransformer Encoderだけを重ねたモデルである。因果maskを使わないため、各tokenは左側と右側の両方を同時に参照できる。例えば <code>bank</code> の表現を、前後に <code>money</code> があるか <code>river</code> があるかによって変えられる。この文脈依存の表現を、分類・固有表現抽出・抽出型質問応答へ利用する。</p>
 
       <h3>ELMoとの関係</h3>
-      <p>同じ2018年のELMoも左右文脈を持つ表現を作ったが、2層のforward/backward LSTMを使うfeature-based方式で、再帰による並列化の難しさが残る。BERTはTransformer Encoderで深い双方向相互作用を実現し、事前学習済み本体を下流taskへfine-tuneする。</p>
+      <p><strong>ELMo（Embeddings from Language Models）</strong>は、BERT以前に「同じ単語でも文脈によってベクトルを変える」ことを実現したモデルである。ただし、左から右へ読むforward LSTMと右から左へ読むbackward LSTMを別々に学習し、最後に両方向の表現を連結する。各方向のLSTM内部では反対側の文脈を同時には見ない。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>比較点</th><th>ELMo</th><th>BERT</th></tr></thead>
+          <tbody>
+            <tr><td>系列の処理</td><td>forward LSTMとbackward LSTMが、左右の文脈を別々に逐次処理</td><td>Transformer Self-attentionが、各層で左右の全tokenを同時に参照</td></tr>
+            <tr><td>左右文脈の結合</td><td>独立した2方向の表現を後で連結</td><td>左右の情報が各Transformer層の内部で相互作用</td></tr>
+            <tr><td>下流タスクへの使い方</td><td>事前学習モデルを主に固定し、得られたベクトルを追加featureとして既存モデルへ渡す</td><td>小さな出力headを追加し、通常はBERT本体も含めてend-to-endでfine-tuning</td></tr>
+            <tr><td>並列計算</td><td>LSTMは前時刻のstateが必要なため、token方向の並列化が難しい</td><td>同一層の全tokenをまとめて処理しやすい</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>したがって、ELMoは「文脈化した単語featureを既存モデルへ追加する」方式、BERTは「深い双方向Encoder全体を目的のタスクへ適応させる」方式という違いがある。BERTは左右文脈をより早い層から統合でき、モデル本体をfine-tuningすることでタスクに必要な表現まで調整できる。</p>
 
       <figure class="shot">
         <img src="../images/stanford-cme295-transformer-models-tricks-lecture2/06-bert-inputs.jpg" alt="BERTのWordPiece、約3万語彙、CLS、SEP、MASK tokenを説明するInput processingスライド。" loading="lazy" />
@@ -607,17 +753,27 @@ flowchart TD
       </figure>
 
       <h3>入力表現</h3>
-      <ul>
-        <li><strong>WordPiece</strong>：単語を、学習済み語彙にある subword（単語より小さい文字列単位）へ分割する tokenization。BERT英語版は約30,000語彙で、未知語も既知の共通部分から表現しやすくする。</li>
-        <li><strong>[CLS]</strong>：先頭のspecial token。最終stateを文全体の分類へ使う。</li>
-        <li><strong>[SEP]</strong>：文末と文ペアの境界。</li>
-        <li><strong>Segment embedding</strong>：各 token が文Aと文Bのどちらに属するかを示す学習ベクトル。token embedding、position embedding と要素ごとに加算し、文ペアの境界情報をモデルへ渡す。</li>
-        <li><strong>Cased / uncased</strong>：大文字小文字を保持するかをpreprocessingと語彙で選ぶ。</li>
-      </ul>
+      <p>BERTは各入力位置について、<strong>token embedding + position embedding + segment embedding</strong> の3ベクトルを要素ごとに足し、その合計をEncoderへ渡す。これにより「何というtokenか」「何番目か」「文Aと文Bのどちらか」を同時に表現する。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>要素</th><th>何を表すか</th><th>具体例と用途</th></tr></thead>
+          <tbody>
+            <tr><td><strong>WordPiece</strong></td><td>単語を、約30,000個の学習済みsubword語彙へ分割するtokenizer</td><td><code>playing</code> を <code>play</code> と <code>##ing</code> のように分け、未登録の活用形や珍しい単語も既知部分から表す。語彙を有限に保ち、未知語を減らす。</td></tr>
+            <tr><td><strong>[CLS]</strong></td><td>入力全体を代表させるため、必ず先頭へ置く学習可能なspecial token</td><td>Self-attentionを通じて全文の情報を集め、その最終hidden stateを感情分類やNSPなど文単位の判定へ渡す。最初から意味を持つのではなく、学習によって集約役になる。</td></tr>
+            <tr><td><strong>[SEP]</strong></td><td>文の終端、または2文の境界を示すspecial token</td><td><code>[CLS] 文A [SEP] 文B [SEP]</code> の形で、質問と本文などを1系列へ入れても境界を識別できる。</td></tr>
+            <tr><td><strong>Token embedding</strong></td><td>WordPiece tokenの意味を表す学習ベクトル</td><td><code>play</code> など各語彙IDをhidden size次元のベクトルへ変換する。</td></tr>
+            <tr><td><strong>Position embedding</strong></td><td>系列内の絶対位置を表す学習ベクトル</td><td>同じtokenでも1番目と10番目を区別する。BERT-baseでは最大512位置分の表を学習する。</td></tr>
+            <tr><td><strong>Segment embedding</strong></td><td>各tokenが文Aか文Bのどちらに属するかを表す学習ベクトル</td><td>文ペア入力で、同じ位置系列の中にある2文の役割を区別する。単一文では通常すべてsegment Aを使う。</td></tr>
+            <tr><td><strong>Cased / uncased</strong></td><td>大文字・小文字を別tokenとして保持するかを決める前処理と語彙の設計</td><td>Casedは<code>Apple</code>と<code>apple</code>を区別し、固有名詞に有利。Uncasedは小文字化して表記揺れと語彙数を減らす。</td></tr>
+          </tbody>
+        </table>
+      </div>
 
       <div class="callout warning">
-        <strong>公式BERT論文による補正</strong>
-        <p>BERTのposition embeddingは<strong>学習型の絶対位置表</strong>で、元Transformerの固定sinusoidalではない。最大長は512。また元Transformer-baseは6 Encoder + 6 Decoder、BERT-baseは12 Encoderのみであり、「12層」の意味を区別する必要がある。</p>
+        <strong>公式BERT論文による補正：位置数と「12層」の意味</strong>
+        <p>BERTのposition embeddingは、元Transformerのようにsin/cosの式から計算する固定値ではなく、位置0〜511に対応するベクトルを学習する<strong>絶対位置表</strong>である。そのため標準BERTへ入力できる系列はspecial tokenも含め最大512 tokenで、表に存在しない513番目以降をそのまま扱うことはできない。</p>
+        <p>また元Transformer-baseの「6層Encoder + 6層Decoder」と、BERT-baseの「12層Encoder」は構成が異なる。どちらも合計12ブロックだが、BERTには生成用DecoderとCross-attentionがなく、12層すべてを双方向の入力理解へ使う。</p>
       </div>
 
       <div class="stat-grid">
@@ -631,7 +787,8 @@ flowchart TD
 
     <section id="bert-pretraining">
       <h2>9. BERT の事前学習：MLM と NSP</h2>
-      <p>BERT は人手ラベルなしのraw textから自動的に教師信号を作る<strong>自己教師あり学習</strong>を行い、その後に少量のラベル付きdataで下流taskへfine-tuneする。</p>
+      <p>この節では、人手でラベルを付けずにBERTへ言語表現を学ばせる2つの事前学習課題を扱う。MLMでどのtokenをどの割合で隠して復元させるか、NSPで2文の連続性をどう分類するか、これらが自己教師あり学習と呼ばれる理由を説明する。</p>
+      <p>BERTはWikipediaや書籍のような大量の文章を先に読み、一般的な語彙・文法・文脈関係を学ぶ。この段階を<strong>事前学習（pretraining）</strong>と呼ぶ。人が正解ラベルを付ける代わりに、元の文章を加工して正解を自動生成するため、<strong>自己教師あり学習（self-supervised learning）</strong>に分類される。事前学習後、少量のラベル付きdataで目的のタスクへfine-tuningする。</p>
 
       <div class="mermaid">
 flowchart TD
@@ -651,16 +808,29 @@ flowchart TD
       </figure>
 
       <h3>Masked Language Model（MLM）</h3>
-      <p><strong>MLM（Masked Language Model）</strong>は、入力の一部を隠し、左右両方の文脈から元の token を当てさせる自己教師あり学習である。BERTでは次の規則で予測対象を作る。</p>
+      <p><strong>MLM（Masked Language Model）</strong>は、文章の一部を穴埋め問題へ変換し、隠す前のtokenを予測させる課題である。例えば <code>猫は魚を食べた</code> を <code>猫は[MASK]を食べた</code> に変え、正解 <code>魚</code> を当てさせる。予測には左側の <code>猫は</code> と右側の <code>を食べた</code> を同時に使えるため、BERTは双方向の文脈を学ぶ。</p>
+      <p>すべてのtokenを隠すと文脈がなくなり、まったく隠さないと予測問題にならない。そこでBERTは入力tokenの15%だけを予測対象として選び、その15%を次の3種類に分ける。損失は選ばれた位置の元tokenを正しく予測できたかについて計算する。</p>
       <ol>
-        <li>WordPiece token の15%を予測対象に選ぶ。</li>
-        <li>選んだtokenの80%を <code>[MASK]</code>、10%をrandom token、10%を元のままにする。</li>
-        <li>左右の文脈を同時に使って元tokenを予測し、双方向表現を学ぶ。</li>
+        <li><strong>80%を <code>[MASK]</code> へ置換</strong>：通常の穴埋め問題として、周囲の文脈から元tokenを復元する。</li>
+        <li><strong>10%を別のrandom tokenへ置換</strong>：入力tokenが正しいとは限らない状況を作り、単純に見えているtokenを信用するだけの学習を防ぐ。</li>
+        <li><strong>10%は元のtokenのまま</strong>：通常の文章に現れるtokenについても、文脈に合う表現を学ばせる。</li>
       </ol>
-      <p>常に[MASK]へ変えないのは、fine-tuningや推論では[MASK]が現れないというpretrain–downstream差を弱めるためである。</p>
+      <p>100 tokenの文章なら、平均15 tokenが予測対象となり、そのうち約12 tokenが<code>[MASK]</code>、残りがrandomまたは unchangedになる。常に<code>[MASK]</code>へ変えない理由は、fine-tuningや実際の入力には通常<code>[MASK]</code>が現れないためである。randomとunchangedを混ぜることで、事前学習時だけに存在する記号へ過度に依存する差を小さくする。</p>
 
       <h3>Next Sentence Prediction（NSP）</h3>
-      <p><strong>NSP（Next Sentence Prediction）</strong>は、2つの文が原文で連続していたかを当てるBERTの事前学習課題である。文Aと文Bを[SEP]でつなぎ、50%は実際の次文（IsNext）、50%はcorpusから選んだrandom文（NotNext）とする。[CLS]の最終stateから二値分類し、文間関係を学ばせる狙いだった。</p>
+      <p><strong>NSP（Next Sentence Prediction）</strong>は、2つの文を見せて「文Bは原文で文Aの直後に続いていたか」を二択で判定させる課題である。MLMがtoken同士の関係を学ぶのに対し、NSPは質問と回答、前提と結論のような<strong>文と文の関係</strong>を[CLS]の表現へ学ばせる目的で導入された。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ラベル</th><th>文A</th><th>文B</th><th>意味</th></tr></thead>
+          <tbody>
+            <tr><td><strong>IsNext（50%）</strong></td><td><code>雨が降り始めた。</code></td><td><code>私は傘を開いた。</code></td><td>文Bは元の文章で実際に文Aの次に続いていた。</td></tr>
+            <tr><td><strong>NotNext（50%）</strong></td><td><code>雨が降り始めた。</code></td><td><code>クジラは哺乳類である。</code></td><td>文Bは別の場所からランダムに選ばれ、文Aの次文ではない。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>入力は <code>[CLS] 文A [SEP] 文B [SEP]</code> とし、最終層の[CLS]ベクトルを小さな二値分類器へ渡してIsNext / NotNextを予測する。BERT論文では文ペアを扱う質問応答や自然言語推論へ役立つことを期待した。ただし後のRoBERTaはNSPを外しても性能を改善できたため、NSPが常に不可欠というわけではなく、data量や学習方法の影響も大きい。</p>
 
       <div class="callout info">
         <strong>用語の精密化</strong>
@@ -670,38 +840,61 @@ flowchart TD
 
     <section id="bert-finetuning">
       <h2>10. Fine-tuning と下流task</h2>
-      <p>事前学習済みBERTへ小さなtask-specific headを付ける。文分類は[CLS]、token分類は各token、抽出型QAは各tokenに対するanswer start/end scoreを使う。</p>
+      <p>この節では、事前学習済みBERTを具体的なタスクへ適応させるfine-tuningを扱う。文分類、NER、抽出型QAでどの出力表現へtask-specific headを付けるかを示し、全パラメータを更新する標準手順と、一部を凍結する選択肢の違いを整理する。</p>
+      <p>事前学習済みBERTは「文章を文脈化したベクトルへ変換する共通部品」であり、そのままでは感情ラベルや回答位置を出力しない。そこで目的のタスクに必要な形式へ変換する小さな出力層を追加する。これを<strong>task-specific head</strong>と呼ぶ。BERT本体とheadをラベル付きdataで追加学習し、一般的な言語知識を具体的な判断へ適応させる工程が<strong>fine-tuning</strong>である。</p>
+
+      <h3>Fine-tuningの基本手順</h3>
+      <ol>
+        <li>目的のタスクに合わせて入力をWordPiece化し、[CLS]や[SEP]を付けてBERTへ渡す。</li>
+        <li>BERTが各tokenについて、文脈を反映した最終hidden stateを出力する。</li>
+        <li>必要な出力位置へ小さなLinear層などのtask-specific headを接続する。</li>
+        <li>正解ラベルとの誤差を逆伝播し、標準手順ではheadだけでなくBERT本体の重みも一緒に更新する。</li>
+      </ol>
 
       <div class="grid-cards">
-        <div class="card"><h4>Sentiment / 文分類</h4><p>[CLS]の最終state → Linear / FFN → class probability。</p></div>
-        <div class="card"><h4>NER / Token classification</h4><p>各tokenのcontextual stateへ同じ分類headを適用。</p></div>
-        <div class="card"><h4>Extractive QA</h4><p>各位置へstart headとend headを適用し、回答spanを選ぶ。</p></div>
+        <div class="card"><h4>Sentiment / 文分類</h4><p>文章全体の情報を集めた[CLS]の最終stateをLinear層へ渡し、positive / negativeなどのclass probabilityを出す。入力1件につき1ラベルを選ぶ。</p></div>
+        <div class="card"><h4>NER / Token classification</h4><p>各tokenの最終stateへ同じ分類headを適用し、人名（PER）・地名（LOC）・組織名（ORG）・その他（O）などを位置ごとに判定する。</p></div>
+        <div class="card"><h4>Extractive QA</h4><p>質問と本文を1系列に入れ、本文内の各tokenへ「回答開始らしさ」と「回答終了らしさ」のscoreを出す。最も整合するstart/end位置を選び、その間のspanを回答として抜き出す。</p></div>
       </div>
 
       <div class="callout warning">
-        <strong>公式BERT論文による補正：標準fine-tuningは凍結しない</strong>
-        <p>Encoderを固定してheadだけ学習するfeature extractionも可能だが、BERT論文の標準手順は<strong>事前学習済み全パラメータと出力headを一緒に更新</strong>する。下流data量・計算予算・domain差に応じて一部を凍結するのは別の選択肢である。</p>
+        <strong>公式BERT論文による補正：標準fine-tuningはBERT本体も更新する</strong>
+        <p><strong>凍結（freeze）</strong>とは、事前学習済みEncoderの重みを固定し、出力headだけを学習することを指す。これは計算量や過学習を抑えたい場合のfeature extraction方式である。一方、BERT論文の標準fine-tuningは、<strong>事前学習済みBERTの全パラメータと追加したheadを一緒に更新</strong>し、内部表現そのものをタスクへ合わせる。ラベルdataが非常に少ない場合や計算予算が限られる場合には、一部または全部を凍結する選択肢もある。</p>
         <p><a href="https://arxiv.org/abs/1810.04805" target="_blank" rel="noopener">一次資料: BERT §4</a></p>
       </div>
 
       <h3>長所と制約</h3>
-      <ul>
-        <li>大量のunlabeled textで一般表現を学び、少量のlabelで高性能な分類器へ適応できる。</li>
-        <li>Encoder-onlyなので自由なtext生成には向かない。</li>
-        <li>BERT-baseでも約110M parameters、最大位置512で、長文には疎Attention等の工夫が必要。</li>
-        <li>pretrainingとfine-tuningの2段階が必要で、taskごとにheadと学習dataを用意する。</li>
-      </ul>
+      <p>BERTの利点は、大量のラベルなし文章から先に一般的な言語知識を学んでおけることにある。個別タスクでは、ゼロから大規模モデルを学習する代わりに、比較的少量のラベル付きdataで既存の表現を調整できる。この<strong>事前学習→fine-tuning</strong>という流れにより、感情分類・NER・質問応答など多くの理解タスクへ同じBERTを再利用できる。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>制約</th><th>なぜ起こるか</th><th>実務上の意味</th></tr></thead>
+          <tbody>
+            <tr><td>自由な長文生成が不得意</td><td>Encoder-onlyで、次tokenを1つずつ生成する因果Decoderを持たない</td><td>分類や抽出には向くが、対話や文章生成にはGPT系などDecoder-onlyモデルが適する。</td></tr>
+            <tr><td>入力長は標準で最大512 token</td><td>学習済みposition embedding表が0〜511までで、Self-attentionの計算量も長さの二乗で増える</td><td>長文は分割するか、Longformerなど長文向け構造を使う必要がある。</td></tr>
+            <tr><td>モデルが大きい</td><td>BERT-baseでも約110M parametersを持つ</td><td>学習・推論のメモリと時間が必要で、DistilBERTのような圧縮モデルが有用になる。</td></tr>
+            <tr><td>タスクごとのdataと学習が必要</td><td>出力形式が異なるため、headと正解ラベルを用意してfine-tuningする</td><td>事前学習済みモデルをそのまま置くだけでは、目的タスクの答えは出せない。</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section id="extensions">
       <h2>11. DistilBERT と RoBERTa</h2>
+      <p>この節では、BERTを基点とする2つの改良方向を比較する。DistilBERTでは知識蒸留によってモデルを小型・高速化する方法を、RoBERTaではdynamic masking、NSPの除去、data量やbatch sizeなど事前学習recipeの見直しによって性能を高める方法を説明する。</p>
       <h3>DistilBERT：知識蒸留で小型化</h3>
       <p><strong>Knowledge Distillation（知識蒸留）</strong>は、大きな teacher モデルの出力分布を教師信号として、小さな student モデルへ判断の傾向を移す圧縮手法である。正解を1クラスだけ示す hard label に加え、各classへの相対的な確信度を含む soft probability を学ばせる。</p>
       <p>teacherとstudentの分布差は、<strong>KL divergence（Kullback–Leibler divergence）</strong>などで測る。これは一方の確率分布をもう一方で近似したときの情報のずれを表す非対称な量で、0に近いほど分布が近い。temperatureで分布を柔らかくしてからこの差を縮める。DistilBERTはBERT-baseの12層から6層へ減らし、distillation loss、MLM loss、hidden stateを近づけるcosine lossを組み合わせる。</p>
+      <p>次の3つの数字は、DistilBERT論文が<strong>BERT-baseとの比較</strong>として報告した値である。「97%正解する」という意味ではなく、モデルサイズ・推論速度・GLUEベンチマーク上の言語理解性能を、それぞれ別の基準で比較している。</p>
       <div class="stat-grid">
-        <div class="stat-card"><div class="num">40%</div><div class="label">小型化（論文報告）</div></div>
-        <div class="stat-card"><div class="num">60%</div><div class="label">高速化（論文報告）</div></div>
-        <div class="stat-card"><div class="num">97%</div><div class="label">言語理解性能を保持（論文報告）</div></div>
+        <div class="stat-card"><div class="num">40%</div><div class="label">BERT-baseよりparameter数を削減（約110M → 約66M）</div></div>
+        <div class="stat-card"><div class="num">60%</div><div class="label">論文の推論速度測定でBERT-baseより高速</div></div>
+        <div class="stat-card"><div class="num">97%</div><div class="label">BERT-baseのGLUE総合scoreに対して保持した割合</div></div>
+      </div>
+
+      <div class="callout info">
+        <strong>数字の読み方</strong>
+        <p><strong>40%小型</strong>は、主にEncoder層を12層から6層へ減らし、parameter数を約110Mから約66Mへ削減したことを指す。<strong>60%高速</strong>は論文の特定環境・入力条件で測った推論時間の比較であり、あらゆるhardwareやbatch sizeで必ず同じ倍率になる保証ではない。<strong>97%保持</strong>は複数の言語理解タスクからなるGLUEの集約scoreをBERT-baseと比べた割合で、全タスクで97% accuracyという意味ではない。</p>
       </div>
 
       <h3>RoBERTa：BERTの学習recipeを再検証</h3>
@@ -715,6 +908,7 @@ flowchart TD
 
     <section id="takeaways">
       <h2>12. 講義全体のメッセージ</h2>
+      <p>この節では、ここまで扱った個別技術を、位置表現、学習安定性、推論効率、モデル系統、事前学習目的という設計判断へまとめ直す。モデル名を暗記するのではなく、どの課題に対して何を変更したのかを読み取るための観点を整理する。</p>
       <div class="grid-cards">
         <div class="card"><h4>位置は入力からAttention内部へ</h4><p>absolute addからrelative bias、Q/K rotationへ移り、score計算と位置を密接に結び付けた。</p></div>
         <div class="card"><h4>安定性と効率は別軸</h4><p>Pre-Norm/RMSNormは学習安定性、Sparse AttentionとGQAは長文・decode時memoryを改善する。</p></div>
@@ -726,6 +920,7 @@ flowchart TD
 
     <section id="glossary">
       <h2>13. 公式・一次資料で補う専門用語集</h2>
+      <p>この節では、本文で説明した主要用語を短い定義として再掲し、T5、ALiBi、RoFormer、BERTなどの公式論文・一次資料へ結び付ける。本文を読み返す際の索引と、より詳しく調べるための入口として利用できる。</p>
       <div class="glossary">
         <article class="term">
           <h3>Relative Position Bias</h3>
@@ -812,6 +1007,7 @@ flowchart TD
 
     <section id="references">
       <h2>14. 参考資料</h2>
+      <p>この節では、講義動画と公式スライドに加え、本文の説明や補足に使用した位置表現、正規化、疎Attention、head共有、BERT派生モデルの原論文を一覧にする。</p>
       <ol class="refs">
         <li><a href="https://www.youtube.com/watch?v=yT84Y5zCnaA" target="_blank" rel="noopener">Stanford Online — CME295 Lecture 2: Transformer-Based Models &amp; Tricks</a></li>
         <li><a href="https://cme295.stanford.edu/syllabus/" target="_blank" rel="noopener">CME295 official syllabus</a> / <a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture2.pdf" target="_blank" rel="noopener">official Lecture 2 slides</a></li>
