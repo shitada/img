@@ -488,7 +488,7 @@
 
     <section id="roadmap">
       <h2>2. Transformer へ至る問題解決の連鎖</h2>
-      <p>講義の構成は、前の手法の弱点が次の手法の動機になるよう設計されている。単語を数値へ変えるだけでは語順と文脈が消え、RNN で語順を取り戻すと長距離依存と逐次計算が問題になり、Attention で過去の必要箇所へ直接つなぎ、Transformer では Self-attention を中心に再構成する。</p>
+      <p>この節では、前の手法の弱点が次の手法を必要とした流れをたどる。単語を数値へ変えるだけでは語順と文脈が消え、RNN で語順を取り戻すと長距離依存と逐次計算が問題になり、Attention で過去の必要箇所へ直接つなぎ、Transformer では Self-attention を中心に再構成する。</p>
 
       <div class="mermaid">
 flowchart TD
@@ -503,7 +503,7 @@ flowchart TD
         <ul>
           <li><strong>Word2vec</strong>：単語を数値ベクトルに変え、似た文脈で使われる単語ほど近くに配置する手法。単語ごとに固定の「意味の座標」を作るイメージ。</li>
           <li><strong>RNN（Recurrent Neural Network）</strong>：文章を先頭から順に読み、直前までの内容を短いメモとして次の単語へ渡すニューラルネットワーク。</li>
-          <li><strong>LSTM（Long Short-Term Memory）</strong>：RNN のメモに「覚える・忘れる・読み出す」を調整する仕組みを加え、前に出た情報をより長く残しやすくした改良版。</li>
+          <li><strong>LSTM（Long Short-Term Memory）</strong>：RNN が古い情報を失いやすい問題を和らげるため、長期の記憶経路である <strong>cell state</strong> を設けた改良版。forget gate が不要な記憶を捨て、input gate が新情報を書き込み、output gate が cell state のどこを短期出力の hidden state として次の時刻や予測へ渡すかを調整し、長距離依存を扱う系列処理に使う。</li>
         </ul>
         <p>大まかには、Word2vec が単語の意味を数値化し、RNN がその単語を順番に読み、LSTM が RNN の記憶を長持ちさせる、という関係にある。</p>
       </div>
@@ -513,7 +513,8 @@ flowchart TD
 
     <section id="nlp">
       <h2>3. NLP タスクと評価指標</h2>
-      <p>NLP（Natural Language Processing）は、自然言語テキストを計算機で扱う分野である。講義では、出力の形を基準にタスクを3群へ整理する。</p>
+      <p>この節では、自然言語テキストを計算機で扱う NLP（Natural Language Processing）を出力形式で3群に分け、分類と生成で何を評価するかを説明する。</p>
+      <p><strong>NER（Named Entity Recognition、固有表現抽出）</strong>は、非構造化テキストから人名・組織名・地名などを取り出す必要から生まれた系列ラベリングで、各 token にエンティティ種別と範囲（B/I/O など）のラベルを付けてまとまりを復元し、検索・情報抽出・文書構造化に使う。<strong>Perplexity</strong> は、正解文を1つ生成して比較しなくても次 token 予測の不確実さを測るための指標で、正解 token の平均負対数尤度を指数化する。正解へ高い確率を付けるほど低くなり、同じ tokenization・データ条件で言語モデルを比較するのに使えるが、人間が感じる生成品質とは必ずしも一致しない。</p>
 
       <figure class="shot">
         <img src="../images/stanford-cme295-transformer-lecture1/01-nlp-task-taxonomy.jpg" alt="NLP tasks overview の分類スライド。分類タスクの入力テキスト、モデル、単一出力と、感情・意図・言語・トピックの例が表示されている。" loading="lazy" />
@@ -605,7 +606,7 @@ flowchart TD
 
     <section id="tokenization">
       <h2>4. Tokenization：文字列をモデルの処理単位へ</h2>
-      <p>モデルは文字列をそのまま理解せず、数値を処理する。そこで文章を任意の単位へ分割し、各単位を <strong>token</strong> と呼ぶ。どの粒度を選ぶかは、語の意味を再利用できるか、未知語に耐えられるか、系列がどれだけ長くなるかのトレードオフになる。</p>
+      <p>この節では、文字列をモデルが数値化できる単位へ分ける Tokenization と、その粒度の選び方を説明する。分割した各単位を <strong>token</strong> と呼び、単語・subword・文字のどれを選ぶかは、意味の再利用、未知語への耐性、系列長のトレードオフになる。</p>
 
       <figure class="shot">
         <img src="../images/stanford-cme295-transformer-lecture1/02-tokenization.jpg" alt="単語・サブワード・文字レベルのトークン化を、利点と欠点で比較した表。" loading="lazy" />
@@ -638,6 +639,7 @@ flowchart TD
 
     <section id="embeddings">
       <h2>5. One-hot から Word2vec へ</h2>
+      <p>この節では、疎な One-hot が token 間の類似性を表せない問題から、意味を学習できる <strong>token embedding</strong> へ進む理由と Word2vec の学習法を説明する。token embedding は、埋め込み行列から token ID に対応する行を引いて得る（One-hot との積とも表せる）学習可能な密ベクトルで、後段のニューラルネットワークへ token の数値表現を渡すために使う。</p>
       <h3>One-hot の限界</h3>
       <p>語彙サイズを <code>V</code> とすると、One-hot encoding は各 token を長さ <code>V</code> のベクトルで表し、該当位置だけを1にする。識別には使えるが、異なる token 同士の内積は常に0である。したがって、<code>teddy bear</code> と <code>soft</code> のような関連も、無関係な語との違いも表せない。</p>
       <p>講義ではベクトルの向きを比べる <strong>cosine similarity</strong> を導入する。同方向なら1に近く、直交なら0、反対方向なら−1に近い。ただし講師が質疑で強調したように、これは意味的類似度を測る便利な尺度であって唯一の完全な尺度ではない。</p>
@@ -669,8 +671,8 @@ flowchart TD
       <ol>
         <li>入力 token を長さ <code>V</code> の One-hot にする。</li>
         <li>埋め込み行列との積で、語彙より小さい次元 <code>D</code> の中間表現を得る。</li>
-        <li>別の線形変換と Softmax で、次の token に対する <code>V</code> 個の確率を出す。</li>
-        <li>正解 One-hot との Cross-entropy loss を求め、Backpropagation で重みを更新する。</li>
+        <li>別の線形変換で語彙ごとの未正規化スコア（logit）を作り、<strong>Softmax</strong> で各 logit の指数を全語彙の指数和で割る。比較しにくいスコアを合計1の確率分布へ変換し、次 token の選択や学習に使う。</li>
+        <li>確率を正解へ近づけるため、正解 token の負の対数確率 <code>−log p(y)</code> に相当する <strong>Cross-entropy loss</strong> を求める。次に <strong>Backpropagation</strong> が連鎖律で損失から各重みへの勾配を逆向きに計算し、optimizer が埋め込み行列を含む重みを更新する（詳しい手順は RNN 節で扱う）。</li>
         <li>繰り返し学習した後、中間層を token embedding として取り出す。</li>
       </ol>
       <p>講義の toy example は語彙6、埋め込み2次元だが、実際には語彙は数万〜数十万、埋め込みは数百〜数千次元になり得る。768は例として挙げられた値であり、固定規則ではない。大きい埋め込みは表現力を増やす一方、計算量・推論遅延・コストも増えるため、下流タスクとのトレードオフで選ぶ。</p>
@@ -683,7 +685,7 @@ flowchart TD
 
     <section id="rnn">
       <h2>6. RNN と LSTM：語順を得て、長距離で詰まる</h2>
-      <p>単語ベクトルを単純平均すると語順が失われる。RNN（Recurrent Neural Network）は、時刻 <code>t</code> の token と直前の hidden state を受け取り、新しい hidden state を作る。hidden state は「ここまで読んだ系列」の要約であり、同じ計算セルを時刻方向へ繰り返す。</p>
+      <p>この節では、語順を保持する RNN、その長距離依存と勾配の問題、LSTM による緩和を説明する。単語ベクトルを単純平均すると語順が失われるため、RNN（Recurrent Neural Network）は時刻 <code>t</code> の token と直前の <strong>hidden state</strong> を同じ計算セルへ入れ、新しい state を逐次作る。hidden state は固定長の「ここまで読んだ系列」の要約で、分類の特徴量や生成 Decoder へ渡す文脈として使う。</p>
 
       <figure class="shot">
         <img src="../images/stanford-cme295-transformer-lecture1/04-rnn-hidden-state.jpg" alt="RNNを時間方向に展開し、入力x、隠れ状態a、出力yが逐次接続する一般形を示すスライド。" loading="lazy" />
@@ -721,13 +723,14 @@ flowchart TD
 
       <h3>BPTT：Backpropagation を時間方向へ適用する</h3>
       <p>RNN の学習では、同じ RNN セルを時刻ごとに並べた深いネットワークとして計算グラフを展開する。これを <strong>unroll（時間展開）</strong> と呼ぶ。Forward pass では <code>h₁ → h₂ → … → hₜ</code> と順に state を計算し、BPTT（Backpropagation Through Time）では損失から逆向きに各時刻をたどる。全時刻のセルは同じ重みを共有するため、各時刻から届いた勾配を合計して、その共有重みを1回更新する。</p>
+      <p>各 RNN セルでは、重み付き和だけでは層を重ねても線形変換のままなので、通常は <code>tanh</code> などの<strong>活性化関数</strong>を通して非線形性を加え、複雑な系列パターンを表現する。その state ベクトルが前の state の各成分にどれだけ反応するかを並べた微分行列が <strong>Jacobian（ヤコビ行列）</strong>であり、BPTT は時刻ごとの Jacobian を連鎖律で掛けて、過去の state が最終損失へ与えた影響を計算する。</p>
 
       <div class="formula">
         ∂L<sub>T</sub>/∂h<sub>k</sub>
         = ∂L<sub>T</sub>/∂h<sub>T</sub>
         × ∂h<sub>T</sub>/∂h<sub>T−1</sub>
         × … × ∂h<sub>k+1</sub>/∂h<sub>k</sub>
-        <small>時刻 <code>k</code> の state が最終損失へ与える影響は、途中にある多数の微分（実際には行列である Jacobian）の積として伝わる。</small>
+        <small>時刻 <code>k</code> の state が最終損失へ与える影響は、途中にある多数の Jacobian の積として伝わる。</small>
       </div>
 
       <p>この積が長くなることが問題の核心である。単純なスカラーの例では、各段の大きさが <code>0.9</code> なら50段で <code>0.9⁵⁰ ≈ 0.005</code> まで縮み、<code>1.1</code> なら <code>1.1⁵⁰ ≈ 117</code> まで増える。実際の RNN では重み行列と活性化関数の微分が繰り返し掛かるため、勾配が極端に小さくなる <strong>vanishing gradient（勾配消失）</strong>、または極端に大きくなる <strong>exploding gradient（勾配爆発）</strong> が起こり得る。</p>
@@ -748,7 +751,7 @@ flowchart TD
         <p>入力を読む Forward pass は通常どおり先頭から末尾へ進む。BPTT で逆向きになるのは、予測誤差の影響を計算グラフ上で末尾から過去へたどり、どの時刻・重みが損失へ寄与したかを計算する段階である。</p>
       </div>
 
-      <p>LSTM（Long Short-Term Memory）は hidden state に加えて cell state を持ち、何を保持・忘却・出力するかを gate で制御して、長期依存を学びやすくする。ただし逐次性は残る。時刻 <code>t</code> を計算するには前の state が必要なので、系列を一括並列化しにくく、長い入力では学習が遅い。</p>
+      <p>LSTM（Long Short-Term Memory）は hidden state に加えて、勾配と情報を比較的まっすぐ運ぶ cell state を持つ。forget gate が過去の cell state の残す割合、input gate が候補情報を書き込む割合、output gate が現在の cell state から hidden state として公開する割合を学習し、長期依存を保ちやすくする。ただし逐次性は残る。時刻 <code>t</code> を計算するには前の state が必要なので、系列を一括並列化しにくく、長い入力では学習が遅い。</p>
 
       <div class="table-wrap">
         <table>
@@ -764,8 +767,9 @@ flowchart TD
 
     <section id="attention">
       <h2>7. Attention と Self-attention</h2>
+      <p>この節では、入力全体を1本の固定長 state に押し込む問題を Attention がどう緩和し、Self-attention が系列内の各 token を相互参照して文脈化するかを説明する。</p>
       <h3>必要箇所へ直接つなぐ</h3>
-      <p>従来の Encoder–Decoder は、入力系列全体を固定長ベクトルへ圧縮しがちだった。翻訳中の各出力 token が、入力のどこに対応するかを直接参照できれば、遠い情報を state の連鎖だけで運ばなくてよい。Bahdanau ら（2014）の Attention は、出力を予測するたびに関連する Encoder state を重み付けして取り出す。</p>
+      <p><strong>Encoder–Decoder</strong> は、入力と出力の長さが異なる翻訳などを扱うため、Encoder が入力系列を内部表現へ変換し、Decoder がその表現を条件に出力系列を順次作る構成である。従来型は入力全体を固定長ベクトルへ圧縮しがちだったため、Bahdanau ら（2014）の Attention は、各出力 token の予測時に関連する Encoder state を重み付けして直接取り出し、遠い情報を state の連鎖だけで運ぶ必要を減らした。</p>
 
       <figure class="shot">
         <img src="../images/stanford-cme295-transformer-lecture1/05-attention-history.jpg" alt="Attention の歴史として、2014年導入、翻訳の長期依存、Seq2seqの記憶問題を示すスライド。" loading="lazy" />
@@ -800,7 +804,7 @@ flowchart TD
 
     <section id="transformer">
       <h2>8. Transformer アーキテクチャ</h2>
-      <p>元論文の用途は機械翻訳で、左の Encoder が原言語を文脈化し、右の Decoder が訳文を1 token ずつ生成する。両側に Attention と token 単位の FFN（Feed-Forward Network）を積み重ねる。</p>
+      <p>この節では、元論文の機械翻訳 Transformer を Encoder・Decoder と各 sub-layer に分けて説明する。左の Encoder が原言語を文脈化し、右の Decoder が訳文を1 token ずつ生成する。Attention が token 間の情報を混ぜた後、<strong>FFN（Feed-Forward Network）</strong>が各 token に同じ2層の非線形変換を独立に適用し、位置間の混合だけでは足りない特徴の変換・拡張を担う。</p>
 
       <figure class="shot">
         <img src="../images/stanford-cme295-transformer-lecture1/07-transformer-architecture.jpg" alt="TransformerのEncoderとDecoder、Multi-head Attention、Masked Attention、FFN、位置符号化を示す構成図。" loading="lazy" />
@@ -812,7 +816,7 @@ flowchart TD
           <thead><tr><th>場所</th><th>Attention の役割</th><th>Q / K / V の由来</th></tr></thead>
           <tbody>
             <tr><td>Encoder Self-attention</td><td>入力 token を、入力全体の文脈で更新</td><td>すべて Encoder 側</td></tr>
-            <tr><td>Decoder Masked Self-attention</td><td>生成済み token だけを参照し、未来を見ない</td><td>すべて Decoder 側、未来位置を mask</td></tr>
+            <tr><td>Decoder Masked Self-attention</td><td>学習時に正解の未来 token が入力へ見えてしまう情報漏洩を防ぐため、Softmax の前に未来位置のスコアを実質 <code>−∞</code> にする。各位置が生成済みの prefix だけを参照する因果関係を作り、自己回帰生成の学習に使う。</td><td>すべて Decoder 側、未来位置を mask</td></tr>
             <tr><td>Cross-attention</td><td>現在の出力状態から、原文の必要箇所を参照</td><td>Q は Decoder、K/V は Encoder 出力</td></tr>
           </tbody>
         </table>
@@ -820,11 +824,12 @@ flowchart TD
 
       <h3>構成要素</h3>
       <ul>
-        <li><strong>Positional Encoding</strong>：Self-attention 自体は並び順を持たないため、token embedding に位置ベクトルを加える。元論文は sin / cos を使用する。</li>
+        <li><strong>Positional Encoding</strong>：Self-attention 自体は token の並び替えを区別できないため、位置ごとに異なるベクトルを token embedding に加え、語順と相対位置を利用できるようにする。元論文は学習時より長い系列にも適用できる sin / cos を使用する。</li>
         <li><strong>Multi-head Attention</strong>：異なる <code>WQ/WK/WV</code> を持つ複数 head で Attention を並列実行し、異なる関係を学べる自由度を与える。各 head を連結し、<code>WO</code> で元のモデル次元へ戻す。</li>
         <li><strong>FFN</strong>：各位置へ同じ2層ネットワークを適用する。講義では、内部次元を入力より大きくし、特徴を豊かにする自由度を与えると説明する。</li>
-        <li><strong>Residual connection / Layer normalization</strong>：構成図の Add &amp; Norm に含まれる。講義では詳細を掘り下げないが、元論文では各 sub-layer の周囲に置かれる。</li>
-        <li><strong>Label smoothing</strong>：正解を確率1に固定せず、少量を他クラスへ配る。自然言語では次語の妥当解が複数あり得るため、過度な確信を抑え、元論文では BLEU 改善に寄与した。</li>
+        <li><strong>Residual connection</strong>：深い層で入力情報や勾配が失われにくいよう、各 sub-layer の出力へその入力を加算する迂回路である。情報を保ちながら差分を学ばせ、深い block の訓練を助ける。</li>
+        <li><strong>LayerNorm（Layer Normalization）</strong>：各 token の特徴次元を平均0・分散1相当に正規化してから、学習可能な倍率と偏りを適用する。層ごとの値の尺度を安定させ、Residual connection と組み合わせて深いモデルを訓練しやすくする。構成図では両者を Add &amp; Norm と表し、講義では詳細を掘り下げない。</li>
+        <li><strong>Label smoothing</strong>：自然言語では次語の妥当解が複数あり得るため、正解ラベルの確率を <code>1−ε</code> とし、残り <code>ε</code> を他クラスへ配って Cross-entropy を計算する。過度な確信を抑えて汎化を促し、元論文では ε=0.1 が BLEU 改善に寄与した。</li>
       </ul>
 
       <h3>元論文 Transformer-base の値</h3>
@@ -841,7 +846,7 @@ flowchart TD
 
     <section id="calculation">
       <h2>9. Scaled Dot-Product Attention を分解する</h2>
-      <p>入力行列を <code>X</code> とすると、まず <code>Q = XWQ</code>、<code>K = XWK</code>、<code>V = XWV</code> を作る。講義後半は、この行列計算を1段ずつ読み解く。</p>
+      <p>この節では、入力行列 <code>X</code> から <code>Q = XWQ</code>、<code>K = XWK</code>、<code>V = XWV</code> を作り、対応度の計算、スケーリング、重み付け、Value の集約へ進む行列計算を1段ずつ読み解く。</p>
 
       <div class="formula">
         Attention(Q, K, V) = softmax(QK<sup>T</sup> / √d<sub>k</sub>)V
@@ -872,15 +877,15 @@ flowchart TD
 
     <section id="end-to-end">
       <h2>10. 翻訳を端から端まで追う</h2>
-      <p>最後に <code>A cute teddy bear is reading.</code> を原文として、元論文型 Transformer の推論を通しで確認する。</p>
+      <p>この節では、<code>A cute teddy bear is reading.</code> を原文として、元論文型 Transformer が入力を表現し、訳文を終端まで生成する推論過程を通しで確認する。</p>
       <ol>
-        <li><strong>Tokenize</strong>：原文を token へ分割し、BOS（Beginning of Sequence）と EOS（End of Sequence）を付ける。</li>
+        <li><strong>Tokenize</strong>：原文を token へ分割し、自然な文字だけでは示せない系列境界を special token で明示する。BOS（Beginning of Sequence）は Decoder に生成開始を知らせる最初の入力、EOS（End of Sequence）は学習時の終端目標かつ推論時の停止信号になる。</li>
         <li><strong>入力表現</strong>：各 token embedding に、sin / cos による positional encoding を要素ごとに加える。</li>
         <li><strong>Encoder</strong>：入力から Q/K/V を作り、Multi-head Self-attention と FFN を通す。この block を <code>N</code> 回積み、文脈化された原文表現を得る。</li>
         <li><strong>Decoder 開始</strong>：最初は BOS だけを入れる。Masked Self-attention は現在位置より右を見ないため、推論時と学習時の因果性を守る。</li>
         <li><strong>Cross-attention</strong>：Decoder の状態を Q、Encoder の最終出力を K/V とし、今の出力に必要な原文箇所を集約する。</li>
         <li><strong>次 token</strong>：Decoder block と FFN を重ね、Linear + Softmax で語彙全体の確率分布を得て次 token を選ぶ。</li>
-        <li><strong>自己回帰</strong>：選んだ token を Decoder 入力へ戻し、同じ処理を繰り返す。EOS が生成されたら停止する。</li>
+        <li><strong>自己回帰生成（autoregressive generation）</strong>：可変長の系列を作るため、選んだ token を Decoder 入力へ戻し、それまでに生成した prefix を条件に次の1 token を予測する処理を繰り返す。EOS が生成されたら停止する。</li>
       </ol>
 
       <div class="callout">
@@ -989,6 +994,7 @@ flowchart TD
 
     <section id="references">
       <h2>12. 参考資料</h2>
+      <p>この節では、講義内容の確認と専門用語の補足に用いた動画、公式教材、原論文、評価指標の一次資料をまとめる。</p>
       <ol class="refs">
         <li><a href="https://www.youtube.com/watch?v=Ub3GoFaUcds" target="_blank" rel="noopener">Stanford Online — CME295 Transformers &amp; LLMs, Autumn 2025, Lecture 1</a></li>
         <li><a href="https://cme295.stanford.edu/syllabus/" target="_blank" rel="noopener">Stanford CME295 official syllabus</a> / <a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture1.pdf" target="_blank" rel="noopener">official Lecture 1 slides</a></li>

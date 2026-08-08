@@ -223,7 +223,7 @@
     <header class="page">
       <div class="eyebrow">Stanford CME295 / YouTube lecture summary</div>
       <h1>Lecture 4「LLM Training」日本語要約【講義スライド12枚付き】</h1>
-      <p class="lead">LLMを「大量textの次token予測」から「役立つassistant」へ変える全工程を、training compute・GPU memory・data・evaluationの観点から整理する。講義内容と一次資料による補足・補正は明示的に分離した。</p>
+      <p class="lead">大規模言語モデルを「大量の文章から次のトークンを予測する基盤モデル」から「指示に沿って役立つ応答を返すアシスタント」へ変える工程を、計算量、GPUメモリ、学習データ、評価の観点から順に解きほぐす。講義内容と、一次資料に基づく補足・補正は明確に分けている。</p>
     </header>
 
     <dl class="meta-card" aria-label="出典メタデータ">
@@ -250,118 +250,144 @@
     <div class="tldr">
       <h2>3 行サマリ</h2>
       <ul>
-        <li><strong>Pretraining</strong>はweb・code・多言語の巨大corpusで次token予測を行い、model size・token数・computeの配分をscaling lawで設計する。</li>
-        <li>Trainingの主な制約はGPU memoryとmemory I/Oであり、data/model parallelism、ZeRO、FlashAttention、mixed precisionが異なるbottleneckを解く。</li>
-        <li><strong>SFT / instruction tuning</strong>でhelpfulな振る舞いを学ばせ、LoRAは低rank更新、QLoRAは4-bitの凍結base modelによってpost-trainingを省memory化する。</li>
+        <li><strong>事前学習</strong>では、ウェブ文書、コード、多言語資料からなる巨大なコーパスをトークンへ分け、次トークン予測を通じて言語とコードの共通知識を学ぶ。モデル規模とトークン数は、計算予算の中で釣り合わせる必要がある。</li>
+        <li>学習を阻むのは演算器の速さだけではない。GPUメモリ容量とメモリ間のデータ転送が重要であり、各種の並列化、ZeRO、FlashAttention、混合精度学習は、それぞれ異なる制約を解く。</li>
+        <li><strong>教師あり微調整</strong>で指示に応じる振る舞いを教え、選好調整で人の意図や安全方針へ近づける。LoRAは更新を低ランク行列へ絞り、QLoRAは凍結した基盤モデルを4ビットで保持して、追加学習のメモリをさらに減らす。</li>
       </ul>
     </div>
 
     <div class="source-note">
-      <p><strong>読み分け:</strong> 通常の本文・表は講義と公式スライドの再構成である。青・黄の「一次資料による補足／補正」は、講義で省略・保留・単純化された点を原論文や公式documentで補ったもので、講師の発言そのものではない。</p>
+      <p><strong>読み分け：</strong>通常の本文と表は、講義および公式スライドを再構成したものである。青・黄の「一次資料による補足／補正」は、講義で省略、保留、単純化された点を原論文や公式文書で補ったものであり、講師の発言そのものではない。</p>
     </div>
 
     <section id="roadmap">
       <h2>1. 講義の位置づけとLLM trainingの全体像</h2>
-      <p>冒頭では授業運営が共有された。midtermは2025年10月24日15:30–17:00、Lecture 1–4が範囲で、multiple-choiceと自由記述を含むclosed-book形式。calculatorは不要で、course siteのcheat sheetは学習用だが持ち込み不可。finalは12月10日19:00–20:30、Lecture 5–9が範囲である。</p>
-      <p>前回の復習として、Sparse/Dense MoE、greedy・beam search・sampling、temperature、KV cacheなどのinference optimizationを確認した。今回の中心は、初期化されたmodelをどう学習し、どう役立つmodelへ変えるかである。</p>
+      <p>この節では、大規模言語モデル（Large Language Model、LLM）の学習を、言語とコードの共通知識を得る段階から、用途に合う応答を身につける段階まで俯瞰する。後の節で扱う技術が、工程のどこで、何の制約を解くのかを先に位置づける。</p>
+      <p>用途ごとにモデルをゼロから学習すると、文章理解やコード理解のような共通知識まで毎回学び直すことになる。そこで使うのが<strong>転移学習（transfer learning）</strong>である。広いデータから得た重みを別の課題の出発点として再利用し、高価な共通知識の学習と、比較的安価な用途別調整を分離する。</p>
+      <p>LLMではまず、収集・整備した文書集合である<strong>事前学習コーパス</strong>を、モデルが扱う文字、部分語、記号などの<strong>トークン</strong>へ分ける。そして、直前までのトークンから次のトークンを予測する事前学習を行い、言語やコードのパターンを重みに取り込む。この段階で得られるのが<strong>基盤モデル（base model）</strong>である。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture4-llm-training/01-llm-training-paradigm.jpg" alt="Pretrainingした共通modelからspam detection、sentiment extraction、translation用modelへtuningするLLM training paradigmのスライド" loading="lazy" />
         <figcaption>共通のpretrained modelを作り、end taskごとにtuningするparadigm。taskごとにゼロから学習する従来方式から、transfer learningへ軸足が移る。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=600s" target="_blank" rel="noopener">10:00</a></figcaption>
       </figure>
-      <p><strong>画像の読み解き：</strong>左の大きなpretrained modelはlanguage・codeの共通知識を担い、右の小さな分岐はtask適応を担う。高価な基盤学習を使い回せることが、modern LLM developmentの経済性を支えている。</p>
+      <p><strong>画像の読み解き：</strong>左側の大きな事前学習済みモデルが言語とコードの共通知識を担い、右側の小さな分岐が迷惑メール判定、感情抽出、翻訳といった用途への適応を担う。高価な基盤学習を使い回せることが、現代のLLM開発を経済的に成り立たせている。</p>
+      <p>基盤モデルを得た後には、必要に応じて用途に近い文章で次トークン予測を続ける<strong>中間学習（mid-training）</strong>を挟む。その後、指示と模範回答の組で<strong>教師あり微調整（Supervised Fine-Tuning、SFT）</strong>を行い、「質問には回答する」といった応答形式を教える。さらに、同じ質問への複数の候補を比較した<strong>選好データ</strong>を使い、人の意図や安全方針へ振る舞いを近づける。この調整を講義では広く<strong>アラインメント（alignment）</strong>と呼ぶ。</p>
+      <p>段階を分ける意味は、更新対象を見分けやすくすることにある。事前学習と中間学習は主に知識・表現・能力の土台を整え、SFTは指示への応答形式を教え、選好調整は複数の妥当な応答のうち何を好むかを変える。ただし境界は完全ではなく、各段階が知識と振る舞いの両方へ影響することはある。</p>
       <div class="mermaid">
 flowchart LR
-  A["初期化model"] --> B["Pretraining<br/>大量corpus・次token予測"]
-  B --> C["Base model<br/>language / codeのpattern"]
-  C -. "任意: task関連dataで継続学習" .-> D["Mid-training"]
-  C --> E["SFT / Instruction tuning<br/>input-output例"]
+  A["初期化したモデル"] --> B["事前学習<br/>大量コーパス・次トークン予測"]
+  B --> C["基盤モデル<br/>言語・コードのパターン"]
+  C -. "任意：用途に近いデータで継続学習" .-> D["中間学習"]
+  C --> E["SFT / 指示チューニング<br/>指示と模範回答"]
   D --> E
-  E --> F["Instruction-following model"]
-  F --> G["Preference tuning<br/>Lecture 5"]
-  G --> H["Aligned assistant"]
+  E --> F["指示追従モデル"]
+  F --> G["選好チューニング<br/>Lecture 5"]
+  G --> H["調整済みアシスタント"]
       </div>
-      <p class="diagram-hint">図をクリックすると拡大・移動できる。破線のmid-trainingは講義終盤で紹介された任意段階。</p>
+      <p class="diagram-hint">図をクリックすると拡大・移動できる。破線の中間学習は、講義終盤で紹介された任意の段階である。</p>
+      <p>前回の復習では、疎・密なMixture of Experts（専門家混合）、貪欲探索、ビーム探索、サンプリング、温度、Key-Value（KV）キャッシュなど、推論時の最適化を確認した。今回の焦点は、その推論に使うモデルをどう学習し、どう役立つモデルへ変えるかである。</p>
+      <div class="callout">
+        <strong>講義運営の案内</strong>
+        <p>中間試験は2025年10月24日15:30–17:00で、Lecture 1–4が範囲。選択式と自由記述を含む資料持ち込み不可の形式で、電卓は不要、コースサイトのチートシートは学習用だが持ち込み不可と案内された。期末試験は12月10日19:00–20:30で、Lecture 5–9が範囲である。</p>
+      </div>
     </section>
 
     <section id="pretraining">
       <h2>2. Pretraining：taskではなくlanguageとcodeを先に学ぶ</h2>
+      <p>この節では、事前学習がどのような文書集合を、どの単位へ分け、どの目的関数で学ぶのかを説明する。コーパス、トークン、損失、FLOPという四つの概念をつなぎ、文章の量が実際の学習計算へ変わるまでを追う。</p>
       <h3>Traditional MLからtransfer learningへ</h3>
-      <p>従来はspam detection、sentiment extraction、translationごとに独立modelを学習した。しかしいずれもtext理解を共有するため、既学習modelを再利用する<strong>transfer learning</strong>が合理的である。LLMでは、まず大規模pretrainingで一般patternを獲得し、その後taskへadaptする。</p>
+      <p><strong>事前学習（pretraining）</strong>とは、特定課題の正解例を教える前に、広いデータから汎用的な規則や知識をモデルの重みへ取り込む段階である。迷惑メール判定、感情抽出、翻訳を別々にゼロから学ぶより、共通する文章理解を一度学び、各課題へ適応する方が計算とデータを再利用できる。</p>
       <h3>目的関数とdata mixture</h3>
-      <p>Decoder-only LLMのpretraining objectiveは、prefixを条件に次tokenを当てるcausal language modelingである。</p>
+      <p>学習材料となる<strong>事前学習コーパス</strong>は、収集して選別した文書とコードの集合である。講義はCommon Crawl、Wikipedia、Reddit、GitHub、Stack Overflowを例示する。英語、多言語、コードなどの混合比率は、モデルが何を多く観察するかを決めるため、後の得意分野に影響する。</p>
+      <p>文書はそのまま一件ずつモデルへ渡すのではなく、<strong>トークナイザー</strong>で文字、部分語、句読点、コード記号などの<strong>トークン</strong>へ分割する。トークンはモデルが予測する単位であると同時に、学習量を数える単位でもある。同じ文字数でも分割方法が違えばトークン数は変わり、重複文書を除けば実際に学ぶ情報量も変わるため、「何ページ集めたか」だけではデータ量を比較できない。</p>
+      <p>デコーダー専用LLMは、直前までの列を条件に次のトークンを当てる<strong>因果言語モデリング</strong>を行う。正解へ高い確率を割り当てるほど小さくなる負の対数尤度を使えば、列全体の予測を一つの損失として最適化できる。</p>
       <div class="formula">
         L<sub>PT</sub>(θ) = −∑<sub>t</sub> log P<sub>θ</sub>(x<sub>t</sub> | x<sub>&lt;t</sub>)
-        <small>文章・codeを1 tokenずつ右へずらし、各位置で正解tokenのnegative log-likelihoodを最小化する。</small>
+        <small>L<sub>PT</sub>は事前学習損失、θはモデルの全パラメータ、x<sub>t</sub>は位置tの正解トークン、x<sub>&lt;t</sub>はそれ以前のトークン、P<sub>θ</sub>はモデルが割り当てる条件付き確率である。</small>
       </div>
-      <p>Dataは英語、多言語、codeを含む。講義はCommon Crawl、Wikipedia、Reddit、GitHub、Stack Overflowを例示し、「書かれたものを広く予測することでlanguageとcodeの構造を学ぶ」と説明する。Common Crawlはpublic web crawl corpusを無料提供する非営利projectであり、実際のpretrainingではquality filtering、deduplication、license・privacy・safety処理が別途必要になる。</p>
+      <p>この式が必要なのは、各位置の予測を同じ基準で足し合わせ、勾配降下法で重みを更新できる形へするためである。たとえば正解トークンの確率が0.5なら、その位置の損失は<code>−log(0.5) ≈ 0.693</code>、0.1なら<code>−log(0.1) ≈ 2.303</code>となる。自信を持って間違う予測ほど大きく罰し、正解確率を1へ近づける直観である。実装では、列やミニバッチの大きさに依存しないよう和ではなく平均を報告することも多い。</p>
+      <p>Common Crawlは、公開ウェブのクロールデータを提供する非営利プロジェクトである。しかし、生のウェブ文書をそのまま学習品質と見なすことはできない。品質フィルタ、重複除去、言語・分野の配分に加え、ライセンス、個人情報、安全性への処理が必要になる。したがって、コーパス設計とは量を増やす作業だけでなく、何を残し、何を除くかを決める作業でもある。</p>
+      <p>この規模の計算量は、<strong>FLOP（Floating-Point Operation、浮動小数点演算）</strong>の総数で表す。処理するトークン数とパラメータ数が増えれば、前向き計算、逆伝播、重み更新に必要な演算も増える。FLOPを使うと、GPUの機種や台数とは切り離して学習仕事量を概算できる。ただしFLOPは「仕事の総量」であり、「1秒にどれだけ処理できるか」ではない。この違いは次節で整理する。</p>
       <div class="stat-grid">
         <div class="stat-card"><div class="num">300B</div><div class="label">GPT-3のpretraining token数（講義・Brown et al.）</div></div>
         <div class="stat-card"><div class="num">15.6T</div><div class="label">Llama 3 405Bのtext token数（公式paperの精密値）</div></div>
         <div class="stat-card"><div class="num">10<sup>25</sup></div><div class="label">講義が示すLLM training computeのFLOP order</div></div>
       </div>
       <div class="callout info">
-        <strong>一次資料による補足：corpusの量だけでは決まらない</strong>
-        <p>Llama 3 paperは15.6T tokenという量に加え、deduplication、quality classifier、domain・language配分、annealing dataを詳述する。raw web page数をそのままqualityと見なせず、data curation自体がmodel設計の一部である。</p>
+        <strong>一次資料による補足：コーパスは量だけでは決まらない</strong>
+        <p>Llama 3論文は15.6兆トークンという量に加え、重複除去、品質分類器、分野・言語の配分、学習終盤のアニーリング用データを詳述する。生のウェブページ数をそのまま品質と見なすことはできず、データ整備そのものがモデル設計の一部である。</p>
         <p><a href="https://arxiv.org/abs/2407.21783" target="_blank" rel="noopener">一次資料: The Llama 3 Herd of Models</a> / <a href="https://commoncrawl.org/overview" target="_blank" rel="noopener">Common Crawl overview</a></p>
       </div>
     </section>
 
     <section id="scaling">
       <h2>3. FLOP・FLOP/s・scaling law・Chinchilla law</h2>
+      <p>この節では、学習に必要な演算の総量と、ハードウェアが演算を処理する速さを区別する。そのうえで、限られた計算予算をパラメータ数と学習トークン数へどう配分するかを、スケーリング則とChinchilla則から読み解く。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>表記</th><th>意味</th><th>何を測るか</th></tr></thead>
           <tbody>
-            <tr><td>FLOP / FLOPs</td><td>floating-point operation(s)</td><td>学習に必要な浮動小数点演算の<strong>総量</strong>。概ねparameter数×token数×architecture係数で増える。</td></tr>
-            <tr><td>FLOP/s（講義ではFLOPS）</td><td>floating-point operations per second</td><td>GPUなどが1秒に処理できる演算の<strong>速度</strong>。precisionやsparsity条件で値が変わる。</td></tr>
+            <tr><td>FLOP / FLOPs</td><td>Floating-Point Operation(s)、浮動小数点演算</td><td>学習に必要な演算の<strong>総量</strong>。おおむねパラメータ数、トークン数、アーキテクチャ由来の係数の積で増え、学習費用を比べる物差しになる。</td></tr>
+            <tr><td>FLOP/s（講義ではFLOPS）</td><td>Floating-Point Operations Per Second、1秒当たりの浮動小数点演算回数</td><td>GPUなどが演算を処理する<strong>速度</strong>。数値精度や疎性などの条件で値が変わる。所要時間は概念上「総FLOP ÷ 実効FLOP/s」だが、通信やメモリ待ちがあるため、理論値どおりにはならない。</td></tr>
           </tbody>
         </table>
       </div>
-      <p>Kaplanらのscaling lawは、compute、dataset size、model sizeを増やすとlossがpower law的に下がることを示した。大きいmodelは同じtoken数でもlossが低いという意味でsample-efficientでもある。しかしcomputeは有限なので、parameterとtokenのどちらへ予算を配るかが問題になる。</p>
-      <p>Chinchilla研究は固定compute下で400超のmodelを比較し、model sizeとtraining token数をほぼ同率にscaleさせるべきだと推定した。講義では覚えやすい目安として<strong>training token数 D ≈ 20 × parameter数 N</strong>を紹介する。175B parameterを300B tokenで学習したGPT-3は、この基準ではdata不足の「undertrained」側になる。</p>
+      <p>たとえば総仕事量が同じでも、GPUの実効速度が2倍なら理想的な学習時間は半分になる。一方、理論上のFLOP/sが高くても、GPU間通信やメモリ読み書きで演算器が待てば実効速度は下がる。したがって、FLOPはモデルとデータの規模を設計する指標、FLOP/sは実行環境の速さを測る指標として分けて考える。</p>
+      <p>Kaplanらの<strong>スケーリング則（scaling law）</strong>は、計算量、データ量、モデル規模を増やすと、予測損失がべき乗則に沿って滑らかに下がるという経験的関係を示した。大きいモデルは同じ観測トークン数でも低い損失へ達しやすいという意味で、データを効率よく利用できる。ただし計算予算は有限なので、モデルだけを大きくするか、より多くのトークンを見せるかという配分問題が残る。</p>
+      <p>Chinchilla研究は、固定した計算量の下で400を超えるモデルを比較し、モデル規模と学習トークン数をおおむね同じ割合で増やす方がよいと推定した。講義では、その結果を覚えるための近似的な目安として次の式を紹介する。</p>
+      <div class="formula">
+        D ≈ 20N
+        <small>Dは学習に使うトークン数、Nは学習対象のパラメータ数で、両者を同じ個数の単位で数える。これは固定計算量で損失を下げるための経験的な配分目安である。</small>
+      </div>
+      <p>この式では、10億パラメータなら約200億トークンが目安になる。1750億パラメータのGPT-3へ当てはめれば約3.5兆トークンとなるのに対し、実際の学習量は約3000億トークンなので、この基準ではモデル規模に対してデータが少ない「学習不足」側と解釈される。式はモデルの品質を直接保証するものではなく、限られた計算を二つの軸へどう分けるかを考えるために使う。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture4-llm-training/02-chinchilla-law.jpg" alt="parameter数ごとにcompute-optimalなFLOPsとtoken数を示すChinchilla lawの表" loading="lazy" />
         <figcaption>Chinchilla paperからのcompute-optimal table。1B parameterには約20.2B token、67Bには約1.5T tokenという対応が映る。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=1173s" target="_blank" rel="noopener">19:33</a></figcaption>
       </figure>
-      <p><strong>画像の読み解き：</strong>表は「大きいほどよい」ではなく、固定computeをmodel幅とdata量へどう分けるかを示す。たとえばmodelだけを巨大化してtoken数を据え置くと、parameterを十分学習させ切れない。</p>
+      <p><strong>画像の読み解き：</strong>表が示すのは単純な「大きいほどよい」ではなく、固定した計算量をモデルの大きさとデータ量へどう分けるかである。モデルだけを巨大化してトークン数を据え置くと、多数のパラメータを十分に調整する観測が足りなくなる。</p>
       <div class="callout warning">
         <strong>一次資料による補足：20 token / parameterは普遍定数ではない</strong>
-        <p>これは特定のdense Transformer、data、optimizer、compute budgetから得た経験則である。architecture、data quality、repeated data、inference costの重視度で最適点は変わる。講義Q&amp;Aでも、実務では小規模pilotから自分のsetupのcurveを推定し、Llama 3のように外挿すると説明した。</p>
+        <p>これは特定の密なTransformer、データ、最適化手法、計算予算から得た経験則である。アーキテクチャ、データ品質、同じデータの反復、推論費用をどれほど重視するかによって最適点は変わる。講義の質疑応答でも、実務では小規模な試行から自分の条件で曲線を推定し、Llama 3のように外挿すると説明した。</p>
         <p><a href="https://arxiv.org/abs/2203.15556" target="_blank" rel="noopener">一次資料: Training Compute-Optimal Large Language Models</a></p>
       </div>
       <h3>Pretraining固有の課題</h3>
+      <p>規模を適切に配分しても、事前学習そのものに伴う問題は残る。主な制約は次の四つである。</p>
       <ul>
-        <li><strong>Cost・time・electricity:</strong> 講義のorderは少なくとも数百万ドル、modelによっては数千万〜数億ドル。</li>
-        <li><strong>Knowledge cutoff:</strong> training corpusを締め切った後の出来事はweightsだけでは知り得ない。</li>
-        <li><strong>Knowledge editing:</strong> 新事実を注入しつつ他domainをregressさせないweight更新は難しい。</li>
-        <li><strong>Memorization / plagiarism:</strong> 次token予測modelがtraining textを再現するriskがある。</li>
+        <li><strong>費用・時間・電力：</strong>講義が示す規模感は少なくとも数百万ドルで、モデルによっては数千万〜数億ドルに達する。</li>
+        <li><strong>知識の締切：</strong>学習コーパスを締め切った後の出来事は、重みだけから新たに知ることができない。</li>
+        <li><strong>知識編集：</strong>新しい事実を加えながら、他分野の能力を後退させないよう重みを更新するのは難しい。</li>
+        <li><strong>記憶と盗用の危険：</strong>次トークン予測モデルが、学習文書の一部をそのまま再現する可能性がある。</li>
       </ul>
+      <p>つまり、スケーリング則は計算配分の指針にはなるが、データの権利、鮮度、品質や、学習後の安全な更新までは解決しない。</p>
     </section>
 
     <section id="training-memory">
       <h2>4. Training loopのmemory内訳と分散parallelism</h2>
-      <p>Trainingは、parameter初期化、forward pass、loss、backward pass、optimizer updateを繰り返す。問題はparameter以外にも大量のstateを保持する点にある。</p>
+      <p>この節では、学習中にモデルの重み以外の何がGPUメモリを使うのかを分解する。そのうえで、データ並列、テンソル並列、パイプライン並列、ZeROが、それぞれデータ、計算、学習状態のどれを機器間に分けるのかを具体例で比較する。</p>
+      <p>モデル学習は、パラメータの初期化、<strong>前向き計算</strong>、損失計算、<strong>逆伝播</strong>、<strong>オプティマイザによる更新</strong>を繰り返す。推論と違い、逆伝播と更新のための値も残す必要があるため、「重みが収まるなら学習もできる」とは限らない。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>保持物</th><th>役割</th><th>主な増加要因</th></tr></thead>
           <tbody>
-            <tr><td>Parameters</td><td>modelの学習対象weight。</td><td>parameter数、保存precision。</td></tr>
-            <tr><td>Activations</td><td>forwardの中間値。backpropのchain ruleで必要。</td><td>batch size、sequence length、layer数・hidden幅。attentionは標準実装でsequence長の2乗項を持つ。</td></tr>
-            <tr><td>Gradients</td><td>各parameterをloss低下方向へ動かす微分値。</td><td>trainable parameter数、precision。</td></tr>
-            <tr><td>Optimizer states</td><td>Adamならgradientの1次・2次momentなど。</td><td>parameter数。master weightを含む実装ではparameter本体より大きくなり得る。</td></tr>
+            <tr><td>パラメータ</td><td>モデルが学習する重み。前向き計算と逆伝播の両方で参照する。</td><td>パラメータ数と保存精度。10億個をFP32で持つだけで約4GBになる。</td></tr>
+            <tr><td>活性値</td><td>前向き計算で各層が出す中間値。連鎖律による逆伝播に使うため、保存するか後で再計算する。</td><td>ミニバッチ数、系列長、層数、隠れ次元。標準的なアテンションの中間行列には系列長の2乗で増えるものがある。</td></tr>
+            <tr><td>勾配</td><td>損失を下げるため、各学習対象パラメータをどちらへどれだけ動かすかを示す微分値。</td><td>学習対象パラメータ数と数値精度。</td></tr>
+            <tr><td>オプティマイザ状態</td><td>Adamなら勾配の指数移動平均である1次モーメントと、勾配の2乗の指数移動平均である2次モーメントを持つ。更新方向と歩幅を安定させる履歴である。</td><td>パラメータ数に比例する。FP32の基準重みも保持する実装では、補助状態の方が低精度のモデル本体より大きくなり得る。</td></tr>
           </tbody>
         </table>
       </div>
-      <p>講義例のNVIDIA H100は80GB VRAMであり、billion〜hundreds of billions級modelの全stateは1枚に収まらない。そこで複数GPUへdataまたはmodel computationを分ける。</p>
-      <h3>Data parallelismとZeRO</h3>
-      <p>Data parallelism（DP）はmini-batchをGPU間で分割し、各GPUにmodel replicaを置く。各deviceが独立にforward/backwardを行い、gradientをall-reduceなどで集約・平均して同じupdateを適用する。Batch由来のactivation memoryを分散できるが、modelとoptimizer stateは重複し、通信costも生じる。</p>
+      <p>単純な概算として、10億パラメータをすべてFP32で学習すると、重み約4GB、勾配約4GB、Adamの二つのモーメント約8GBで、活性値を数える前に約16GBとなる。混合精度実装では低精度の作業用重みとFP32の基準重みを併存させる場合もあり、内訳は実装によってさらに増減する。この例が示すのは正確な必要量ではなく、オプティマイザ状態を無視できないという点である。</p>
+      <p>講義例のNVIDIA H100は80GBの高帯域メモリを備えるが、数十億から数千億パラメータ級の全状態は1台へ収まらない。そこで、複数GPUへ「入力データを分ける」「モデルの計算を分ける」「重複している状態を分ける」という三つの方向から対処する。</p>
+      <h3>Data parallelismとZero Redundancy Optimizer（ZeRO）</h3>
+      <p><strong>データ並列（Data Parallelism、DP）</strong>は、モデル全体を各GPUへ複製し、ミニバッチだけを分割する方式である。たとえば4台で全体256件のミニバッチを処理するなら、各GPUが64件ずつ前向き計算と逆伝播を行う。その後、<strong>all-reduce</strong>という集団通信で勾配を合計して全GPUへ配り、台数で割った同じ勾配を使って各複製を同じように更新する。</p>
+      <p>データ並列は処理件数を増やし、1台当たりの活性値を減らせる一方、重み、勾配、オプティマイザ状態を全GPUが重複して持つ。さらに、各更新で大きな勾配を通信する必要がある。したがって、モデル自体が1台に収まらない問題は、素朴なデータ並列だけでは解けない。</p>
+      <p><strong>Zero Redundancy Optimizer（ZeRO、冗長性ゼロ・オプティマイザ）</strong>は、この重複を段階的に取り除く。分散処理に参加する各プロセスを<strong>ランク（rank）</strong>と呼び、全ランクが同じ状態を複製する代わりに、異なる断片へ<strong>分割保持（sharding）</strong>する。計算に必要な時だけ通信で断片を集めるため、段階を上げるほどメモリは減るが、通信と実装の複雑さは増える。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>ZeRO stage</th><th>GPU間でshardするstate</th><th>意味</th></tr></thead>
           <tbody>
-            <tr><td>Stage 1</td><td>Optimizer states</td><td>Adam momentやFP32 master stateをrankごとに分担する。</td></tr>
-            <tr><td>Stage 2</td><td>Stage 1 + gradients</td><td>各rankは担当parameterに対応するreduced gradientだけを保持する。</td></tr>
-            <tr><td>Stage 3</td><td>Stage 2 + parameters</td><td>weight自体も分割し、必要なforward/backward時だけcollectして再partitionする。</td></tr>
+            <tr><td>Stage 1</td><td>オプティマイザ状態</td><td>Adamの1次・2次モーメントや、実装によってはFP32の基準状態をランクごとに分担する。重みと勾配はまだ複製する。</td></tr>
+            <tr><td>Stage 2</td><td>Stage 1 + 勾配</td><td>勾配も分割し、各ランクは担当するパラメータ断片に対応した集約済み勾配だけを保持する。</td></tr>
+            <tr><td>Stage 3</td><td>Stage 2 + パラメータ</td><td>重み自体も分割する。各層の前向き・逆伝播で必要な断片を一時的に集め、使用後に再び分割する。</td></tr>
           </tbody>
         </table>
       </div>
@@ -369,87 +395,117 @@ flowchart LR
         <img src="../images/stanford-cme295-lecture4-llm-training/03-zero-stages.jpg" alt="ZeRO-3がoptimizer state、gradient、parameterをGPU間で分割することを示すスライド" loading="lazy" />
         <figcaption>ZeRO-3はoptimizer state、gradient、parameterの全model stateをdevice間でpartitionする。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=2085s" target="_blank" rel="noopener">34:45</a></figcaption>
       </figure>
-      <p><strong>画像の読み解き：</strong>各GPUの細い色付き棒は「全stateのcopy」ではなく各stateの一部分である。memoryは減る一方、必要stateを集める通信が増えるため、常に高stageが最速とは限らない。</p>
+      <p><strong>画像の読み解き：</strong>各GPUの細い色付き棒は、全状態の複製ではなく、それぞれが受け持つ断片を表す。参加ランクが増えるほど分割対象の1台当たり容量は小さくできるが、活性値など分割していない領域まで同じ割合で減るわけではない。また必要な断片を集める通信が増えるため、最も高い段階が常に最速とは限らない。</p>
       <div class="callout info">
         <strong>用語補足：shareではなくshard</strong>
-        <p>講義音声・slideは「share」と表現するが、ZeROの実体はstateの<strong>partition / sharding</strong>である。全GPUが同じcopyを共有保持するのではなく、各rankが別のsliceを持つ。</p>
+        <p>講義音声とスライドは「share」と表現するが、ZeROの実体は状態の<strong>partition / sharding（分割保持）</strong>である。全GPUが同じ複製を共有して持つのではなく、各ランクが別の断片を持つ。</p>
         <p><a href="https://www.deepspeed.ai/tutorials/zero/" target="_blank" rel="noopener">公式資料: DeepSpeed ZeRO tutorial</a></p>
       </div>
       <h3>Model parallelism</h3>
+      <p><strong>モデル並列（model parallelism）</strong>は、モデルの計算そのものを複数GPUへ分ける方式の総称である。データ並列が入力例を分けるのに対し、モデル並列は一つの入力を処理する重みや層を分ける。</p>
+      <p><strong>テンソル並列（tensor parallelism）</strong>は、一つの大きな行列積を行または列方向へ切り、複数GPUで同時に計算する。たとえば出力幅8192の線形層を4台で列分割すれば、各GPUが2048列分を担当する。ただし次の演算へ渡すために部分結果を集めたり合計したりする集団通信が層ごとに発生しやすく、通常は高速な相互接続が必要になる。</p>
+      <p><strong>パイプライン並列（pipeline parallelism）</strong>は、連続する層のまとまりを別GPUへ置く。24層を4段へ分けるなら、各段が6層ずつを担当する。一つの大きなバッチを小さな<strong>マイクロバッチ</strong>へ分け、前段が次のマイクロバッチを処理している間に後段が前のものを処理することで、流れ作業にする。開始時と終了時には一部の段が待つ<strong>パイプライン・バブル</strong>があり、マイクロバッチ数、段ごとの計算量、段間通信の釣り合いが性能を左右する。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>方式</th><th>何を分割するか</th><th>講義での直観</th></tr></thead>
           <tbody>
-            <tr><td>Tensor parallelism</td><td>1つの大きなmatrix multiplication。</td><td>weight matrixのrow/column方向を複数GPUで計算する。</td></tr>
-            <tr><td>Pipeline parallelism</td><td>layer群。</td><td>GPU 1がlayer 1–3、GPU 2が4–6のようにstage化する。</td></tr>
-            <tr><td>Expert parallelism</td><td>MoE expert。</td><td>異なるFFN expertを異なるdeviceへ配置する。</td></tr>
-            <tr><td>Sequence / context parallelism</td><td>sequence dimension。</td><td>公式slideに列挙。長いcontextのactivation・attention workloadを分ける方式群。</td></tr>
+            <tr><td>Tensor parallelism</td><td>一つの大きな行列積</td><td>重み行列を行・列方向へ切り、同じ層を複数GPUで同時に計算する。</td></tr>
+            <tr><td>Pipeline parallelism</td><td>連続する層のまとまり</td><td>GPU 1が層1–3、GPU 2が層4–6というように段階化し、マイクロバッチを流す。</td></tr>
+            <tr><td>Expert parallelism</td><td>Mixture of Experts（MoE）の専門家</td><td>異なるフィードフォワード専門家を別の機器へ置き、選ばれた専門家へトークンを送る。</td></tr>
+            <tr><td>Sequence / context parallelism</td><td>系列の方向</td><td>公式スライドに列挙された方式群。長い文脈の活性値やアテンション計算を系列方向に分ける。</td></tr>
           </tbody>
         </table>
       </div>
+      <p>実際の大規模学習では、データ並列、ZeRO、テンソル並列、パイプライン並列を組み合わせることがある。選択基準は「何台使えるか」だけではなく、1台のメモリ、GPU内の計算量、機器間の通信帯域、系列長、バッチ構成である。メモリを減らす分割が通信を増やすため、容量と速度の両方を測って設計する必要がある。</p>
     </section>
 
     <section id="flash-attention">
       <h2>5. FlashAttention：演算数よりmemory I/Oを減らす</h2>
-      <p>GPUには、大きいが相対的に遅いoff-chip <strong>HBM</strong>と、小さいが高速なon-chip <strong>SRAM</strong>がある。標準attentionは、score <code>S=QKᵀ</code>、probability <code>P=softmax(S)</code>、output <code>O=PV</code>という大きな中間matrixをHBMへ何度もwrite/readする。このdata movementがcomputeより遅いbottleneckになり得る。</p>
+      <p>この節では、GPU内のメモリ階層を出発点に、FlashAttentionがなぜ「計算を少し増やしても速くなる」のかを説明する。大容量だが演算器から遠いHBMと、小容量だが近いSRAMの間でデータを運ぶ回数に注目し、タイル分割、オンラインsoftmax、逆伝播時の再計算を順に追う。</p>
+      <p>GPUの<strong>High Bandwidth Memory（HBM、高帯域メモリ）</strong>は、モデル、活性値、入出力を置く大容量の外部メモリである。一方、演算チップ上の<strong>Static Random-Access Memory（SRAM、静的ランダムアクセスメモリ）</strong>は容量が小さいが、演算器から高速に利用できる。演算器が積和計算を終えても、HBMから次のデータが届くまで待つなら、処理は計算能力ではなくメモリ入出力に制約される。</p>
+      <p>標準的なアテンションは、問い合わせと鍵の積でスコア行列を作り、行ごとにsoftmaxで確率へ変え、その確率で値を加重平均する。</p>
       <div class="formula">
         Attention(Q,K,V) = softmax(QK<sup>T</sup> / √d<sub>k</sub>)V
+        <small>Qは問い合わせ、Kは鍵、Vは値の行列、K<sup>T</sup>はKの転置、d<sub>k</sub>は鍵・問い合わせベクトルの次元である。√d<sub>k</sub>で割るのは、次元が増えて内積が大きくなりsoftmaxが極端になるのを抑えるためである。</small>
       </div>
-      <p>FlashAttentionはQ・K・Vをblockへ分ける<strong>tiling</strong>を使い、SRAMに入る小blockだけをend-to-endで処理する。Rowごとのrunning maximumとnormalization sumを更新するonline softmaxにより、全score matrixをmaterializeしなくても最終softmaxと同じ値を得る。</p>
+      <p>たとえば<code>d<sub>k</sub>=64</code>なら除数は<code>√64=8</code>である。系列長を<code>n</code>とすると、<code>QK<sup>T</sup></code>は各ヘッドで<code>n×n</code>になる。<code>n=8,192</code>なら約6711万要素で、密なBF16行列として実体化するだけで約128MiBを要する。実際にはバッチ、ヘッド、層が重なるうえ、確率行列も扱うため、HBMへの書き出しと読み戻しが大きな負担になる。</p>
+      <p><strong>タイル分割（tiling）</strong>では、巨大なQ、K、VをSRAMへ収まる小さなブロックへ切る。読み込んだブロックについて、スコア計算、softmaxの統計更新、Vとの積をできるだけチップ上で続け、巨大なスコア行列や確率行列全体をHBMへ保存しない。</p>
+      <p>難しいのは、softmaxの分母が本来は行全体のスコアを必要とする点である。FlashAttentionは、既に見たブロックの最大値と指数和を持ち、新しいブロックを読むたびに古い結果の尺度を補正する<strong>オンラインsoftmax</strong>を使う。原論文の仕組みを簡略化すると、正規化に使う統計は次のように更新できる。</p>
+      <div class="formula">
+        m<sub>new</sub> = max(m<sub>old</sub>, m<sub>b</sub>)<br />
+        ℓ<sub>new</sub> = e<sup>m<sub>old</sub>−m<sub>new</sub></sup>ℓ<sub>old</sub> + e<sup>m<sub>b</sub>−m<sub>new</sub></sup>ℓ<sub>b</sub>
+        <small>m<sub>old</sub>とℓ<sub>old</sub>は既処理部分の最大値と、その最大値を基準にした指数和、m<sub>b</sub>とℓ<sub>b</sub>は新しいブロックの同じ統計である。最大値を引くことで指数のオーバーフローを防ぎ、基準が変わった分だけ古い和を掛け直す。</small>
+      </div>
+      <p>具体例として、最初のブロックのスコアが<code>[2, 1]</code>なら、<code>m<sub>old</sub>=2</code>、<code>ℓ<sub>old</sub>=1+e<sup>−1</sup>≈1.368</code>である。次のブロックが<code>[3]</code>なら新しい最大値は3となり、<code>ℓ<sub>new</sub>=e<sup>−1</sup>×1.368+1≈1.503</code>になる。これは三つを一度に計算した<code>e<sup>−1</sup>+e<sup>−2</sup>+1≈1.503</code>と一致する。出力の加重和も同じ係数で補正するため、全行を同時に保持しなくても、丸め誤差の範囲で通常のアテンションと同じ結果を得られる。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture4-llm-training/04-flash-attention-tiling.jpg" alt="Q、K転置、VのblockをSRAMへ読み、OのblockをHBMへ書くFlashAttention tiling図" loading="lazy" />
         <figcaption>Q・K・Vのgreen blockをSRAMへloadし、Oのblue blockを更新してHBMへ戻すtilingの流れ。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=2780s" target="_blank" rel="noopener">46:20</a></figcaption>
       </figure>
-      <p><strong>画像の読み解き：</strong>attention matrix全体を保存せず、局所blockの積・softmax統計・Vとの積をon-chipで完結させる。これはsparse attentionのような近似ではなく、丸め誤差の範囲で同じattentionを計算するexact algorithmである。</p>
+      <p><strong>画像の読み解き：</strong>アテンション行列全体を保存せず、局所ブロックの内積、softmax統計、Vとの積をチップ上でつなげる。疎なアテンションのように一部の組合せを捨てる近似ではなく、計算順序を変えた厳密なアルゴリズムである。</p>
       <h3>Backwardでは保存せず再計算する</h3>
-      <p>Backwardに必要な巨大attention activationをforward時にHBMへ保存せず、small summary statisticsだけを保存し、必要なblockを再計算する。FLOPは増えるがHBM trafficが大幅に減るため、memoryもruntimeも下がり得る。</p>
+      <p>逆伝播で必要になる巨大なアテンション活性値も、前向き計算の時点でHBMへすべて保存しない。代わりに行ごとの最大値や正規化和など小さな要約統計を残し、逆伝播時に必要なブロックを再計算する。演算回数は増えるが、遅いHBMとの往復を大幅に減らせるため、メモリ使用量と実行時間の両方が下がり得る。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture4-llm-training/05-flash-attention-recompute.jpg" alt="標準attentionとFlashAttentionのGFLOPs、HBM read write、runtime比較表" loading="lazy" />
         <figcaption>講義slideのpaper結果。GFLOPsは66.6→75.2へ増える一方、HBM read/writeは40.3GB→4.4GB、runtimeは41.7ms→7.3msへ低下する。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=3045s" target="_blank" rel="noopener">50:45</a></figcaption>
       </figure>
-      <p><strong>画像の読み解き：</strong>「演算を減らせば速い」という単純図式が破れる例である。追加computeより、slow memoryとの往復削減の効果が大きいため、recomputationした方が速い。</p>
+      <p><strong>画像の読み解き：</strong>「演算を減らせば必ず速い」という単純な図式が破れる例である。示された条件では演算量が66.6から75.2 GFLOPへ増えても、HBMの読み書きが約10分の1となり、実行時間は41.7msから7.3msへ短くなった。再計算の費用よりデータ移動削減の利益が大きい。</p>
       <div class="callout info">
         <strong>一次資料による補足：IO-awareとは</strong>
-        <p>Original paperはSRAM sizeを明示したI/O complexityを分析し、sequence lengthに対する標準attentionのquadratic memoryを避ける。FlashAttention 2/3などは同じ核を新しいGPU execution modelへ合わせて改善する。</p>
+        <p>原論文はSRAM容量を明示してI/O複雑度を分析し、系列長に対して2乗で増える標準アテンションの中間メモリを避ける。FlashAttention 2/3などは、同じ「I/Oを減らす」という核を、新しいGPUの実行方式へ合わせて改善する。効果の大きさは系列長、GPU、カーネル実装に依存する。</p>
         <p><a href="https://arxiv.org/abs/2205.14135" target="_blank" rel="noopener">一次資料: FlashAttention</a></p>
       </div>
     </section>
 
     <section id="precision">
       <h2>6. Quantizationとmixed precision training</h2>
+      <p>この節では、数値を少ないビットで表す量子化と、演算ごとに数値形式を使い分ける混合精度学習を区別する。FP32、FP16、BF16の違いを確認し、量子化の尺度・ゼロ点・切り詰め・外れ値、そして混合精度での損失スケーリングまで、誤差と速度の釣り合いを説明する。</p>
       <h3>Floating-point表現</h3>
-      <p>Floatはsign、exponent、fraction（講義slideではmantissa）へbitを分ける。Exponent bitは表せる値のrange、fraction bitは有効桁の細かさに強く関係する。</p>
+      <p>浮動小数点数は、正負を表す<strong>符号</strong>、値の桁を表す<strong>指数</strong>、有効数字を表す<strong>仮数部</strong>へビットを配る。<strong>FP32（32ビット浮動小数点）</strong>は広い範囲と細かな精度を持つ標準形式である。<strong>FP16（16ビット浮動小数点）</strong>は1要素の保存量を半分にでき、高速な専用演算器を使いやすいが、指数が5ビットなので表せる範囲が狭い。<strong>BF16（Brain Floating Point 16）</strong>はFP32と同じ8ビットの指数を残し、仮数部を7ビットへ減らした形式で、精度より範囲を優先する。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture4-llm-training/06-floating-point-formats.jpg" alt="FP16、FP32、FP64、BFLOAT16のsign、exponent、mantissa bit数の比較表" loading="lazy" />
         <figcaption>FP16は1/5/10 bit、FP32は1/8/23、FP64は1/11/52、BF16は1/8/7へ配分する。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=3265s" target="_blank" rel="noopener">54:25</a></figcaption>
       </figure>
-      <p><strong>画像の読み解き：</strong>FP16とBF16は同じ16 bitでも性質が違う。BF16はFP32と同じ8-bit exponentを保つためrangeが広くoverflowしにくい一方、fractionは7 bitで精度が粗い。FP16はfractionが多いがrangeが狭い。</p>
+      <p><strong>画像の読み解き：</strong>FP16とBF16は同じ16ビットでも性質が異なる。BF16はFP32と同じ指数幅を持つため大きい値や小さい値を表しやすく、オーバーフローしにくい一方、有効数字は粗い。FP16は仮数部が10ビットでBF16より細かいが、表現範囲が狭く、勾配のオーバーフローやアンダーフローに注意が要る。</p>
+      <p><strong>量子化（quantization）</strong>は、重みや活性値の連続した実数を、少数ビットの離散的な整数コードへ丸める。保存量とメモリ帯域を減らし、対応するハードウェアでは処理速度も上げられるが、元の値を完全には表せないため量子化誤差が生じる。一般的な一様量子化は次の二式で表せる。</p>
+      <div class="formula">
+        q = clip(round(x / s) + z, q<sub>min</sub>, q<sub>max</sub>)<br />
+        x̂ = s(q − z)
+        <small>xは元の実数、qは保存する整数コード、sはコード1段に対応する幅である尺度（scale）、zは実数0に対応するゼロ点（zero-point）、q<sub>min</sub>とq<sub>max</sub>はコード範囲、x̂は復元値である。</small>
+      </div>
+      <p>この式は、実数を有限個のコードへ対応させ、後で近似的に戻すために必要である。たとえば<code>s=0.1</code>、<code>z=128</code>、8ビットの符号なしコードを使って<code>x=1.23</code>を量子化すると、<code>q=round(12.3)+128=140</code>、復元値は<code>x̂=0.1×(140−128)=1.2</code>となり、0.03の丸め誤差が出る。</p>
+      <p>コード範囲を超えた値は端へ丸める。これが<strong>クリッピング（clipping、切り詰め）</strong>である。同じ設定で<code>x=20</code>なら計算上のコードは328だが、255へ切り詰められ、復元値は12.7にしかならない。逆に、少数の極端な<strong>外れ値（outlier）</strong>まで収めるため尺度を大きくすると、通常値の刻みが粗くなる。この衝突を和らげるため、ブロックごとに尺度を持つ、外れ値だけ高精度で残す、切り詰める閾値を調整するといった方法を使う。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>手法</th><th>中心idea</th><th>典型的な用途・注意</th></tr></thead>
           <tbody>
-            <tr><td>Quantization</td><td>weightやactivationをより少ないbitの離散値へmapする。</td><td>Memory・bandwidth・対応hardwareのthroughputを改善。scale、zero-point、clipping、outlier処理がqualityを左右する。</td></tr>
-            <tr><td>Mixed precision</td><td>operationごとにlow/high precisionを使い分け、master stateは高precisionで保持する。</td><td>Training speedとmemoryを改善しつつnumerical stabilityを守る。</td></tr>
+            <tr><td>量子化</td><td>重みや活性値を、より少ないビットの離散値へ写す。</td><td>保存量、メモリ帯域、対応ハードウェアの処理速度を改善する。尺度、ゼロ点、切り詰め、外れ値処理が品質を左右する。</td></tr>
+            <tr><td>混合精度</td><td>演算ごとに低精度と高精度を使い分け、精度に敏感な状態や演算を高精度で残す。</td><td>学習速度とメモリを改善しながら数値安定性を守る。量子化のように全値を固定の整数コードへ保存することとは異なる。</td></tr>
           </tbody>
         </table>
       </div>
       <h3>講義のmixed precision mental model</h3>
-      <p>FP32のmaster weightsを保持し、forward activationとbackward gradient計算をFP16で行い、weight updateはFP32へ反映する。Low precisionはmemoryを半減し、Tensor Coreなどで高いFLOP/sを得やすい。</p>
+      <p><strong>混合精度学習（mixed precision training）</strong>は、すべてを低精度へ落とすのではなく、速度と安定性に応じて形式を使い分ける。講義の基本像では、FP32の基準重みを保持し、前向き計算の活性値と逆伝播の主要な行列演算をFP16またはBF16で行い、更新をFP32へ反映する。低精度は要素当たりのバイト数とデータ移動を減らし、Tensor Coreなどの高速経路を使いやすくする。一方、総和、損失、指数関数、重み更新など誤差へ敏感な処理はFP32へ残す。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture4-llm-training/07-mixed-precision.jpg" alt="forward activationとbackward gradientをlow precisionで計算するmixed precision trainingのスライド" loading="lazy" />
         <figcaption>Mixed precisionのbackward pass。講義はactivation・gradientをlow precision、weight updateをhigh precisionで保持する構成を示す。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=3415s" target="_blank" rel="noopener">56:55</a></figcaption>
       </figure>
+      <p><strong>画像の読み解き：</strong>低精度の作業経路で前向き計算と逆伝播を速くしつつ、更新の蓄積先を高精度に保つ考え方が描かれている。すべてのテンソルを一律に同じ形式へ変えるのではなく、値の範囲と誤差への敏感さで使い分けることが要点である。</p>
       <div class="callout warning">
         <strong>一次資料による補足：実際のAMPはoperation単位でprecisionを選ぶ</strong>
-        <p>現代のAutomatic Mixed Precisionは「全部FP16」にせず、matrix multiplicationはlow precision、large reduction・cross entropy・exponentialなど不安定なoperationはFP32へ残す。FP16では小gradientのunderflowを避けるloss scalingも重要である。したがって講義図はprincipleを示す簡略modelである。</p>
+        <p>現代の<strong>Automatic Mixed Precision（AMP、自動混合精度）</strong>は「すべてFP16」とせず、行列積は低精度、大きな総和、交差エントロピー、指数関数など不安定になりやすい演算はFP32へ残す。実装やBF16の利用時には、FP32基準重みの持ち方も一様ではないため、講義図は原理を示す簡略像である。</p>
+        <p>FP16では小さな勾配が表現範囲を下回って0へ潰れることがある。そこで<strong>損失スケーリング（loss scaling）</strong>では、損失を係数<code>S</code>倍して逆伝播し、得られた勾配を更新前に<code>S</code>で割り戻す。式で書けば<code>L′=SL</code>、<code>g′=∂L′/∂θ=Sg</code>、したがって<code>g=g′/S</code>である。<code>L</code>は元の損失、<code>θ</code>はパラメータ、<code>g</code>は本来の勾配で、この操作は数学的な更新値を変えず、途中だけ表現しやすくする。</p>
+        <p>たとえば勾配<code>10<sup>−8</sup></code>へ<code>S=1024</code>を掛けると、逆伝播中は約<code>1.024×10<sup>−5</sup></code>となり、FP16で0へ潰れにくくなる。大きくしすぎると逆にオーバーフローするため、動的スケーリングは非有限値を検出したら係数を下げる。BF16は指数範囲が広いため、FP16ほど損失スケーリングを必要としない場合が多い。</p>
         <p><a href="https://docs.nvidia.com/deeplearning/performance/mixed-precision-training/index.html" target="_blank" rel="noopener">公式資料: NVIDIA Mixed Precision Training Guide</a></p>
       </div>
+      <p>量子化と混合精度は併用できるが、目的は異なる。量子化は値を少数のコードへ圧縮し、混合精度は計算経路の数値形式を選ぶ。どちらもメモリと速度を改善できる一方、最終的には学習損失、下流評価、数値異常を測り、削減したビットが品質へ与える影響を確認する必要がある。</p>
     </section>
 
     <section id="sft">
       <h2>7. SFT：次token modelをhelpful assistantへ変える</h2>
+      <p>この節では、Supervised Fine-Tuning（SFT、教師あり微調整）が、pretrained modelへ望ましいinstruction-response例を教師信号として与え、単なる文章の続きを予測するmodelを指示に応じるassistantへ変える仕組みを説明する。</p>
       <p>Pretrained modelは「Can I put my teddy bear in the washer?」を質問として助言せず、training textに続きそうな材質説明などを生成し得る。Pretrainingの目的はassistant behaviorではなく、あくまでcontinuation予測だからである。</p>
-      <p><strong>Supervised Fine-Tuning（SFT）</strong>は、望ましいinput-output pairをlabelとして与え、pretrained weightsを追加学習する。General assistant向けにinstruction-response pairを使うspecial caseが<strong>instruction tuning</strong>である。</p>
+      <p>General assistant向けにinstruction-response pairを使うSFTを<strong>instruction tuning（指示チューニング）</strong>と呼ぶ。多様な指示と模範回答を横断して学ぶことで、個別taskだけでなく、未見の指示でも「要求を読み取り、回答形式を合わせる」という共通behaviorを引き出す。</p>
+      <p><strong>Teacher forcing（教師強制）</strong>では、training中の各時点でmodel自身の直前出力ではなく正解responseの直前tokenを入力し、次の正解tokenの確率を高める。誤りが連鎖せず全位置を並列に学べるためSFTを安定・高速化でき、講義のresponse-only設定ではpromptを条件として固定し、assistant responseのtokenだけをlossへ数える。</p>
       <div class="formula">
         L<sub>SFT</sub>(θ) = −∑<sub>t∈response</sub> log P<sub>θ</sub>(y<sub>t</sub> | prompt, y<sub>&lt;t</sub>)
         <small>講義の設定ではprompt tokenにlossを置かず、assistant response部分だけをteacher forcingする。</small>
@@ -465,10 +521,10 @@ flowchart LR
         <p><a href="https://huggingface.co/docs/trl/sft_trainer" target="_blank" rel="noopener">公式資料: TRL SFT Trainer</a></p>
       </div>
       <h3>Instruction data mixture</h3>
-      <p>講義はstory、poem、list、explanation、assistant dialogue、math・reasoning・code、safetyを挙げる。初期datasetはhuman expertが書いたが、現在はstronger LLMでcandidateを生成し、人または別modelがqualityをreviewするsynthetic dataも使われる。</p>
+      <p>講義はstory、poem、list、explanation、assistant dialogue、math・reasoning・code、safetyを挙げる。初期datasetはhuman expertが書いたが、作成費とcoverageの制約を補うため、現在はstronger LLMでcandidateを大量生成し、人または別modelがfilter・reviewする<strong>synthetic data（合成データ）</strong>も使われる。量と多様性を安価に増やせる一方、teacher modelの誤りや癖も複製するため、出典確認、deduplication、難度・domain配分が重要になる。</p>
       <ul>
         <li><strong>Helpful:</strong> user intentへ直接応答し、actionableでfluentな回答を学ぶ。</li>
-        <li><strong>Harmless / safety:</strong> harmful requestのrefusalや、過度な断定を避けるhedgingをdataとして学ぶ。</li>
+        <li><strong>Harmless / safety:</strong> harmful requestのrefusalや、証拠が不十分なとき「可能性がある」「確認できない」と確信度を限定する<strong>hedging（留保表現）</strong>をdataとして学ぶ。Hedgingは誤断定を減らすが、使いすぎると有用性を損なうため、riskと根拠に応じた調整が必要である。</li>
         <li><strong>Generalization:</strong> Pretrainingで得た概念知識とSFTで得たtask formatを組み合わせ、未見のdetailへ適応する。</li>
       </ul>
       <div class="table-wrap">
@@ -479,7 +535,7 @@ flowchart LR
             <tr><td>規模</td><td>Hundreds of billions〜trillions of tokens。</td><td>Thousands〜millions of examples。桁違いに小さい。</td></tr>
             <tr><td>目的</td><td>Language/codeのgeneral patternと知識。</td><td>Promptに対する望ましいbehaviorとtask適応。</td></tr>
             <tr><td>Loss</td><td>Sequence全体の次token予測。</td><td>講義ではpromptをmaskしresponse tokenにloss。</td></tr>
-            <tr><td>Data quality</td><td>量とcoverageに加えfilteringが重要。</td><td>少量でもstyle・factuality・safetyの一貫性が特に重要。</td></tr>
+            <tr><td>Data quality</td><td>量とcoverageに加えfilteringが重要。</td><td>少量でもstyle・<strong>factuality（事実性）</strong>・safetyの一貫性が特に重要。Factualityは回答が流暢かではなく、検証可能な主張が現実や信頼できる資料と一致する度合いであり、誤った合成回答を教師にするとmodelが誤情報を学ぶ。</td></tr>
           </tbody>
         </table>
       </div>
@@ -492,6 +548,7 @@ flowchart LR
 
     <section id="sft-challenges">
       <h2>8. SFTの難所：data distribution・generalization・cost</h2>
+      <p>この節では、SFTの成否を左右するdata品質・deploymentとの分布差・未見promptへのgeneralization・human review費用を整理し、exampleを増やすだけでは解けない理由を示す。</p>
       <div class="grid-cards">
         <div class="card"><h4>High-quality data</h4><p>望ましいstyle・factuality・safetyを満たすhuman reviewは時間と費用がかかる。</p></div>
         <div class="card"><h4>Prompt distribution</h4><p>Training promptとproduction promptが離れると、能力があっても適切に引き出せない。</p></div>
@@ -504,26 +561,28 @@ flowchart LR
 
     <section id="evaluation">
       <h2>9. Evaluation：benchmarkとChatbot Arenaの両方に盲点がある</h2>
+      <p>この節では、固定問題と採点規則で能力を測るbenchmarkと、匿名の2回答を人が比較するChatbot Arenaのpairwise rankingを対比し、再現性・汚染・主観・操作可能性という異なる盲点を説明する。</p>
       <h3>Capability benchmark</h3>
+      <p><strong>Benchmark（ベンチマーク）</strong>は、model間やversion間を同じ条件で比較するための標準化された問題集合・採点手順である。Knowledge、reasoning、codeなどを分離して定量追跡できる一方、単一scoreは実利用の品質全体を表さず、training dataとの重なりにも影響される。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Benchmark</th><th>測るもの</th><th>一次資料による正確な補足</th></tr></thead>
           <tbody>
-            <tr><td>MMLU</td><td>General knowledge / multitask understanding。</td><td>STEM・humanities・social sciencesなど<strong>57 tasks</strong>の4択問題。</td></tr>
-            <tr><td>ARC-Challenge</td><td>Science questionを使うbasic reasoning。</td><td>ARCのうちretrieval・co-occurrenceだけでは難しいchallenge subset。</td></tr>
-            <tr><td>GSM8K</td><td>Natural-language math reasoning。</td><td><strong>Grade School Math</strong> 8.5K。講義中の「grad school / high school」ではない。</td></tr>
-            <tr><td>HumanEval</td><td>Function specificationからのcode generation。</td><td>164 Python programming problemsをunit testのpass率で評価。</td></tr>
+            <tr><td>MMLU</td><td><strong>Massive Multitask Language Understanding</strong>。幅広い学問分野のknowledgeと理解。</td><td>STEM・humanities・social sciencesなど<strong>57 tasks</strong>の4択問題で、domain横断の基礎能力を同じ形式で比較する。</td></tr>
+            <tr><td>ARC-Challenge</td><td><strong>AI2 Reasoning Challenge</strong>。science questionを使うbasic reasoning。</td><td>ARCのうちretrieval・co-occurrenceだけでは難しいchallenge subsetで、単純暗記より推論を要求する。</td></tr>
+            <tr><td>GSM8K</td><td><strong>Grade School Math 8K</strong>。自然言語で書かれた算数のmulti-step reasoning。</td><td>約8.5K問から成り、最終解だけでなく文章から式を組み立てる能力を測る。講義中の「grad school / high school」ではない。</td></tr>
+            <tr><td>HumanEval</td><td>人手で作成されたcode生成評価。Function specificationからのprogram completionを測る。</td><td>164 Python programming problemsをunit testのpass率で評価し、説明の流暢さではなく実行上の正しさを見る。</td></tr>
           </tbody>
         </table>
       </div>
-      <p>Benchmark scoreは、test exampleそのもののleakだけでなく、同じ<strong>test task</strong>をtrainingしたかにも依存する。Math reasoning formatを大量に学んだmodelと、同taskを見ていないmodelのscore差を「architectureのemergent ability」とだけ解釈すると不公平になり得る。</p>
+      <p><strong>Data contamination（data汚染）</strong>は、test itemまたは非常に近い解答がtraining corpusへ混入し、記憶によってbenchmark scoreが実力以上に見える問題である。公開問題をwebから大量収集するLLMでは完全排除が難しいため、重複検査、非公開test、生成時期の新しい問題などが必要になる。さらにexact leakがなくても、同じ<strong>test task</strong>の形式をtrainingしたかでscoreは変わる。Math reasoning formatを大量に学んだmodelと、同taskを見ていないmodelの差を「architectureのemergent ability」とだけ解釈すると不公平になり得る。</p>
       <div class="callout info">
         <strong>一次資料による補足：training on the test task ≠ exact contamination</strong>
         <p>Dominguez-Olmedoらは、exact test itemを見せなくてもtask-specific dataで全modelを同条件にfine-tuneすると、MMLU・GSM8Kの世代差や「突然のemergence」が大きく縮むと報告した。比較ではpretraining/post-training mixtureの透明性が重要である。</p>
         <p><a href="https://arxiv.org/abs/2407.07890" target="_blank" rel="noopener">一次資料: Training on the Test Task Confounds Evaluation and Emergence</a></p>
       </div>
       <h3>Chatbot Arena：user preferenceをpairwise voteする</h3>
-      <p>Chatbot Arenaは匿名の2 modelへ同じpromptを送り、userが良いresponseを選び、pairwise resultからrankingを作る。Open-ended qualityの「vibes」を数値化できる一方、別のbiasを持つ。</p>
+      <p><strong>Chatbot Arena</strong>は、匿名の2 modelへ同じpromptを送り、userがより良いresponseまたはtieを選ぶ公開評価である。こうした<strong>pairwise ranking（一対比較ランキング）</strong>は、各modelへ絶対点を付ける代わりに勝敗を多数集め、Bradley–Terryなどのmodelで相対ratingへ変換する。正解が一つでないhelpfulnessやwriting qualityを実prompt上で測れる一方、voter層、表示回数、好み、戦略的投票のbiasを受ける。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture4-llm-training/09-arena-limitations.jpg" alt="Chatbot Arena型評価のcold start、ranking操作、factuality評価、個人嗜好、safety penaltyという課題一覧" loading="lazy" />
         <figcaption>Human vote leaderboardの5課題：unequal exposure / cold start、rigging、factuality判断、非代表的な個人嗜好、safety responseへのpenalty。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=5540s" target="_blank" rel="noopener">1:32:20</a></figcaption>
@@ -539,18 +598,20 @@ flowchart LR
 
     <section id="alignment">
       <h2>10. Alignmentとmid-training</h2>
-      <p>講義では、pretraining後の<strong>SFT + preference tuning</strong>を広くalignmentと呼ぶ。SFTがinstruction followingを教え、次回扱うpreference tuningがhuman preferenceやsafety policyへさらに寄せる。ただし「alignment」の範囲は文献・組織によって異なる。</p>
-      <p>終盤では<strong>mid-training</strong>も紹介された。Pretrainingとfine-tuningの間に、最終用途へ近いdataを使って同じnext-token objectiveを続ける段階である。Domain-adaptive continued pretraining、long-context adaptation、capability-specific dataの注入などがこの考え方に近い。SFTのようにresponse behaviorだけを教える前に、target domainの表現・語彙・knowledgeへbase modelを寄せる。</p>
+      <p>この節では、modelの振る舞いを人の意図・選好・safety policyへ近づけるalignmentと、pretrainingからbehavior調整へ橋を架けるmid-trainingの役割と境界を説明する。</p>
+      <p>講義では、pretraining後の<strong>SFT + preference tuning（選好チューニング）</strong>を広く<strong>alignment</strong>と呼ぶ。SFTが模範回答からinstruction followingを教えるのに対し、preference tuningは同じpromptへの候補回答を人またはjudge modelが順位付けしたdataから、好まれる回答の確率を上げる。明示的なreward modelを使う方法や、chosen/rejected pairを直接最適化する方法があり、helpfulnessやsafetyを一意の正解文なしで調整できる。ただし「alignment」の範囲は文献・組織によって異なる。</p>
+      <p>終盤では<strong>mid-training（中間学習）</strong>も紹介された。Pretrainingとfine-tuningの間に、最終用途へ近いdataを使って同じnext-token objectiveを続ける段階である。Domain-adaptive continued pretraining、long-context adaptation、capability-specific dataの注入などがこの考え方に近い。SFTのようにresponse behaviorだけを教える前に、target domainの表現・語彙・knowledgeへbase modelを寄せるため、専門領域の基礎能力やcontext長を先に整えられる。</p>
     </section>
 
     <section id="lora">
       <h2>11. LoRA：full weight updateを低rank差分へ置き換える</h2>
-      <p>Full fine-tuningはweight matrix <code>W</code>全体を更新し、同sizeのgradient・optimizer stateを必要とする。LoRA（Low-Rank Adaptation）はpretrained weight <code>W<sub>0</sub></code>をfreezeし、task-specific updateを2つのthin matrixの積で表す。</p>
+      <p>この節では、Low-Rank Adaptation（LoRA、低rank適応）がbase weightを凍結し、学習すべき差分だけを小さな行列の積へ制限することで、fine-tuningのtrainable memoryとtask別保存量を減らす仕組みを説明する。</p>
+      <p>Full fine-tuningはweight matrix <code>W</code>全体を更新し、同sizeのgradient・optimizer stateを必要とする。LoRAはpretrained weight <code>W<sub>0</sub></code>をfreezeし、task-specific updateを2つのthin matrixの積で表す。背景にある<strong>low-rank hypothesis（低rank仮説）</strong>は、巨大modelのtask適応に必要なweight変化が、全方向ではなく少数の独立方向からなる低次元subspaceへ集中するという経験的仮定である。正しければ、full matrixを学ばずとも重要な変化を小さなadapterで表現できる。</p>
       <div class="formula">
         W′ = W<sub>0</sub> + ΔW = W<sub>0</sub> + (α/r)BA
         <small>W₀ ∈ R<sup>dout×din</sup>, B ∈ R<sup>dout×r</sup>, A ∈ R<sup>r×din</sup>, r ≪ min(din,dout)</small>
       </div>
-      <p>Trainable parameterはfull matrixの<code>d<sub>out</sub>d<sub>in</sub></code>から、LoRAの<code>r(d<sub>out</sub>+d<sub>in</sub>)</code>へ減る。<code>α/r</code>はupdate scaleを制御する。講義slideはscaleを省略して<code>W=W₀+BA</code>と示す。</p>
+      <p>ここで<strong>rank <code>r</code></strong>は差分が使える独立方向の数で、trainable parameterはfull matrixの<code>d<sub>out</sub>d<sub>in</sub></code>から、LoRAの<code>r(d<sub>out</sub>+d<sub>in</sub>)</code>へ減る。小さい<code>r</code>ほど省memoryだが表現capacityは下がる。<code>α/r</code>はupdate scaleを制御する。講義slideはscaleを省略して<code>W=W₀+BA</code>と示す。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture4-llm-training/10-lora-formula.jpg" alt="大きなWを凍結W0と低rank matrix B、Aの積へ分解するLoRAの図" loading="lazy" />
         <figcaption>大きなfull-rank updateを、凍結base weightとsmall rank <code>r</code>の<code>B×A</code>へ分けるLoRA。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=5900s" target="_blank" rel="noopener">1:38:20</a></figcaption>
@@ -571,7 +632,8 @@ flowchart LR
 
     <section id="lora-guidance">
       <h2>12. LoRAの更新guidance：MLP、learning rate、batch size</h2>
-      <p>講義は2025年9月のThinking Machines Lab記事「LoRA Without Regret」を使い、original paper以後の実務guidanceを更新する。</p>
+      <p>この節では、LoRAを挿入する<strong>target modules（対象weight群）</strong>、rank、learning rate、batch sizeの選び方を、Multi-Layer Perceptron（MLP、多層perceptron）を含む近年の実験結果から更新する。</p>
+      <p>講義は2025年9月のThinking Machines Lab記事「LoRA Without Regret」を使い、original paper以後の実務guidanceを更新する。Target modulesはLoRAのA/B行列を付けるlinear weightを指し、attention projectionだけか、tokenごとの変換を担うMLP / feed-forward blockも含めるかで、adapterが変更できる機能とparameter数が変わる。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture4-llm-training/11-lora-locations.jpg" alt="LoRAはattentionだけでなくfeed-forward blockへの適用が特に重要だと示すスライド" loading="lazy" />
         <figcaption>Updated guidanceはMLP / feed-forward blockを「most important location」とし、attention-only LoRAを避ける。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=6145s" target="_blank" rel="noopener">1:42:25</a></figcaption>
@@ -597,7 +659,8 @@ flowchart LR
 
     <section id="qlora">
       <h2>13. QLoRA：4-bit frozen base + BF16 LoRA</h2>
-      <p>QLoRAはLoRAの<code>W₀</code>を4-bitで保存し、A/B adapterはBF16など高いprecisionで学習する。Forward/backward時はquantized weightをcompute dtypeへdequantizeし、gradientは凍結baseではなくLoRA matricesへ流す。</p>
+      <p>この節では、Quantized Low-Rank Adaptation（QLoRA、量子化LoRA）が4-bitの凍結baseと高精度adapterを組み合わせ、weight分布に合う量子化形式、scale metadataの圧縮、memory spike対策によってsingle-GPU fine-tuningを可能にする仕組みを説明する。</p>
+      <p>QLoRAはLoRAの<code>W₀</code>を4-bitで保存し、A/B adapterはBF16など高いprecisionで学習する。Forward/backward時はquantized weightをcompute dtypeへdequantizeして通常のmatrix演算に使い、gradientは凍結baseではなくLoRA matricesへ流す。Baseの保存memoryを減らしながらupdate自体の数値精度を保つ点が、単純な4-bit trainingとの違いである。</p>
       <h3>NF4とdouble quantization</h3>
       <p><strong>NF4（4-bit NormalFloat）</strong>はpretrained weightが概ねzero-centered normal distributionに従うことを利用し、uniformな数値幅ではなくnormal distributionのquantileに基づくcodebookを置く。各binへおおむね同数のweightが入るため、4 bitをweight密度の高い領域へ効率よく割り当てる。</p>
       <figure class="shot">
@@ -605,7 +668,7 @@ flowchart LR
         <figcaption>左の等間隔cutoffより、右のnormal quantile cutoffが分布中央へ多くの表現点を割くNF4の直観。<a class="ts" href="https://www.youtube.com/watch?v=VlA_jt_3Qc4&amp;t=6370s" target="_blank" rel="noopener">1:46:10</a></figcaption>
       </figure>
       <p><strong>画像の読み解き：</strong>Weightが集中する0付近を細かく、tailを粗く表す。Fixed-width bucketでは頻出領域の誤差が大きくなりやすいが、quantile基準は有限codeを分布へ合わせる。</p>
-      <p>Quantizationにはblockごとのscale constantが必要である。Double quantizationはweightだけでなく、このconstant自体もquantizeする。Original QLoRA paperのもう1つの要素は<strong>paged optimizer</strong>で、long sequenceの一時的なmemory spikeをNVIDIA unified memoryで退避する。講義は時間の都合でここを説明していない。</p>
+      <p>Quantizationにはblockごとのscale constantが必要で、parameter数が巨大だとscale自体の保存costも無視できない。<strong>Double quantization（二重量子化）</strong>はweightを量子化するだけでなく、そのscale constant群も再び量子化してmetadataを圧縮し、平均bit/parameterをさらに下げる。Original QLoRA paperのもう1つの要素である<strong>paged optimizer</strong>は、long sequenceなどで一時的にGPU memoryが不足したとき、optimizer stateのpageをNVIDIA unified memory経由でCPU側へ退避・復帰させる。通常時の速度を保ちつつ突発的なout-of-memoryを避けるための仕組みで、講義は時間の都合でここを説明していない。</p>
       <div class="stat-grid">
         <div class="stat-card"><div class="num">&gt;780GB → &lt;48GB</div><div class="label">LLaMA 65Bの16-bit FullFTからQLoRAへのpaper記載memory削減。</div></div>
         <div class="stat-card"><div class="num">0.37 bit/param</div><div class="label">Double quantizationの平均追加saving。65Bで約3GB。</div></div>
@@ -620,6 +683,7 @@ flowchart LR
 
     <section id="qa">
       <h2>14. 講義内Q&amp;A総覧</h2>
+      <p>この節では、講義中に出たpretrainingの再利用、分散gradient、FlashAttention、数値精度、SFT、LoRA rankに関する質問を、対応する技術判断が分かる形で一覧化する。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>質問</th><th>講義の回答・要点</th></tr></thead>
@@ -641,6 +705,7 @@ flowchart LR
 
     <section id="glossary">
       <h2>15. 難しい用語の補足</h2>
+      <p>この節では、本文で仕組みと用途を説明した専門語を短い定義へ引き直し、memory・分散・量子化・評価の用語を参照しやすくまとめる。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>用語</th><th>この講義での意味</th></tr></thead>
@@ -662,6 +727,7 @@ flowchart LR
 
     <section id="summary">
       <h2>16. まとめ：各手法はどのbottleneckを解くか</h2>
+      <p>この節では、各手法が解消する学習上のbottleneck、得られる利点、代わりに生じるtrade-offを一つの対応表へ統合する。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>課題</th><th>手法</th><th>得るもの</th><th>新しいtrade-off</th></tr></thead>
@@ -682,6 +748,7 @@ flowchart LR
 
     <section id="related">
       <h2>17. 関連レポート</h2>
+      <p>この節では、本講義の前提となるTransformer・LLM inferenceと、LoRAの発展的応用を扱う既存レポートへの読み進め方を案内する。</p>
       <div class="grid-cards">
         <div class="card"><h4><a href="stanford-cme295-lecture1-transformer-ja.html">Lecture 1: Transformer</a></h4><p>Tokenization、attention、Transformer本体の前提を復習する。</p></div>
         <div class="card"><h4><a href="stanford-cme295-lecture2-transformer-models-tricks-ja.html">Lecture 2: Models &amp; Tricks</a></h4><p>RoPE、normalization、sparse attention、BERT系を扱う。</p></div>
@@ -692,6 +759,7 @@ flowchart LR
 
     <section id="references">
       <h2>18. 出典・一次資料</h2>
+      <p>この節では、講義内容の確認、数値や用語の補正、各手法の追加説明に用いた公式教材・原論文・公式documentを列挙する。</p>
       <ol class="refs">
         <li>Stanford CME295, <a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture4.pdf" target="_blank" rel="noopener"><em>Lecture 4: LLM Training</em>（128 slides）</a>.</li>
         <li>Kaplan et al. (2020), <a href="https://arxiv.org/abs/2001.08361" target="_blank" rel="noopener"><em>Scaling Laws for Neural Language Models</em></a>.</li>

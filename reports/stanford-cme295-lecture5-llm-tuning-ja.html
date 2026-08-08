@@ -266,16 +266,19 @@
     <div class="tldr">
       <h2>3 行サマリ</h2>
       <ul>
-        <li><strong>preference tuning は「新しい知識を教える段階」ではなく「同じ知識の言い方を人間の好みに寄せる段階」。</strong> SFT が「これを出せ」と教えるのに対し、preference tuning ははじめて <strong>「これは出すな」という負のシグナル</strong> をモデルに注入できる。</li>
-        <li><strong>RLHF は 2 段構え。</strong> ①ペア選好データから Bradley-Terry 定式化で reward model を学習 → ②その reward を使い PPO などの RL で LLM（policy）を更新。ただし <strong>policy・value・reward・base の 4 モデル</strong>が必要で、reward hacking・不安定性・ハイパーパラメータ地獄が付いて回る。</li>
-        <li><strong>DPO は「reward model を消す」再定式化。</strong> PPO の目的関数を解析的に解いて最適 policy を求め、そこから逆算した reward を Bradley-Terry に代入すると reward が消え、<strong>選好ペアだけで回る教師あり損失</strong>になる。必要なモデルは policy と reference の 2 つ。ただし性能は「DPO が常に上」ではなく、分布シフトという固有の弱点がある。</li>
+        <li><strong>教師あり微調整（SFT）は「この答えを出してほしい」は教えられるが、「この答えは避けてほしい」を直接は教えにくい。</strong>そこで、同じ質問への 2 つの答えを比べた<strong>選好ペア</strong>を使い、望ましい答えの確率を相対的に高める。</li>
+        <li><strong>人間のフィードバックからの強化学習（RLHF）は、選好から採点器を学ぶ段階と、その点数で言語モデルを更新する段階に分かれる。</strong>代表的な PPO は強力だが、policy・value・reward・reference の 4 モデル、学習の不安定さ、reward hacking への対策が必要になる。</li>
+        <li><strong>直接選好最適化（DPO）は、採点器と強化学習を数式上で取り除き、選好ペアから言語モデルを直接更新する。</strong>実装は軽いが、固定データと更新後モデルの出力分布がずれる<strong>分布シフト</strong>があり、PPO と DPO のどちらが常に優れるという合意はない。</li>
       </ul>
     </div>
 
     <section id="s01">
       <h2>1. この講義の位置づけ ― LLM 学習の第 3 段階</h2>
       <p>
-        CME295 はここまで、LLM を作る工程を順番に積み上げてきた。冒頭の復習スライドがその全体像をそのまま示している。
+        この節では、言語モデルを作る 3 段階を並べ、今回扱う第 3 段階が何を変え、何を変えないのかを説明する。
+        <strong>事前学習（pretraining）</strong>は言語の基礎を学ばせ、<strong>教師あり微調整（Supervised Fine-Tuning: SFT）</strong>は質問に答える型を教える。
+        その後の<strong>選好調整（preference tuning）</strong>は、答えの比較から得た人間の好みを使い、既にある能力の出し方、安全性、語調を整える。
+        このようにモデルの振る舞いを人間の意図や価値観へ合わせることを<strong>整合（alignment）</strong>という。
       </p>
 
       <figure class="shot">
@@ -286,17 +289,19 @@
       <h3>画像の読み解き</h3>
       <p>
         この図で重要なのは、<strong>3 つの段階が「何を教えるか」で明確に役割分担している</strong>という点である。
-        pretraining（Lecture 4 の範囲）は膨大なテキストとコードから言語そのものの構造を学ぶ。極めて時間と計算資源を食う工程で、
-        終わった時点でモデルができるのは「次の token を予測すること」だけ。Afshine の言い方では
+        pretraining（Lecture 4 の範囲）は膨大なテキストとコードから言語そのものの構造を学ぶ。極めて時間と計算資源を使う工程で、
+        終わった時点でモデルが直接学んだ仕事は「次の <strong>token</strong> を予測すること」だけである。token とは、モデルが文章を処理する文字列の小さな単位だ。
+        Afshine の言い方では
         <em>「素晴らしい autocompleter ではあるが、まだ helpful なモデルではない」</em>。
       </p>
       <p>
-        finetuning（SFT: Supervised Fine-Tuning）は、その pretrained model を特定タスク向けに仕上げる工程。
+        SFT は、その事前学習済みモデルを特定の仕事向けに仕上げる工程である。
         ChatGPT のようなアシスタントに変えるのがその代表例で、<strong>規模ははるかに小さいが品質が非常に高いデータセット</strong>を使い、
-        「どの token を出すべきか」を next token prediction のタスクとして教え込む。Lecture 4 で扱った LoRA はこの段階の parameter efficient な手法だった。
+        「次にどの token を出すべきか」を正解例から教える。Lecture 4 で扱った
+        <strong>LoRA（Low-Rank Adaptation、低ランク適応）</strong>は、更新するパラメータを少なくしてこの微調整を軽くする手法だった。
       </p>
       <p>
-        そして今回の preference tuning。ここでモデルに教えるのは知識でもタスクでもなく、<strong>「振る舞いの好ましさ」</strong>である。
+        そして今回の選好調整で教えるのは、新しい知識や新しい仕事ではなく、<strong>「同じ能力をどう見せると好ましいか」</strong>である。
         Shervine が講義の終盤で言い切っているとおり、この段階の目的は
         <em>「新しい事実を学ばせることではない。既存の completion の分布に焦点を当て、モデルが返すべきものを人間が好むものに揃えること」</em>だ。
       </p>
@@ -349,37 +354,45 @@ flowchart LR
     <section id="s02">
       <h2>2. Preference tuning とは何か ― teddy bear の例で掴む</h2>
       <p>
-        講義はこの先ずっと同じ例を使い続ける。プロンプトは <code>Suggest a new activity I could do with my teddy bear.</code>
-        （テディベアと一緒にできる新しい遊びを提案して）。SFT 済みモデル（<code>LLM<sub>SFT</sub></code>）の返答はこうだった。
+        この節では、テディベアについての 2 つの答えを比べ、「好み」を学習可能なデータにする方法を説明する。
+        以後、質問を <code>x</code>、好まれた答えを <code>y<sub>w</sub></code>（winner）、好まれなかった答えを
+        <code>y<sub>l</sub></code>（loser）と書く。講義が繰り返し使う質問 <code>x</code> は
+        <code>Suggest a new activity I could do with my teddy bear.</code>（テディベアと一緒にできる新しい遊びを提案して）である。
+        SFT 済みモデル（<code>LLM<sub>SFT</sub></code>）は、まず次のように答えた。
       </p>
       <blockquote>I'd suggest you do not spend much time with your teddy bear at all.<br>
       （テディベアと過ごす時間はあまり取らないほうがいいですよ。）</blockquote>
       <p>
-        アシスタントとしては文章になっているが、<strong>こちらが望む答えではない</strong>。
-        そこでこの「良くない出力」に対して、代わりに出してほしかった出力を用意する。
+        文法上は自然でも、依頼を助ける答えにはなっていない。そこで、同じ質問に対して、より望ましい答えを用意する。
       </p>
       <blockquote>Of course! Teddy bears not only make awesome companions for a delightful sleep, but can also be great buddies for fun activities. How about you both watch a movie together?<br>
       （もちろん！ テディベアは心地よい眠りの相棒であるだけでなく、楽しい活動のよき仲間にもなります。一緒に映画を観るのはいかがでしょう？）</blockquote>
       <p>
-        この <strong>「同じプロンプトに対する、望ましい応答と望ましくない応答の組」</strong> が <strong>preference pair（選好ペア）</strong> である。
+        この <strong>「同じ質問に対する、好まれた答えと好まれなかった答えの組」</strong>
+        <code>(x, y<sub>w</sub>, y<sub>l</sub>)</code> が <strong>preference pair（選好ペア）</strong>である。
+        ラベルは「前者が 0.9 点」のような絶対点ではなく、<code>y<sub>w</sub> ≻ y<sub>l</sub></code>、つまり「前者を後者より好む」という相対関係だ。
         スライドの言葉では <em>「Context. Model may misbehave. Need to inject negative signals.（モデルは望ましくない振る舞いをしうる。負のシグナルを注入する必要がある）」</em>。
       </p>
 
       <div class="callout info">
         <p><strong>周辺情報：この「負のシグナル」という言い方が本質。</strong>
-        SFT の損失は「正解列の対数尤度を上げる」だけで構成されるため、原理的に <strong>「これを出すな」を表現する場所がない</strong>。
+        通常の SFT の損失は、与えられた正解列の確率を上げるように作られているため、データに悪い答えを置いて
+        <strong>「これは出すな」と直接指定する欄がない</strong>。
         Afshine もこう述べている ―
         <em>「SFT はモデルに何を予測すべきかを教えるが、何を予測すべきでないかは教えない」</em>。
         preference tuning は損失関数に「負けた応答」を明示的に組み込むことで、この欠落を埋める。
-        後述する reward model の損失も DPO の損失も、必ず <code>（勝った側） − （負けた側）</code> という差分の形をしているのはそのためである。</p>
+        後述する <strong>reward model</strong> は選好ペアから「プロンプト＋応答」を 1 個の好ましさスコアへ写す採点器で RL や BoN に再利用でき、
+        <strong>DPO（Direct Preference Optimization）</strong>は別の採点器を作らず、policy と固定 reference の尤度比をペアで直接学習する。
+        どちらの損失も <code>（勝った側） − （負けた側）</code> という差分の形をしているのはそのためである。</p>
       </div>
     </section>
 
     <section id="s03">
       <h2>3. なぜ SFT だけで済まないのか ― 3 つの理由</h2>
       <p>
-        受講生から当然の質問が出る。「SFT の段階があるのに、なぜ第 3 段階が必要なのか？」
-        スライドは 3 つの理由を挙げ、さらに重要な但し書きを添えている。
+        この節では、SFT だけで好ましい振る舞いを作り切りにくい理由を、①正解文を一から書く難しさ、②データ分布への敏感さ、
+        ③高品質データを増やす費用、の順に説明する。ただし、選好調整は壊れた SFT を隠す万能薬ではなく、
+        モデルの大きな不調は SFT データを見直す合図でもある、という講義の注意も残す。
       </p>
 
       <figure class="shot">
@@ -392,15 +405,17 @@ flowchart LR
         Afshine の説明はこうだ ―
         <em>「『素晴らしい詩をゼロから書け』と言われるのと、『悪い詩と良い詩を 2 つ見せるのでどちらが良いか言え』と言われるのでは、後者のほうが圧倒的に簡単」</em>。
         SFT のデータを作るには「理想の応答」そのものを人間が書かなければならないが、選好データなら <strong>2 つ見て選ぶだけ</strong>で済む。
-        アノテーションのコストと難易度が桁違いに下がる。
+        このため、比較によるラベル付けは、理想文を執筆するより速く、評価者間の基準も合わせやすい。
       </p>
 
       <h3>理由 2：SFT ではプロンプトの分布が極めて重要で、壊しやすい</h3>
       <p>
         SFT データセットを作るとき、実務家が最も神経を使うのが <strong>プロンプトの分布</strong> である。
         特定タイプのプロンプトが多すぎると、モデルはその方向に偏った応答をするようになる。
-        つまり「モデルが 1 件おかしな挙動をしたから SFT データに 1 件足そう」としても、
-        <strong>その 1 件がモデル全体をどれだけ偏らせるかを慎重に見極めなければならない</strong>。preference tuning にはこの制約が（相対的に）ない。
+        ここでいう<strong>分布</strong>とは、どの種類の質問がどの割合で含まれるか、というデータ全体の構成である。
+        「モデルが 1 件おかしな挙動をしたから SFT データに 1 件足そう」としても、
+        <strong>その追加がモデル全体をどちらへ偏らせるかを慎重に見極めなければならない</strong>。
+        選好調整にもデータ分布は重要だが、講義の主張は、SFT の正解例を継ぎ足す場合ほど直接的に出力分布を壊しにくい、という相対的な違いである。
       </p>
 
       <h3>理由 3：SFT データの品質確保はスケールしない</h3>
@@ -427,7 +442,10 @@ flowchart LR
     <section id="s04">
       <h2>4. 選好データの 3 形式 ― pointwise / pairwise / listwise</h2>
       <p>
-        1 件の観測は <code>Observation = (prompt x, response ŷ)</code> と定義される。この観測に「良し悪し」のラベルを付ける方式は 3 通りある。
+        この節では、質問と答えの 1 組 <code>(x, ŷ)</code> に好ましさを付ける 3 方式を比べる。
+        <code>x</code> は質問、<code>ŷ</code> はモデルが生成した答え、<code>Observation = (x, ŷ)</code> は評価対象 1 件を表す。
+        1 件ずつ点数を付ける <strong>pointwise（個別評価）</strong>、2 件を比べる <strong>pairwise（ペア比較）</strong>、
+        複数件を並べ替える <strong>listwise（リスト順位付け）</strong>のうち、人間が判断しやすく学習にもつなげやすい pairwise が中心になる。
       </p>
 
       <figure class="shot">
@@ -463,7 +481,7 @@ flowchart LR
 
       <div class="callout info">
         <p><strong>周辺情報：なぜ絶対評価が難しいのか。</strong>
-        絶対スコア付けは、評価者ごとに基準（スケール）がずれるうえ、同じ評価者でも時間帯や直前に見た事例で基準が移動する。
+        絶対スコア付けは、評価者ごとに点数の基準がずれるうえ、同じ評価者でも直前に見た事例によって基準が動く。
         相対比較はこの「基準のドリフト」に強い。これは情報検索の learning-to-rank 分野で古くから知られる pointwise / pairwise / listwise の分類とまったく同じ整理で、
         LLM の選好データ収集にもそのまま持ち込まれている。
         なお実運用の選好データセット（例: Hugging Face TRL が例示に使う <code>UltraFeedback</code> や、
@@ -474,7 +492,9 @@ flowchart LR
     <section id="s05">
       <h2>5. ペア選好データの作り方 ― 2 ステップのレシピ</h2>
       <p>
-        では実際にペア選好データはどう作るのか。スライドは 2 ステップのレシピとして提示する。
+        この節では、選好ペアを作る実務を「候補を作る」「どちらがよいか決める」の 2 段階で説明する。
+        先に実際の利用に近い質問を集め、同じ質問から複数の答えを作る。次に、明確な評価基準を人間または代理の採点方法へ渡し、
+        <code>(x, y<sub>w</sub>, y<sub>l</sub>)</code>へ整える。このデータが、次節以降の reward model と DPO の共通の出発点になる。
       </p>
 
       <figure class="shot">
@@ -484,8 +504,8 @@ flowchart LR
 
       <h3>ステップ 1：同じプロンプトに対して応答を 2 つ生成する</h3>
       <ul>
-        <li><strong>入力（プロンプト x）</strong>：<em>実ユーザーが典型的に何を尋ねるかの分布に従わせたい</em>ため、プロダクションの<strong>ログ</strong>、あるいは意図的に用意した参照分布から取る。</li>
-        <li><strong>出力（応答 ŷ）</strong>：<strong>同じプロンプトを temperature を正にした SFT モデルに 2 回入れる</strong>と、異なる 2 つの応答が得られる（Lecture 3 の decoding の話につながる）。ほかに合成データ、あるいは <strong>rewrite（書き直し）</strong> という手もある。</li>
+        <li><strong>入力（質問 <code>x</code>）</strong>：実際の利用者が尋ねる内容に近づけるため、運用ログ、または意図的に設計した質問の分布から取る。個人情報や機密情報を扱う場合は、収集前の保護設計が別途必要になる。</li>
+        <li><strong>出力（候補回答 <code>ŷ</code>）</strong>：同じ質問を、<strong>temperature <code>T &gt; 0</code></strong> にした SFT モデルへ複数回入れる。temperature は生成のばらつきを調整する値で、0 より大きくすると同じ質問から違う候補を得やすい。ほかに合成データや <strong>rewrite（人手での書き直し）</strong>も使える。</li>
       </ul>
       <p>
         rewrite とは、ログの中から「気に入らなかった応答」を見つけ、それを人手で良い応答に書き直すやり方。
@@ -495,14 +515,18 @@ flowchart LR
 
       <h3>ステップ 2：2 つの応答にラベルを付ける</h3>
       <ul>
-        <li><strong>human rating</strong>：人間の評価者による比較。RLHF の "HF" はここに由来する。</li>
-        <li><strong>proxy（代理指標）</strong>：<strong>LLM-as-a-judge</strong>（後の講義で扱う予定）、あるいは <strong>BLEU</strong>・<strong>ROUGE</strong> のようなルールベース指標。ただし後者について Afshine は <em>「最近はあまり使われていない」</em>と述べている。</li>
-        <li><strong>スケールの粒度</strong>：最も単純なのは <strong>binary</strong>（応答 1 は応答 2 より良いか悪いか、だけ）。より細かい <strong>nuanced スケール</strong>（much better / better / slightly better / slightly worse / worse / much worse）も可能。ただし多くのタスクは主観的なので、<strong>実際には binary が選ばれることが多い</strong>。</li>
+        <li><strong>人間による比較</strong>：評価者が 2 つを読み、基準に沿って一方を選ぶ。RLHF の <em>Human Feedback</em> はこのラベルの由来を指す。</li>
+        <li><strong>LLM-as-a-judge</strong>：評価基準と候補を別の大規模言語モデル（Large Language Model: LLM）へ渡し、比較判定を任せる。大量処理しやすく意味や指示遵守も見られるが、判定モデルの偏り、位置順への偏り、自己モデルを好む偏りを引き継ぎうる。</li>
+        <li><strong>古典的な自動指標</strong>：<strong>BLEU（Bilingual Evaluation Understudy）</strong>や
+        <strong>ROUGE（Recall-Oriented Understudy for Gisting Evaluation）</strong>で参照文との表面上の重なりを測る。講義では、自由な対話の好ましさには最近あまり使われないと説明された。</li>
+        <li><strong>判定の細かさ</strong>：最も単純なのは「A と B のどちらがよいか」だけの 2 値判定。much better から much worse まで段階を付けることもできるが、主観的な課題では境界を揃えにくいため、講義では 2 値が多いとされた。</li>
       </ul>
 
       <div class="callout info">
         <p><strong>周辺情報：BLEU と ROUGE とは何か。</strong>
-        いずれも生成文と参照文の <strong>n-gram の重なり</strong>で自動採点する古典的指標。BLEU は機械翻訳向けで<strong>適合率（precision）寄り</strong>、ROUGE は要約向けで<strong>再現率（recall）寄り</strong>という違いがある。
+        BLEU と ROUGE は、いずれも生成文と参照文の
+        <strong>n-gram の重なり</strong>で自動採点する古典的指標。人手を使わず大量の候補を一貫して採点するために導入され、
+        BLEU は機械翻訳向けで<strong>適合率（precision）寄り</strong>、ROUGE は要約向けで<strong>再現率（recall）寄り</strong>という違いがある。
         参照文との表層一致しか見ないため、意味は同じでも言い回しが違う応答を低く評価してしまう。
         オープンエンドなチャット応答の「好ましさ」を測るには不向きで、講義が「最近はあまり使われない」と言うのはこの理由による。
         代わりに主流になったのが LLM-as-a-judge（強力な LLM に 2 応答を比較採点させる）である。</p>
@@ -519,17 +543,18 @@ flowchart LR
     <section id="s06">
       <h2>6. 強化学習（RL）の基礎 ― LLM に写像して理解する</h2>
       <p>
-        選好データが揃ったら、次は「好まれた応答を出しやすく、好まれなかった応答を出しにくく」モデルを更新したい。
-        そのための手法が <strong>RLHF</strong> であり、その名のとおり RL に依存する。
-        Afshine は教室に <em>「ここに RL の専門家はいますか？」</em>と尋ね、ほぼ誰もいないことを確認したうえで、基礎から丁寧に始めた。
+        この節では、<strong>強化学習（Reinforcement Learning: RL）</strong>の基本語を、言語モデルが 1 token ずつ文章を作る場面へ対応付ける。
+        ここでの<strong>方策（policy）</strong>は「現在の文脈から次の token を選ぶ確率分布」であり、学習対象の言語モデルそのものだ。
+        完成した答えへの評価を使い、良かった生成を起こしやすくするのが、後段の
+        <strong>RLHF（Reinforcement Learning from Human Feedback、人間のフィードバックからの強化学習）</strong>である。
       </p>
 
       <h3>標準的な RL の枠組み</h3>
       <ul>
-        <li><strong>agent（エージェント）</strong>が <strong>environment（環境）</strong>と相互作用する。</li>
-        <li>agent は時刻 <code>t</code> にある <strong>state（状態）<code>s<sub>t</sub></code></strong> にいて、<strong>action（行動）<code>a<sub>t</sub></code></strong> を取る。</li>
-        <li>どの action を取るかは <strong>policy（方策）</strong> <code>π<sub>θ</sub>(a<sub>t</sub> | s<sub>t</sub>)</code> に従う。これは<strong>「その状態で、その行動を取る確率」</strong>を与える関数。</li>
-        <li>action の結果として agent は <strong>reward（報酬）<code>r<sub>t</sub></code></strong> を受け取る。良いこともあれば悪いこともある。</li>
+        <li><strong>agent（行動主体）</strong>が <strong>environment（環境）</strong>とやり取りする。</li>
+        <li>時点 <code>t</code> の <strong>state（状態）<code>s<sub>t</sub></code></strong> を見て、<strong>action（行動）<code>a<sub>t</sub></code></strong> を選ぶ。</li>
+        <li>選び方は <strong>policy（方策）</strong> <code>π<sub>θ</sub>(a<sub>t</sub> | s<sub>t</sub>)</code> で表す。<code>π</code> は確率分布、<code>θ</code> は学習するモデルの重み、縦線 <code>|</code> は「状態 <code>s<sub>t</sub></code> が与えられたとき」を意味する。</li>
+        <li>行動の結果を <strong>reward（報酬）</strong>という数値で評価し、将来の報酬が大きくなるよう <code>θ</code> を更新する。</li>
       </ul>
 
       <h3>これを LLM に対応させる</h3>
@@ -546,17 +571,18 @@ flowchart LR
           <tr><td>agent</td><td><strong>LLM そのもの</strong></td><td>学習対象</td></tr>
           <tr><td>state <code>s<sub>t</sub></code></td><td><strong>ここまでの入力（プロンプト＋生成済み token 列）</strong></td><td>文脈が状態</td></tr>
           <tr><td>action <code>a<sub>t</sub></code></td><td><strong>次に予測する token</strong></td><td>1 手 = 1 token</td></tr>
-          <tr><td>environment</td><td><strong>語彙（token の集合）</strong></td><td>選べる行動の集合</td></tr>
+          <tr><td>environment</td><td><strong>token を文脈へ追加する生成過程</strong></td><td>講義スライドは簡潔に “Tokens” と表示。語彙は厳密には行動の候補集合</td></tr>
           <tr><td>policy <code>π<sub>θ</sub></code></td><td><strong>forward pass の出力である次 token の確率分布</strong></td><td>LLM の出力そのものが policy</td></tr>
-          <tr><td>reward <code>r<sub>t</sub></code></td><td><strong>選好データから学習した reward model のスコア</strong></td><td>次章で構築する</td></tr>
+          <tr><td>reward</td><td><strong>選好データから学習した reward model のスコア</strong></td><td>本講義では主に完成した応答 1 本へ与える</td></tr>
         </tbody>
       </table>
       </div>
 
       <p>
-        <strong>ここが本講義でいちばん腑に落ちるポイント</strong>だろう。
-        「LLM を RL で学習する」と聞くと大掛かりに聞こえるが、要するに
-        <strong>LLM が出力する確率分布をそのまま policy とみなす</strong>だけの話である。
+        たとえば「テディベアと」の後で <code>映画</code>を選ぶ確率が 0.20、<code>遊ぶな</code>を選ぶ確率が 0.05 なら、
+        それらが同じ状態における方策の値である。生成を最後まで続けて良い評価を得たとき、その生成に含まれた token の確率を適切な範囲で上げる。
+        「LLM を RL で学習する」とは、別の行動装置を足すのではなく、
+        <strong>LLM が元から出している次 token の確率分布を policy とみなして更新する</strong>ことだ。
         目標は <em>「θ（LLM のパラメータ）を学習して、<code>π<sub>θ</sub></code> が人間の選好に整合するようにすること」</em> ― スライドの一文がすべてを言っている。
       </p>
 
@@ -564,12 +590,18 @@ flowchart LR
 flowchart LR
   S["state s_t<br/>= ここまでの入力"] --> P["policy π_θ(a_t | s_t)<br/>= LLM の出力確率分布"]
   P --> A["action a_t<br/>= 次の token"]
-  A --> E["environment<br/>= 語彙 (tokens)"]
+  A --> E["environment<br/>= token を文脈へ追加"]
   E --> S
   A --> R["reward r_t<br/>= reward model のスコア"]
   R -.->|θ を更新| P
       </div>
       <p class="diagram-hint">クリックで拡大。LLM における RL ループ（講義スライドの構成を図式化したもの）。</p>
+
+      <div class="callout info">
+        <p><strong>講義図を厳密に読むための補足。</strong>
+        スライドは <code>environment = Tokens</code> と簡略化している。標準的な RL 用語では、語彙は action space（選べる行動の集合）に近く、
+        environment は選んだ token を文脈へ加えて次の状態を作る遷移を担う。本レポートの表と図は、講義の対応関係を残しつつ、この区別が分かる表現にした。</p>
+      </div>
 
       <div class="callout info">
         <p><strong>周辺情報：講義で語られた「RL 信号の疎さ」。</strong>
@@ -583,6 +615,12 @@ flowchart LR
 
     <section id="s07">
       <h2>7. RLHF の全体像 ― 2 つのステップ</h2>
+      <p>
+        この節では、ここまで集めた選好ペアが、どのように言語モデルの更新へ届くかを 2 段階でつなぐ。
+        第 1 段階では、質問と答えから好ましさを 1 個の数値へ変える<strong>reward model（報酬モデル）</strong>を学ぶ。
+        第 2 段階では、その採点器を固定したまま、現在の言語モデルが作った答えを採点し、policy を更新する。
+        つまり流れは、<strong>データ収集 → reward の学習 → RL による生成分布の改善</strong>である。
+      </p>
 
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture5-llm-tuning/06-rlhf-overview-two-steps.jpg" alt="RLHF overview のスライド。RLHF = Reinforcement Learning from Human Feedback、Step 1 Reward modeling（入力は prompt と response、出力は定量スコア r(x,ŷ)）、Step 2 Reinforcement learning（入力は prompt x、出力は response ŷ）" loading="lazy" />
@@ -593,6 +631,17 @@ flowchart LR
         <div class="card">
           <h4>Step 1 — Reward modeling</h4>
           <p>集めた選好ペアを使い、「良い出力」と「悪い出力」を見分けるモデルを学習する。入力はプロンプトと応答の連結、出力はスコア 1 つ。</p>
+        </div>
+
+        <div class="table-wrap">
+        <table>
+          <thead><tr><th>モデル</th><th>第 1 段階</th><th>第 2 段階</th><th>なぜ固定／更新するか</th></tr></thead>
+          <tbody>
+            <tr><td><strong>reward model</strong></td><td>選好ペアから学習</td><td><strong>凍結</strong></td><td>学習中に採点基準が動くと、policy が追う目標も動いてしまうため</td></tr>
+            <tr><td><strong>policy</strong></td><td>SFT モデルを初期値として用意</td><td><strong>更新</strong></td><td>好ましい答えを出す確率分布そのものを変えるため</td></tr>
+            <tr><td><strong>reference policy</strong></td><td>SFT モデルの複製を用意</td><td><strong>凍結</strong></td><td>元の能力から離れすぎていないか測る基準にするため。詳しくは §11</td></tr>
+          </tbody>
+        </table>
         </div>
         <div class="card">
           <h4>Step 2 — Reinforcement learning</h4>
@@ -618,8 +667,10 @@ flowchart LR
     <section id="s08">
       <h2>8. Step 1：reward model と Bradley-Terry 定式化</h2>
       <p>
-        Step 1 の目標は、<strong>プロンプトと応答を入れるとスコアが 1 つ返る関数 <code>r(x, ŷ)</code></strong> を作ること。
-        応答だけでなく<strong>プロンプトも入力に含める</strong>のが重要で、文脈がなければ答えの良し悪しは判定できない。
+        この節では、2 つの答えの比較結果から、1 つの答えを単独で採点できる reward model を学ぶ考え方を説明する。
+        使うのは <strong>Bradley-Terry pairwise model（Bradley-Terry ペア比較モデル）</strong>である。
+        reward model を <code>r(x, y)</code> と書き、質問 <code>x</code> と答え <code>y</code>を入れると、好ましさを表す実数が 1 つ返るとする。
+        同じ文でも質問によって良し悪しが変わるため、答えだけでなく<strong>質問も必ず入力する</strong>。
       </p>
       <p>
         では、そんなモデルをどう学習するのか。ここで登場するのが <strong>Bradley-Terry 定式化</strong> である。
@@ -633,7 +684,7 @@ flowchart LR
 
       <div class="formula">
         p(y<sub>i</sub> &gt; y<sub>j</sub>) = e<sup>r<sub>i</sub></sup> / ( e<sup>r<sub>i</sub></sup> + e<sup>r<sub>j</sub></sup> ) = σ( r<sub>i</sub> − r<sub>j</sub> )
-        <small>r<sub>i</sub>, r<sub>j</sub> はそれぞれ y<sub>i</sub>, y<sub>j</sub> の reward。σ は sigmoid 関数 σ(x) = 1 / (1 + e<sup>−x</sup>)</small>
+        <small><code>p</code> は「答え <code>y_i</code> が <code>y_j</code> より好まれる確率」。<code>r_i = r(x,y_i)</code>、<code>r_j = r(x,y_j)</code>。<code>e</code> は自然対数の底、<code>σ</code> は sigmoid 関数 <code>σ(z)=1/(1+e^{-z})</code></small>
       </div>
 
       <h3>この式が言っていること</h3>
@@ -646,7 +697,10 @@ flowchart LR
         <li>つまり <strong>良い出力の <code>r</code> は高く、悪い出力の <code>r</code> は低く</strong>なるようモデルを学習すればよい。</li>
       </ul>
       <p>
-        <strong>絶対値ではなく差だけが意味を持つ</strong>のがこの定式化の核心である。
+        数字で確かめる。<code>r<sub>i</sub>=2</code>、<code>r<sub>j</sub>=1</code>なら差は 1 で、
+        <code>σ(1)≈0.73</code>、つまり <code>y<sub>i</sub></code> が選ばれる確率は約 73% と表される。
+        両方へ 10 を足して 12 と 11 にしても差は 1 のままなので確率は変わらない。
+        <strong>reward の絶対値ではなく差だけが識別できる</strong>のが、この定式化の核心である。
       </p>
 
       <div class="callout info">
@@ -675,8 +729,10 @@ flowchart LR
     <section id="s09">
       <h2>9. reward model の損失関数を第一原理から導出する</h2>
       <p>
-        Afshine はここで <strong>スライドを離れて黒板に向かい</strong>、損失関数を「第一原理から」組み立てて見せた。
-        受講生から「binary cross entropy では？」という答えが出たあと、それを丁寧に展開していく。
+        この節では、Bradley-Terry の選好確率を、学習プログラムが最小化できる損失へ変える。
+        観測された選好ペアが起きる確率を最大にする<strong>最尤推定（Maximum Likelihood Estimation: MLE）</strong>から始め、
+        積を和へ変える対数を取り、最後に符号を反転して<strong>負の対数尤度（Negative Log-Likelihood: NLL）</strong>を得る。
+        この順を追うと、式を暗記せず、二値交差エントロピーと同じ形になる理由を理解できる。
       </p>
 
       <figure class="shot">
@@ -686,17 +742,25 @@ flowchart LR
 
       <h3>導出の 5 ステップ</h3>
       <ol>
-        <li><strong>データを置く。</strong> 選好データセットは「勝った例 <code>ŷ<sub>w</sub></code>」と「負けた例 <code>ŷ<sub>l</sub></code>」のペアが n 組。各ペアは互いに独立と仮定する。</li>
-        <li><strong>尤度を最大化する。</strong> 「観測されたデータが起きる確率」を最大にする θ を探す。独立なので<strong>積</strong>になる：<code>max<sub>θ</sub> Π<sub>i=1..n</sub> P(ŷ<sub>w</sub> &gt; ŷ<sub>l</sub>)</code>。</li>
-        <li><strong>Bradley-Terry を代入する。</strong> <code>Π<sub>i=1..n</sub> σ( r(x, ŷ<sub>w</sub>) − r(x, ŷ<sub>l</sub>) )</code>。</li>
+        <li><strong>データを置く。</strong> <code>i=1,…,n</code> 番目のデータを <code>(x<sub>i</sub>, y<sub>w,i</sub>, y<sub>l,i</sub>)</code> とする。<code>n</code> はペア数、添字 <code>w</code> は好まれた答え、<code>l</code> は好まれなかった答えで、各ペアは独立と仮定する。</li>
+        <li><strong>MLE で尤度を最大化する。</strong> reward model の重みを <code>φ</code> と書くと、観測された全勝敗の同時確率は独立性により積になる：
+        <code>max<sub>φ</sub> Π<sub>i=1..n</sub> P<sub>φ</sub>(y<sub>w,i</sub> ≻ y<sub>l,i</sub> | x<sub>i</sub>)</code>。</li>
+        <li><strong>Bradley-Terry を代入する。</strong>
+        各確率を <code>σ(r<sub>φ</sub>(x<sub>i</sub>,y<sub>w,i</sub>) − r<sub>φ</sub>(x<sub>i</sub>,y<sub>l,i</sub>))</code> に置き換える。</li>
         <li><strong>log を取る。</strong> Afshine の助言 ― <em>「確率の積を見たら、まず考えるべきは log。積は非常に小さくなり得て数値的な不安定さを招くから」</em>。積の最大化は log の最大化と同値なので、<code>Σ log σ(·)</code> になる。</li>
-        <li><strong>符号を反転する。</strong> <em>「ML の人間は最小化が好きなので、頭にマイナスを付ける」</em>。最大化 → 最小化に変換して損失関数が完成する。</li>
+        <li><strong>符号を反転して NLL にする。</strong> <em>「ML の人間は最小化が好きなので、頭にマイナスを付ける」</em>。対数尤度の最大化を負の対数尤度の最小化へ変換し、最適化器で扱える損失関数が完成する。</li>
       </ol>
 
       <div class="formula">
-        L = − 𝔼<sub>(x, ŷ<sub>w</sub>, ŷ<sub>l</sub>)</sub> [ log σ( r(x, ŷ<sub>w</sub>) − r(x, ŷ<sub>l</sub>) ) ]
-        <small>reward model の損失。期待値の形で書くのが慣例。ŷ<sub>w</sub> = winning（好まれた）応答、ŷ<sub>l</sub> = losing（好まれなかった）応答</small>
+        𝓛<sub>RM</sub>(φ) = − 𝔼<sub>(x,y<sub>w</sub>,y<sub>l</sub>)∼𝒟</sub> [ log σ( r<sub>φ</sub>(x,y<sub>w</sub>) − r<sub>φ</sub>(x,y<sub>l</sub>) ) ]
+        <small><code>𝒟</code> は選好データセット、<code>𝔼</code> はデータ全体の平均、<code>φ</code> は reward model の重み。実装では期待値をミニバッチ平均で近似する</small>
       </div>
+
+      <p>
+        1 ペアだけで、reward の差が 0 なら予測確率は <code>0.5</code>、損失は <code>−log 0.5≈0.693</code> である。
+        差を 2 まで広げると確率は <code>σ(2)≈0.881</code>、損失は約 <code>0.127</code> まで下がる。
+        つまり最小化すると、好まれた答えの score を負けた答えより高くする方向へ学習が進む。
+      </p>
 
       <h3>この講義でいちばん美しい問い</h3>
       <p>
@@ -726,6 +790,11 @@ flowchart LR
 
     <section id="s10">
       <h2>10. reward model の実装 ― 規模・アーキテクチャ・評価</h2>
+      <p>
+        この節では、前節の数式を実際のモデルへ落とし込む。データ量の目安、生成向けモデルを採点器へ変える方法、
+        score の扱い、評価用ベンチマークの順に説明する。重要なのは、ペアで学習しても、完成した reward model は
+        <strong>質問と答えを 1 組ずつ採点する pointwise な関数</strong>だという点である。
+      </p>
 
       <div class="stat-grid">
         <div class="stat-card"><div class="num">O(10,000)</div><div class="label">reward model の学習データ規模（観測数）</div></div>
@@ -740,12 +809,12 @@ flowchart LR
         <tbody>
           <tr>
             <td><strong>Decoder-only LLM + 分類ヘッド</strong></td>
-            <td>next token prediction ヘッドの代わりに classification head を付け、文末の表現からスコアを出す</td>
+            <td>左から右へ生成する decoder-only LLM の token 予測ヘッドを、1 個の score を返す出力層へ置き換える</td>
             <td><em>「最近はみんな LLM ルート。何もかも LLM だから」</em>＝事実上の標準</td>
           </tr>
           <tr>
             <td><strong>Encoder-only（BERT 系）</strong></td>
-            <td><code>[CLS]</code> token の埋め込みを射影してスコアにする</td>
+            <td>入力全体を同時に読む encoder の <code>[CLS]</code>（入力全体を代表する特別 token）の表現を 1 個の score へ写す</td>
             <td>「選択肢としては十分あり得る」（Lecture 2 の内容とつながる）</td>
           </tr>
         </tbody>
@@ -761,7 +830,7 @@ flowchart LR
       <ul>
         <li><strong>reward は「次元」ごとに定義される。</strong> 有用性・フレンドリーさ・安全性などは別々の軸であり、<strong>次元ごとに別の reward model を持つこともできる</strong>し、全体を束ねた holistic なスコアを使うこともできる。まず「何を測る軸か」を定義する必要がある。</li>
         <li><strong>回帰か分類か。</strong> Afshine の答えは「どちらとも言い切れないが、選好データ（良いか悪いか＝1 か 0）から学ぶので<strong>分類寄り</strong>。ただし最終的に reward を使うので純粋な分類でもない。<strong>確率的な定式化</strong>と呼ぶのが一番近い」。</li>
-        <li><strong>スケールは自由（free form）。</strong> 回帰のように「0〜1 のスコアを当てる」わけではないので出力スケールは決まっておらず、<strong>推論時にバッチ内で正規化する</strong>のが普通。後述の Best-of-N ではスケールは影響しない（順位が変わらないため）が、<strong>損失関数に入る RL ではスケールが効く</strong>ので正規化が重要になる。</li>
+        <li><strong>スケールは固定されない。</strong> Bradley-Terry が score の差だけを見るため、0〜1 の絶対点を正解として学ぶわけではない。講義では<strong>推論時にバッチ内で正規化するのが普通</strong>と説明された。後述の Best-of-N は順位しか使わないため単調な再尺度化に強いが、<strong>RL では score の大きさが更新量へ効く</strong>ので正規化が重要になる。</li>
         <li><strong>スコアの見え方。</strong> 「良い出力は 1、悪い出力は −2、−3 くらい」と Afshine は説明した。<strong>連続値で、負にもなる</strong>（Best-of-N のスライドで実例が出てくる）。</li>
       </ul>
 
@@ -777,8 +846,11 @@ flowchart LR
     <section id="s11">
       <h2>11. Step 2：RL で LLM を整合させる ― と reward hacking</h2>
       <p>
-        reward model ができたら Step 2。<strong>学習するのは LLM（policy）だけで、reward model は凍結（frozen）</strong>される ―
-        Afshine が「重要な点」として繰り返した部分である。スライドでも <code>🔥 Trained</code>（LLM）と <code>❄ Frozen</code>（RM）が明示されている。
+        この節では、固定した reward model の点数を高めながら、SFT モデルが元から持つ能力を壊さないよう policy を更新する方法を説明する。
+        学習中に重みを変えないことを<strong>凍結（frozen）</strong>といい、reward model と基準用の
+        <strong>reference policy</strong> は凍結し、現在の <strong>policy <code>π<sub>θ</sub></code></strong>だけを更新する。
+        点数だけを追うと、既習能力を失う<strong>破滅的忘却（catastrophic forgetting）</strong>や、採点器の弱点を突く
+        <strong>reward hacking</strong>が起こる。そこで、reward と「基準から離れすぎない」という制約を同時に最適化する。
       </p>
 
       <div class="stat-grid">
@@ -797,6 +869,18 @@ flowchart LR
         いずれにせよ講義の主張は<strong>「RL 段階のほうが reward model 段階より 1 桁多いデータを使う」</strong>という相対関係にある。</p>
       </div>
 
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>記号／モデル</th><th>この段階での役割</th><th>状態</th></tr></thead>
+        <tbody>
+          <tr><td><code>π<sub>θ</sub></code>（policy）</td><td>答え <code>y</code> を生成する現在の言語モデル。<code>θ</code> が更新対象</td><td>更新する</td></tr>
+          <tr><td><code>r<sub>φ</sub>(x,y)</code>（reward model）</td><td>質問 <code>x</code> と完成した答え <code>y</code> を採点する。<code>φ</code> は §9 で学習済み</td><td>凍結する</td></tr>
+          <tr><td><code>π<sub>ref</sub></code>（reference policy）</td><td>通常は RL 開始時の SFT モデルの複製。累積的な変化を測る物差し</td><td>凍結する</td></tr>
+          <tr><td><code>π<sub>θold</sub></code>（old policy）</td><td>PPO の 1 回前の snapshot。1 回の更新が急すぎないか測る。詳しくは §13</td><td>更新区間内では固定する</td></tr>
+        </tbody>
+      </table>
+      </div>
+
       <h3>目的関数は 2 項からなる</h3>
       <p>
         スライドの一文が目的関数の全体像を要約している ―
@@ -804,6 +888,16 @@ flowchart LR
       </p>
       <p>
         Afshine は「前半は誰でも納得するはず。では、なぜ後半が必要なのか？」と教室に問いかけ、3 つの理由を引き出した。
+      </p>
+
+      <div class="formula">
+        J(θ) = 𝔼<sub>x∼𝒟, y∼π<sub>θ</sub>(·|x)</sub>[ r<sub>φ</sub>(x,y) ] − β D<sub>KL</sub>( π<sub>θ</sub>(·|x) ‖ π<sub>ref</sub>(·|x) )
+        <small>模式的な KL 正則化 RLHF 目的。<code>𝒟</code> は質問の分布、<code>y</code> は生成した答え、<code>β&gt;0</code> は基準からの逸脱を罰する強さ。<code>J</code> は最大化する</small>
+      </div>
+      <p>
+        第 1 項だけなら reward model の点数を上げるほどよい。第 2 項は現在の policy と reference policy の違いを罰する。
+        <code>β</code> を大きくすると元の SFT モデルを強く守り、小さくすると reward を追って大きく変わりやすい。
+        実際の PPO 実装では token ごとの log 確率比を使ってこの制約を近似・加算する。
       </p>
 
       <div class="grid-cards">
@@ -848,17 +942,22 @@ flowchart LR
         後述の KL ペナルティは、この暴走に対する<strong>最も基本的な歯止め</strong>という位置づけになる。</p>
       </div>
 
-      <h3>KL divergence ― 「離れすぎない」を数式にする</h3>
+      <h3>Kullback-Leibler（KL）divergence ― 「離れすぎない」を数式にする</h3>
       <p>
-        Afshine は <em>「KL divergence の話をしますが、皆さんが知っている前提にはしたくない」</em>と言って定義から始めた。
+        2 つの確率分布の違いを測るのが
+        <strong>Kullback-Leibler divergence（KL ダイバージェンス、KL 乖離度）</strong>である。
+        Afshine は <em>「皆さんが知っている前提にはしたくない」</em>と言って定義から始めた。
       </p>
       <div class="formula">
-        KL( P ‖ Q ) = Σ<sub>i</sub> p<sub>i</sub> · log( p<sub>i</sub> / q<sub>i</sub> )
-        <small>2 つの確率分布 P と Q が「どれだけ離れているか」の尺度</small>
+        D<sub>KL</sub>( P ‖ Q ) = Σ<sub>i</sub> p<sub>i</sub> log( p<sub>i</sub> / q<sub>i</sub> )
+        <small><code>P=(p_i)</code> と <code>Q=(q_i)</code> は同じ候補 <code>i</code> 上の確率分布。<code>log</code> は自然対数。<code>P</code> の下で平均した log 確率比で、単位は nat</small>
       </div>
       <p>
-        重要な注意として Afshine は <strong>「距離（distance）とは呼びたくない。距離には多くの含意があるが、これは距離ではない」</strong>と強調した。
-        あくまで「どれだけ離れているかの measure（尺度）」である。
+        小さな例として、reference が 2 語へ <code>Q=(0.5,0.5)</code>、現在の policy が
+        <code>P=(0.75,0.25)</code> を割り当てたとする。すると
+        <code>D<sub>KL</sub>(P‖Q)=0.75 log(1.5)+0.25 log(0.5)≈0.131</code> である。
+        同じ分布なら 0、違いが大きいほど値は大きくなる。ただし Afshine は
+        <strong>「距離とは呼びたくない」</strong>と強調した。向きを入れ替えると一般に値が変わり、三角不等式も満たさないからである。
       </p>
       <p>
         さらに教室に「KL divergence は正か負か？」と問い、正（非負）であることを引き出したうえで、<strong>「なぜ？」</strong>と踏み込んだ。
@@ -876,13 +975,25 @@ flowchart LR
         <strong>reward から KL ペナルティを差し引いた値</strong>を最終的な最適化対象として追跡している。
         講義の目的関数がそのまま実装のログ項目になっている、と見ると分かりやすい。</p>
       </div>
+
+      <div class="callout warning">
+        <p><strong>式の向きに関する一次資料上の注意。</strong>
+        §13 の講義スライドは KL 項を <code>KL[π<sub>ref</sub>,π<sub>θ</sub>]</code> の順で表示しており、図の説明はその表記を忠実に残している。
+        一方、DPO 原論文が出発点にする標準的な KL 正則化目的と多くの RLHF 実装は
+        <code>D<sub>KL</sub>(π<sub>θ</sub>‖π<sub>ref</sub>)</code>、すなわち現在の policy から reference への向きを用いる。
+        KL は非対称なので同一視できない。本節の数式は後者を採用し、講義スライドの転記と実務上の標準を区別した。</p>
+      </div>
     </section>
 
     <section id="s12">
       <h2>12. reward ではなく advantage を最大化する ― value function と GAE</h2>
       <p>
-        ここで Afshine は <em>「実はひとつ嘘をついていました」</em>と切り出す。
-        <strong>PPO が最大化するのは reward そのものではなく、<code>advantage</code>（アドバンテージ）</strong>である。
+        この節では、完成した答えに 1 個だけ付く reward を、各 token の更新へどう結び付けるかを説明する。
+        絶対点ではなく「その時点で期待した点より、実際はどれだけ良かったか」を表す
+        <strong>advantage（優位度）</strong>を使う。その期待値を出すのが <strong>value function（価値関数）</strong>であり、
+        advantage を安定して推定する代表的方法が
+        <strong>GAE（Generalized Advantage Estimation、一般化アドバンテージ推定）</strong>である。
+        これらは次節の <strong>PPO（Proximal Policy Optimization、近接方策最適化）</strong>を読むための準備になる。
       </p>
 
       <figure class="shot">
@@ -892,15 +1003,18 @@ flowchart LR
 
       <h3>advantage とは何か</h3>
       <div class="formula">
-        Advantage ≈ Reward − Baseline
-        <small>「期待される水準と比べて、その出力はどれだけ良かったか」</small>
+        Â<sub>t</sub> ≈ R − V<sub>ψ</sub>(s<sub>t</sub>)
+        <small><code>R</code> は最終的な応答の reward、<code>V_ψ(s_t)</code> は状態 <code>s_t</code> から policy に従って続けたときの期待 reward、<code>ψ</code> は value model の重み、<code>Â_t</code> は advantage の推定値</small>
       </div>
       <p>
         Afshine の言葉では <em>「advantage は、あなたの出力が<strong>期待していたものと比べて</strong>どれだけ良いか、と考えればよい」</em>。
         絶対的な reward ではなく<strong>相対的な良さ</strong>を見ることで、学習が安定する。
       </p>
       <p>
-        なぜ安定するのか。Afshine は明確に述べている ―
+        たとえば途中の文脈から期待される reward が <code>0.6</code> で、完成後に <code>1.0</code> を得たなら
+        advantage はおよそ <code>+0.4</code> で、その生成は期待以上だった。逆に reward が <code>0.2</code> なら
+        <code>−0.4</code> で、その token 列を起こしにくくする方向の信号になる。
+        なぜ絶対 reward から期待値を引くのか。Afshine は明確に述べている ―
         <em>「この reward − baseline を使うのは、<strong>推定量の分散を減らす</strong>から。そして単純に学習が速くなるから」</em>。
       </p>
 
@@ -928,8 +1042,24 @@ flowchart LR
       </table>
       </div>
       <p>
-        実装としては、<strong>SFT モデルで初期化した LLM に「value head」を追加</strong>し、policy と一緒に学習する。
+        数式では <code>V<sup>π</sup>(s<sub>t</sub>) = 𝔼[R | s<sub>t</sub>, 以後は π に従う]</code> と書ける。
+        つまり <code>V</code> は「この途中状態から今の policy で続きを生成したら、平均して何点になりそうか」を返す。
+        実装としては、<strong>SFT モデルで初期化した LLM に value head（1 個の値を出す出力層）を追加</strong>し、policy と一緒に学習する。
         Afshine の説明では <em>「今度は分類問題ではなく<strong>回帰問題</strong>。policy に従って生成を続けた場合の最終的な reward を推定する」</em>。
+      </p>
+
+      <h3>policy gradient ― advantage を確率更新へ変える</h3>
+      <p>
+        <strong>policy gradient（方策勾配）</strong>は、選んだ token の対数確率に advantage を掛け、期待 reward が増える方向へ
+        policy の重みを直接動かす方法である。正解 token が与えられない RL でも、生成結果の評価から学べる。
+      </p>
+      <div class="formula">
+        ∇<sub>θ</sub>J(θ) ≈ 𝔼 [ Σ<sub>t</sub> Â<sub>t</sub> ∇<sub>θ</sub> log π<sub>θ</sub>(a<sub>t</sub>|s<sub>t</sub>) ]
+        <small><code>∇_θ</code> は重み <code>θ</code> に関する勾配、<code>Σ_t</code> は生成中の各 token について足すこと、<code>a_t</code> は選んだ token。<code>Â_t&gt;0</code> ならその token の確率を上げ、負なら下げる</small>
+      </div>
+      <p>
+        baseline が状態だけに依存し、選んだ行動そのものには依存しないなら、期待される勾配の向きを変えずにばらつきを減らせる。
+        これが「平均点を引いても学ぶべき方向は保ち、学習だけを安定させられる」という直感である。
       </p>
 
       <h3>GAE ― 講義では意図的に踏み込まなかった部分</h3>
@@ -943,19 +1073,33 @@ flowchart LR
         <p><strong>周辺情報：GAE 論文とは。</strong>
         “High-Dimensional Continuous Control Using Generalized Advantage Estimation”（Schulman et al., 2015／arXiv:1506.02438）。
         著者の John Schulman は <strong>PPO 論文（2017）と同じ人物</strong>で、PPO は GAE と組み合わせて使うのが標準的な構成になっている。
+        <strong>policy gradient（方策勾配）</strong>は、生成した行動の対数確率を reward / advantage で重み付けし、
+        期待 reward が増える方向へ policy のパラメータを直接更新する方法である。token ごとの正解ラベルがない RL でも学習できるため
+        PPO や <strong>GRPO（Group Relative Policy Optimization）</strong>の土台になるが、推定の分散が大きい。
         論文の要点は、policy gradient 法の 2 大課題 ―「必要サンプル数が膨大」「学習が安定しない」― のうち前者に対し、
         <strong>value function を使って policy gradient 推定の分散を大幅に削減する（多少のバイアスと引き換えに）</strong>というもので、
         TD(λ) と類似した<strong>指数重み付きの advantage 推定量</strong>を提案している。
         講義が「大きなハイパーパラメータ付きの複雑な式」と述べたのはこの λ（バイアス–分散のトレードオフを調整）と割引率 γ を指す。
         後段の「ハイパーパラメータが多すぎる」という課題の一因でもある。</p>
       </div>
+
+      <div class="callout info">
+        <p><strong>周辺情報：GAE の式は何をしているか。</strong>
+        講義は式を範囲外としたため、ここだけ一次論文に基づく補足である。1 step の予測誤差を
+        <code>δ<sub>t</sub> = r<sub>t</sub> + γV(s<sub>t+1</sub>) − V(s<sub>t</sub>)</code> とすると、
+        <code>Â<sub>t</sub><sup>GAE</sup> = Σ<sub>l≥0</sub>(γλ)<sup>l</sup>δ<sub>t+l</sub></code> と、先の誤差ほど大きく重み付けして足す。
+        <code>γ</code> は将来 reward の割引率、<code>λ</code> は短い推定と長い推定を混ぜる係数である。
+        <code>λ</code> を変えると、value model によるバイアスとサンプル由来の分散の折り合いが変わる。</p>
+      </div>
     </section>
     <section id="s13">
       <h2>13. PPO ― Proximal Policy Optimization</h2>
       <p>
-        以上を踏まえて、実際のアルゴリズムに入る。<strong>PPO = Proximal Policy Optimization</strong>。
-        <em>「proximal（近接）と名付けられているのは、まさにベースモデルから離れすぎたくないから」</em>と Afshine が説明したとおり、
-        名前そのものが目的関数の第 2 項を表している。
+        この節では、policy gradient を一度に動かしすぎない
+        <strong>PPO（Proximal Policy Optimization、近接方策最適化）</strong>を説明する。
+        PPO-Clip は直前の policy と比べた確率の変化を切り詰め、PPO-KL Penalty は固定した reference からの乖離へ罰則を課す。
+        前者は<strong>一回ごとの更新</strong>、後者は<strong>学習開始点からの累積的な変化</strong>を抑える、と分けると読みやすい。
+        Afshine は <em>「proximal（近接）なのは、離れすぎたくないから」</em>と説明した。
       </p>
       <div class="formula">
         𝓛(θ) = [ Maximize rewards ] + [ Don't deviate too much from base model ]
@@ -963,6 +1107,17 @@ flowchart LR
       </div>
 
       <h3>変種 1：PPO-Clip</h3>
+      <p>
+        <strong>policy ratio（方策比）</strong> <code>r<sub>t</sub>(θ) = π<sub>θ</sub>(a<sub>t</sub>|s<sub>t</sub>) / π<sub>θold</sub>(a<sub>t</sub>|s<sub>t</sub>)</code> は、
+        現在の policy が、rollout を作った直前の <strong>old policy</strong> より、その token を何倍出しやすくしたかを測る。
+        <code>π<sub>θold</sub></code> は PPO の更新を数エポック回す間は固定する。比が 1 なら確率は変わっていない。
+        <strong>clipping</strong> はこの比を <code>[1−ε, 1+ε]</code> に切り詰め、<strong>epsilon（<code>ε</code>）</strong>で許容更新幅を決める仕組みである。
+        advantage が示す方向へは進みつつ、一度の過大更新で policy が壊れるのを防ぐため導入される。
+      </p>
+      <div class="formula">
+        L<sup>CLIP</sup>(θ) = Ê<sub>t</sub>[ min( r<sub>t</sub>(θ)Â<sub>t</sub>, clip(r<sub>t</sub>(θ),1−ε,1+ε)Â<sub>t</sub> ) ]
+        <small><code>Ê_t</code> は収集した token 上の標本平均、<code>Â_t</code> は advantage 推定値、<code>min</code> は楽観的すぎない小さい側を採用、<code>clip(z,l,u)</code> は <code>z</code> を下限 <code>l</code>・上限 <code>u</code>へ収める。これは loss ではなく最大化する surrogate objective（代理目的）</small>
+      </div>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture5-llm-tuning/11-ppo-clip.jpg" alt="Variation 1: PPO-Clip のスライド。L^CLIP(θ) = Ê_t[min(r_t(θ)Â_t, clip(r_t(θ), 1−ε, 1+ε)Â_t)] の式と、A>0（淡色）と A<0（強調）の2つのグラフ、r_t(θ) = π_θ(a_t|s_t)/π_θold(a_t|s_t) の定義" loading="lazy" />
         <figcaption>PPO-Clip のスライド。目的関数 <code>L<sup>CLIP</sup>(θ) = Ê<sub>t</sub>[ min( r<sub>t</sub>(θ)Â<sub>t</sub>, clip(r<sub>t</sub>(θ), 1−ε, 1+ε)Â<sub>t</sub> ) ]</code> と、比 <code>r<sub>t</sub>(θ) = π<sub>θ</sub>(a<sub>t</sub>|s<sub>t</sub>) / π<sub>θold</sub>(a<sub>t</sub>|s<sub>t</sub>)</code>。左が <code>A &gt; 0</code>（1+ε で頭打ちになる折れ線）、右が <code>A &lt; 0</code>（1−ε から下降する折れ線）。<a class="ts" href="https://www.youtube.com/watch?v=PmW_TMQ3l0I&t=4110s" target="_blank" rel="noopener">1:08:30</a></figcaption>
@@ -978,7 +1133,11 @@ flowchart LR
 
       <h3>グラフの読み方 ― 直感で理解する</h3>
       <p>
-        複雑に見える式も、advantage の符号で場合分けすると素直に読める。
+        複雑に見える式も、advantage の符号で場合分けすると読める。たとえば <code>ε=0.2</code> なら許容帯は
+        <code>[0.8,1.2]</code>。良い生成の確率比が <code>1.4</code> まで上がっても、目的上の改善は <code>1.2</code> で頭打ちになる。
+        悪い生成の比を <code>0.6</code> まで下げても、<code>0.8</code> より先へ下げる追加利益を与えない。
+        ただし clip するのは<strong>目的関数の中の比</strong>であり、モデルの実際の確率を範囲内へ投影する硬い制約ではない。
+        そのため実装では KL や clip された割合も監視する。
       </p>
       <div class="table-wrap">
       <table>
@@ -1013,13 +1172,20 @@ flowchart LR
       </div>
 
       <h3>変種 2：PPO-KL Penalty</h3>
+      <p>
+        <strong>PPO-KL Penalty</strong> は、PPO の目的に Kullback-Leibler divergence の罰則を加える変種である。
+        old policy との局所的な更新幅だけでなく、固定した <strong>reference policy（通常は SFT 済みベースモデル）</strong>からの累積的な逸脱も抑え、
+        reward hacking や破滅的忘却を防ぐために使う。
+      </p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture5-llm-tuning/12-ppo-kl-penalty.jpg" alt="Variation 2: PPO-KL Penalty のスライド。L^KLPEN(θ) = Ê_t[ (π_θ/π_θold) Â_t − β KL[π_θref, π_θ] ] の式と、Nowadays, KL divergence is with respect to ref (base model) という注記が矢印付きで書かれている" loading="lazy" />
         <figcaption>PPO-KL Penalty のスライド。<code>L<sup>KLPEN</sup>(θ) = Ê<sub>t</sub>[ (π<sub>θ</sub>(a<sub>t</sub>|s<sub>t</sub>) / π<sub>θold</sub>(a<sub>t</sub>|s<sub>t</sub>)) Â<sub>t</sub> − β KL[π<sub>θref</sub>(·|s<sub>t</sub>), π<sub>θ</sub>(·|s<sub>t</sub>)] ]</code>。矢印付きの注記に <strong>「Nowadays, KL divergence is with respect to <strong>ref</strong> (base model)」</strong>とある。<a class="ts" href="https://www.youtube.com/watch?v=PmW_TMQ3l0I&t=4400s" target="_blank" rel="noopener">1:13:20</a></figcaption>
       </figure>
 
       <p>
-        こちらは「比 × advantage」から <strong>KL divergence を <code>β</code> 倍して引く</strong>形。clip の代わりにペナルティ項で抑える。
+        こちらは「比 × advantage」から <strong>KL divergence を <code>β</code> 倍して引く</strong>。
+        <code>β&gt;0</code> は reference へ戻す力の強さである。PPO 原論文では clip と KL penalty は別の変種として提示されたが、
+        LLM の RLHF 実装では、old policy に対する clipping と reference policy に対する KL penalty を併用することが多い。
       </p>
       <div class="callout">
         <p><strong>用語の整理（スライドに明記）。</strong></p>
@@ -1027,8 +1193,8 @@ flowchart LR
           <li><code>old</code> = <strong>前回の RL イテレーションのモデル</strong></li>
           <li><code>ref</code> = <strong>ベースモデル（SFT モデル）</strong></li>
         </ul>
-        <p>そして Shervine・Afshine 双方が強調したのは、<strong>2017 年の PPO 原論文では KL を <code>old</code> に対して取っていたが、
-        2025 年の LLM 文脈では <code>ref</code>（ベースモデル）に対して取るのが普通</strong>という点。
+        <p>そして Shervine・Afshine 双方が強調したのは、<strong>2017 年の PPO 原論文の KL penalty は <code>old</code> に対する近接制約として導入されたが、
+        2025 年の LLM 文脈では、元の能力を守る目的で <code>ref</code>（SFT モデル）に対する KL penalty を加えるのが普通</strong>という点。
         <em>「この論文は 2017 年に出て、LLM は 2020 年代に普及したものなので、そこに入れるものが変わってきた」</em>。</p>
       </div>
       <p>
@@ -1052,6 +1218,12 @@ flowchart LR
 
     <section id="s14">
       <h2>14. PPO の 4 モデル問題と後継アルゴリズム</h2>
+      <p>
+        この節では、PPO ベース RLHF に policy・value・reward・reference という 4 つの役割が必要な理由を整理する。
+        とくに value model の baseline を、同じ質問への複数回答の平均点で置き換える
+        <strong>GRPO（Group Relative Policy Optimization、グループ相対方策最適化）</strong>を先取りし、
+        後継手法がどの費用を削ろうとしているのかを説明する。
+      </p>
 
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture5-llm-tuning/13-alternatives-of-ppo.jpg" alt="Alternatives of PPO のスライド。Limitations of PPO として Need 4 models (policy, value, reward model, base) と Is it worth it? の2項目" loading="lazy" />
@@ -1069,6 +1241,12 @@ flowchart LR
         </tbody>
       </table>
       </div>
+
+      <p>
+        ここでいう「4 モデル」は、4 つの<strong>論理的な役割と重み集合</strong>を指す。
+        実装によって policy と value が同じ Transformer 本体を共有したり、量子化・重み共有・分散配置を使ったりするため、
+        必ず 4 個の完全なモデルを同じ大きさで GPU に複製する、という意味ではない。それでも forward pass、保存する状態、学習の依存関係が増える問題は残る。
+      </p>
 
       <div class="mermaid">
 flowchart TB
@@ -1105,7 +1283,7 @@ flowchart TB
 
       <div class="callout info">
         <p><strong>周辺情報：GRPO が「4 モデル問題」をどう解くか。</strong>
-        DeepSeekMath 論文のアブストラクトは GRPO（Group Relative Policy Optimization）を
+        DeepSeekMath 論文のアブストラクトは GRPO を
         <strong>「PPO の変種で、数学的推論能力を高めつつ PPO のメモリ使用量を最適化する」</strong>と説明している。
         鍵は <strong>value function（critic）を捨てる</strong>点にある。
         PPO は baseline を value model で推定していたが、GRPO は<strong>同じプロンプトから複数の応答をグループとして生成し、
@@ -1113,9 +1291,25 @@ flowchart TB
         これにより学習対象・保持対象のモデルが 1 つ減り、講義が挙げた「4 モデル」の一角が消える。
         この「グループ内の相対比較で baseline を代用する」発想は、§12 の <code>Advantage ≈ Reward − Baseline</code> の直系の応用である。</p>
       </div>
+
+      <div class="formula">
+        Â<sub>i</sub> = ( R<sub>i</sub> − mean(R<sub>1</sub>,…,R<sub>G</sub>) ) / ( std(R<sub>1</sub>,…,R<sub>G</sub>) + ε<sub>num</sub> )
+        <small>GRPO の直感的なグループ相対 advantage。<code>G</code> は同じ質問から生成する回答数、<code>R_i</code> は回答 <code>i</code> の reward、<code>ε_num</code> は 0 除算を避ける小値。講義では次回予告であり、式は DeepSeekMath に基づく補足</small>
+      </div>
+      <p>
+        たとえば 3 回答の reward が <code>(1,2,3)</code> なら平均は 2 なので、1 点の回答は負、2 点はほぼ 0、3 点は正の advantage になる。
+        value model を学ばなくても「同じ質問に対する仲間より良かったか」を baseline にできる。
+        代わりに、質問ごとに複数回答を生成する計算と、グループの質に依存する推定誤差を引き受ける。
+      </p>
     </section>
     <section id="s15">
       <h2>15. RL ベース手法の 6 つの課題</h2>
+      <p>
+        この節では、PPO ベース RLHF を実際に運用すると現れる 6 つの難しさを整理する。
+        reward model との二段構え、多数の調整値、学習の不安定さ、監視の難しさ、出力の探索、そして「そもそも RL が必須か」である。
+        最後に、現在の policy が自分で作ったデータを使う <strong>on-policy</strong> と、別の生成元による固定データを使う
+        <strong>off-policy</strong> を区別し、この疑問が Best-of-N と DPO へつながることを示す。
+      </p>
 
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture5-llm-tuning/14-challenges-rl.jpg" alt="Challenges with RL-based approach のスライド。Requires training a reward model (2-stage process)、Many hyperparameters to tune、Training instability、Metric to monitor training の4項目が段階的に表示され、4番目が強調" loading="lazy" />
@@ -1140,7 +1334,7 @@ flowchart TB
           </tr>
           <tr>
             <td>4</td><td><strong>監視すべき指標がない</strong></td>
-            <td>使えるのは平均 reward くらい。しかし pretraining や SFT の cross entropy loss のように<strong>「望む振る舞いをどれだけ再現できているか」を直接語ってくれる指標ではない</strong>。</td>
+            <td>平均 reward や KL は監視できる。しかし pretraining や SFT の交差エントロピー損失のように、<strong>人間が本当に望む振る舞いをどれだけ再現できたかを直接保証する値ではない</strong>。reward hacking があれば平均 reward だけ上がることもある。</td>
           </tr>
           <tr>
             <td>5</td><td><strong>completion の多様性（exploration）が必要</strong></td>
@@ -1156,17 +1350,25 @@ flowchart TB
 
       <h3>on-policy と off-policy</h3>
       <p>
-        課題 5・6 に関連して、Afshine は <strong>「RL ベースの学習でよく耳にする on-policy という語」</strong>の意味を明確にした。
+        <strong>on-policy</strong> は学習中の policy 自身がいま生成したデータでその policy を更新する方式、
+        <strong>off-policy</strong> は別の policy や人間が過去に作った固定データでも学ぶ方式である。
+        前者は現在の生成分布を直接改善できる一方、毎回 <strong>rollout（質問から最後まで生成した回答）</strong>が必要で高コストになる。
+        後者はデータを再利用しやすい一方、今のモデルが実際に出す答えとのずれに注意が要る。
       </p>
       <div class="table-wrap">
       <table>
         <thead><tr><th></th><th>on-policy</th><th>off-policy</th></tr></thead>
         <tbody>
           <tr><td><strong>定義</strong></td><td><strong>学習中のモデルが現在の policy から生成し、それに対して最適化する</strong></td><td><strong>学習対象のモデルが生成したものではないデータに依拠する</strong></td></tr>
-          <tr><td><strong>該当例</strong></td><td><strong>PPO は on-policy アルゴリズム</strong></td><td>SFT（自分が生成したものでないデータを使う）</td></tr>
-          <tr><td><strong>RLHF での意味</strong></td><td>毎イテレーションでモデルに出力を生成させ、その良し悪しでモデルを更新する</td><td>—</td></tr>
+          <tr><td><strong>該当例</strong></td><td><strong>PPO は基本的に on-policy</strong>。old policy の rollout を短期間だけ複数回使う</td><td>古典的な例は replay buffer に蓄えた過去データから学ぶ RL。SFT や DPO は固定データを使うという広い意味でこちら側</td></tr>
+          <tr><td><strong>この講義での意味</strong></td><td>各イテレーションで現在に近いモデルから回答を作り、その評価で更新する</td><td>収集済みの正解例・選好ペアを再利用する</td></tr>
         </tbody>
       </table>
+      </div>
+      <div class="callout info">
+        <p><strong>用語上の注意。</strong>
+        DPO は固定の選好データを使うため「offline preference optimization」と呼べるが、reward と環境遷移を使う通常の off-policy RL アルゴリズムではない。
+        本レポートで「off-policy 側」と書くときは、<strong>学習中の policy が今生成した rollout ではないデータを使う</strong>という広いデータ由来の意味である。</p>
       </div>
       <p>
         <em>「SFT では、こちらが用意したプロンプトと応答をモデルに真似させていた。だがここでは、各イテレーションでモデル自身に出力を生成させ、
@@ -1179,13 +1381,18 @@ flowchart TB
         起きてほしくない出力があっても、それを完璧な文に書き直さない限り、伝統的な SFT の枠組みでは『それを生成するな』と伝える方法がない」</em>。
         そのうえで <em>「素晴らしい振りです。10 分後に、RL でやったことを<strong>教師ありで</strong>やる方法を見ます」</em>と DPO を予告した。</p>
       </div>
+      <p>
+        ここまでで選択肢は二つに分かれる。reward model は便利な採点器なので残し、policy 学習だけを省くのが次節の Best-of-N。
+        一方、reward model と RL の両方を数式で取り除き、選好ペアから直接 policy を学ぶのが §17 以降の DPO である。
+      </p>
     </section>
 
     <section id="s16">
       <h2>16. Best-of-N（BoN）― RL をやらずに reward model だけ使う</h2>
       <p>
-        <strong>「reward model は持っているが RL はやりたくない」</strong>人のための方法が <strong>Best-of-N</strong> である。
-        <em>「なぜ RL をやりたくないか？ 高いから。モデルがたくさん必要だから」</em>。
+        この節では、policy を一度も更新せず、既に学んだ reward model を推論時の選別器として使う
+        <strong>Best-of-N（BoN）</strong>を説明する。同じ質問から <code>N</code> 本を生成し、各回答を独立に採点して最大 score の 1 本だけを返す。
+        RL の不安定さは避けられるが、仕事を推論時の計算量と待ち時間へ移す方法である。
       </p>
 
       <div class="callout">
@@ -1197,13 +1404,19 @@ flowchart TB
         </ol>
       </div>
 
+      <div class="formula">
+        y<sup>*</sup> = arg max<sub>y<sub>1</sub>,…,y<sub>N</sub> ∼ π<sub>SFT</sub>(·|x)</sub> r<sub>φ</sub>(x,y<sub>i</sub>)
+        <small><code>x</code> は質問、<code>y_i</code> は SFT policy から生成した第 <code>i</code> 候補、<code>r_φ</code> は凍結した reward model、<code>arg max</code> は score を最大にする候補そのものを選ぶ操作</small>
+      </div>
+
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture5-llm-tuning/15-best-of-n-in-action.jpg" alt="BoN in action のスライド。プロンプトから LLM_SFT が3つの completion を生成し、それぞれ RM が 0.8、-2、0.2 のスコアを付けている図" loading="lazy" />
         <figcaption>Best-of-N の実例。同じプロンプトから 3 つの応答を生成し、reward model がそれぞれ <strong>0.8</strong>（映画を一緒に観る提案）、<strong>−2</strong>（時間を使うなという応答）、<strong>0.2</strong>（裏庭でピクニック）と採点している。<strong>reward が負の値を取る</strong>ことがここで実際に確認できる。<a class="ts" href="https://www.youtube.com/watch?v=PmW_TMQ3l0I&t=5087s" target="_blank" rel="noopener">1:24:47</a></figcaption>
       </figure>
 
       <p>
-        講義ではこのあと 3 件に順位（1 位: 0.8、2 位: 0.2、3 位: −2）が付き、<strong>最上位の 1 件だけがユーザーに返される</strong>。
+        ここでは <code>N=3</code> で、score は 0.8、−2、0.2。最大は 0.8 なので、その回答だけを返す。
+        score が負でも問題はなく、絶対的な 0 の意味も不要である。
         §9 で確認した「reward model はポイントワイズ」という性質が、ここで実際に効いている。
       </p>
 
@@ -1232,7 +1445,8 @@ flowchart TB
         つまり無限の金と計算資源があっても、<strong>1 回のパスより待たされる</strong>。
       </blockquote>
       <p>
-        これは <strong>コストの問題ではなくレイテンシの構造的な問題</strong>で、金銭では解決できない。BoN が万能薬になれない理由である。
+        各生成時間にばらつきがあり、全候補の終了を待つ設計なら、<code>N</code> 本の最大待ち時間は通常 1 本の待ち時間より長くなる。
+        これは <strong>コストだけでなくレイテンシの構造的な問題</strong>で、並列計算へ資金を投じても完全には消えない。BoN が万能薬になれない理由である。
       </p>
 
       <div class="callout info">
@@ -1247,9 +1461,10 @@ flowchart TB
     <section id="s17">
       <h2>17. DPO ― Direct Preference Optimization</h2>
       <p>
-        講義最後のパートは Shervine が担当。<strong>DPO = Direct Preference Optimization</strong>。
-        Shervine は <em>「DPO が何の略かはまだ言いません。まず RL の世界への<strong>不満</strong>を並べ、それに対して何ができるか、
-        そして人々がどう解決したかを見ましょう」</em>という順序で入った。
+        この節では、<strong>DPO（Direct Preference Optimization、直接選好最適化）</strong>が
+        「好ましい答えを増やし、好ましくない答えを減らす」更新を、通常の分類損失として行う仕組みを説明する。
+        明示的な reward model、value model、on-policy rollout を使わず、学習する policy と凍結した reference policy の 2 つだけで、
+        選好ペアを直接処理する。PPO の 4 モデル問題と BoN の推論負荷を同時に避けるのが動機である。
       </p>
 
       <div class="grid-cards">
@@ -1274,18 +1489,34 @@ flowchart TB
 
       <div class="formula">
         𝓛<sub>DPO</sub>(π<sub>θ</sub>; π<sub>ref</sub>) = − 𝔼<sub>(x, y<sub>w</sub>, y<sub>l</sub>)</sub> [ log σ( β log (π<sub>θ</sub>(y<sub>w</sub>|x) / π<sub>ref</sub>(y<sub>w</sub>|x)) − β log (π<sub>θ</sub>(y<sub>l</sub>|x) / π<sub>ref</sub>(y<sub>l</sub>|x)) ) ]
-        <small>reward 関数 r がどこにも現れない。あるのは policy と reference policy、そして β だけ</small>
+        <small><code>(x,y_w,y_l)∼𝒟</code> は選好ペア、<code>π_θ</code> は学習する policy、<code>π_ref</code> は凍結した基準、<code>σ</code> は sigmoid、<code>β&gt;0</code> は KL 正則化と対応する尺度。明示的な reward 関数は現れない</small>
       </div>
+
+      <p>
+        <code>π(y|x)</code> は、質問 <code>x</code> の後に回答列 <code>y=(y<sub>1</sub>,…,y<sub>T</sub>)</code> 全体を生成する確率であり、
+        各 token の条件付き確率の積である。実装では積のまま扱うと極端に小さくなるので、
+        <code>log π(y|x)=Σ<sub>t</sub> log π(y<sub>t</sub>|x,y<sub>&lt;t</sub>)</code> と log 確率を足す。
+        DPO は「policy が reference より chosen をどれだけ押し上げたか」と
+        「rejected をどれだけ押し上げたか」の差を正にしようとする。
+      </p>
 
       <h3>この式の何がすごいのか</h3>
       <p>
         Shervine の解説を追う。
       </p>
       <ul>
-        <li><strong>reward がない。</strong> <em>「見てのとおり、もう reward は関わっていない。<code>r</code> がない」</em>。</li>
-        <li><strong>あるのは選好ペアと sigmoid だけ。</strong> 括弧の中身は「勝った completion が起きる確率」と「負けた completion が起きる確率」の<strong>引き算</strong>。</li>
+        <li><strong>独立した reward model がない。</strong> <em>「見てのとおり、もう <code>r</code> がない」</em>。ただし reward の考え自体は、policy と reference の log 比として暗黙に残る。</li>
+        <li><strong>選好ペアを分類できる。</strong> 括弧の中は、chosen と rejected の<strong>reference に対する正規化 log 尤度の差</strong>である。これを大きくすると、chosen を選ぶ予測確率が 1 に近づく。</li>
         <li><strong>Bradley-Terry の姿がそのまま見える。</strong> <em>「よく見ると、Afshin が説明した Bradley-Terry 定式化が見えてくる。<code>log σ</code> の期待値があり、σ の中に差分がある。そしてその差分に、reward 相当の項が見える」</em>。</li>
       </ul>
+
+      <p>
+        小さな例を置く。reference が chosen と rejected にともに <code>0.10</code> を与え、更新中の policy がそれぞれ
+        <code>0.20</code> と <code>0.05</code> を与えたとする。正規化 log 尤度は
+        <code>log(0.20/0.10)=log 2</code> と <code>log(0.05/0.10)=log 0.5</code> なので、その差は
+        <code>log 4≈1.386</code>。<code>β=1</code> なら選好確率は <code>σ(1.386)=0.8</code> となり、このペアの損失は
+        <code>−log 0.8≈0.223</code> である。差をさらに広げれば損失は下がる。
+      </p>
 
       <div class="callout">
         <p><strong>論文タイトルの意味。</strong> Shervine が式の説明前に触れたのが、DPO 論文のタイトル
@@ -1296,8 +1527,11 @@ flowchart TB
 
       <div class="callout info">
         <p><strong>周辺情報：β の意味と実装での挙動。</strong>
-        <strong><code>β</code> は PPO の目的関数に現れたものと同じ β</strong>で、<strong>ベースモデルから離れることをどれだけ罰するか</strong>を制御する。
-        Shervine は <em>「オーダー感としては典型的に 0.1 程度」</em>と述べており、最適化対象は policy のみ、選好ペアは入力として与えられる。
+        DPO の <code>β</code> は、導出元の KL 正則化目的にある係数と対応し、<strong>reference からの逸脱をどれだけ強く抑えるか</strong>を表す。
+        元の RL 目的では大きい <code>β</code> ほど KL 罰則が強く、最適 policy は reference に近くなる。
+        DPO 損失の中では同じ <code>β</code> が log 比の差を拡大・縮小するため、単なる学習率ではない。
+        Shervine は <em>「オーダー感としては典型的に 0.1 程度」</em>と述べたが、適切な値はデータと実装に依存する。
+        最適化対象は policy のみで、reference は固定し、選好ペアを入力する。
         Hugging Face TRL の <code>DPOTrainer</code> 公式ドキュメントも同じ形の損失を掲げ、
         <code>β &gt; 0</code> を「選好シグナルの強さを制御するハイパーパラメータ」と説明している。
         さらに興味深い実装上の観察として、同ドキュメントは
@@ -1311,9 +1545,16 @@ flowchart TB
     <section id="s18">
       <h2>18. DPO はどこから来たのか ― 5 ステップの導出</h2>
       <p>
-        Shervine は「では、そもそもどうやってこの式に辿り着いたのか、一緒に考えましょう」と導出をたどった。
-        スライドは 5 つのステップに分解している。
+        この節では、DPO の式を暗記する代わりに、KL 正則化付きの reward 最大化から 5 段階で導く。
+        最適 policy を解析的に解き、reward を policy と reference の log 尤度比へ書き換え、Bradley-Terry へ代入する。
+        すると、全回答を足し上げる必要がある <strong>partition function（分配関数）<code>Z(x)</code></strong>が
+        同じ質問内の差で相殺され、reward model も <code>Z(x)</code> の計算も不要になる。
       </p>
+
+      <div class="formula">
+        max<sub>π</sub> 𝔼<sub>x∼𝒟, y∼π(·|x)</sub>[r(x,y)] − β D<sub>KL</sub>(π(·|x) ‖ π<sub>ref</sub>(·|x))
+        <small>出発点。<code>π</code> は求めたい policy、<code>π_ref</code> は固定した reference、<code>r</code> は仮想的な真の reward、<code>β&gt;0</code> は KL 罰則の重み</small>
+      </div>
 
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture5-llm-tuning/17-dpo-derivation.jpg" alt="Where does the DPO formulation come from? のスライド。1 Start from PPO objective、2 Derive optimal policy、3 Identify a reward term、4 Write Bradley-Terry formulation for this reward が強調され、Bradley-Terry の式 p*(y_w ≻ y_l | x) = 1 / (1 + exp(β log π*(y_l|x)/π_ref(y_l|x) − β log π*(y_w|x)/π_ref(y_w|x))) が表示" loading="lazy" />
@@ -1334,30 +1575,39 @@ flowchart TB
       <h3>各ステップの中身</h3>
       <ol>
         <li>
-          <strong>PPO の目的関数から出発する。</strong>
+          <strong>KL 正則化付き RLHF 目的から出発する。</strong>
           <em>「数枚前のスライドで見た PPO の目的関数を思い出してください。reward を最大化し、得られた policy と reference policy の距離を最小化したい。
           この reward 最大化と KL divergence 項のトレードオフです。そして <code>β</code> 係数が、ベースモデルからどれだけ離れることを罰するかを制御していました」</em>
         </li>
         <li>
           <strong>最適解を解析的に求める。</strong>
           <em>「この論文がやったのは、この式を書き下し、<strong>最適解が何かを解いた</strong>こと。最適 policy <code>π*</code> を表現し、それを <code>r</code> の関数として導出した」</em>。
-          Shervine が強調したのは <strong>「これらのステップに追加の仮定は一切ない。ただの式変形の連続」</strong>という点である。
+          質問 <code>x</code> ごとに確率の和が 1 になる制約を入れて解くと、
+          <code>π*(y|x)=π<sub>ref</sub>(y|x)exp(r(x,y)/β)/Z(x)</code> を得る。
+          Shervine が強調したのは、ここが追加の経験則ではなく解析的な式変形だという点である。
         </li>
         <li>
           <strong>「reward」の項を特定する。</strong>
-          式に現れる <code>Z</code> は <strong>partition function（分配関数）</strong>で、単に正規化するためのもの。
+          式に現れる
+          <code>Z(x)=Σ<sub>y</sub>π<sub>ref</sub>(y|x)exp(r(x,y)/β)</code> は
+          <strong>partition function（分配関数）</strong>で、未正規化の重みを確率へ直すための和である。
           <em>「新しく出てきたものではなく、もともと式にあった項の関数」</em>。
-          項を並べ替えると、<strong><code>r</code> を <code>π*</code> の関数として書き直せる</strong>。<em>「ただの並べ替え。大したことはしていません」</em>。
+          対数を取って並べ替えると
+          <code>r(x,y)=βlog(π*(y|x)/π<sub>ref</sub>(y|x))+βlog Z(x)</code> となり、
+          <strong>reward を最適 policy の関数として書ける</strong>。
         </li>
         <li>
           <strong>その「reward」で Bradley-Terry を書く。</strong>
           これが <strong>この論文の鍵</strong>だと Shervine は言う。
           <em>「Bradley-Terry の定式化を再び取り、そこに、先ほど得た最適 reward の式（= policy の関数）を代入した。
-          結果、reward はもう存在せず、他のパラメータの関数だけが残る。<code>β</code> と policy だけ」</em>。
+          結果、独立した reward はもう存在せず、<code>β</code>、policy、reference だけが残る」</em>。
+          同じ質問 <code>x</code> について chosen と rejected の reward を引くので、
+          両方に共通する <code>βlog Z(x)</code> は正確に 0 へ相殺される。
         </li>
         <li>
           <strong>損失関数に変換する。</strong>
-          <em>「最大化したい確率が手に入ったら、それを損失関数に変えられる ― Afshin が説明したのと同じ手順です」</em>（§9 の MLE → NLL）。
+          得られた選好確率の積を最大化し、対数を取り、負号を付けて最小化へ変える。
+          <em>「Afshin が説明したのと同じ手順」</em>、すなわち §9 の MLE → NLL をもう一度適用したものが §17 の DPO 損失である。
         </li>
       </ol>
 
@@ -1368,6 +1618,14 @@ flowchart TB
         <strong>これが DPO 成立の核心的なトリック</strong>であり、
         「Z(x) を計算しなくてよい ＝ 全応答にわたる和を取らなくてよい」からこそ、reward model なしで学習が回る。
         §8 で述べた「Bradley-Terry では絶対値ではなく差だけが意味を持つ」という性質が、ここで最大限に活かされている。</p>
+      </div>
+
+      <div class="callout warning">
+        <p><strong>一次論文に照らした用語の補正。</strong>
+        講義は導出の出発点を分かりやすく「PPO objective」と呼ぶが、DPO 原論文が直接解くのは
+        <strong>一般の KL 制約付き reward 最大化目的</strong>であり、PPO-Clip の代理目的そのものを解析的に解くわけではない。
+        PPO はその RLHF 目的を数値的に最適化する代表的手段、DPO は同じ目的の最適解と Bradley-Terry を使って変数変換する手段、と区別すると正確である。
+        また原論文の「追加の仮定なし」という趣旨はこの代数変形についてであり、全体としては人間選好を Bradley-Terry で表す仮定を使っている。</p>
       </div>
 
       <div class="callout">
@@ -1387,6 +1645,12 @@ flowchart TB
 
     <section id="s19">
       <h2>19. RLHF と DPO ― どちらを選ぶか</h2>
+      <p>
+        この節では、PPO ベース RLHF と DPO を、必要なモデル、データの作られ方、安定性、性能、費用で比べる。
+        DPO は固定した選好ペアから直接学べるため簡単だが、更新後の policy が作る回答と学習データがずれる
+        <strong>distribution shift（分布シフト）</strong>を抱える。PPO は現在の policy に近い回答を毎回採点できるが、そのぶん複雑で高価になる。
+        講義と参照論文の性能主張を分けたうえで、実務的な選び方を整理する。
+      </p>
 
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture5-llm-tuning/18-rlhf-vs-dpo.jpg" alt="Use PPO-based RLHF or DPO? のスライド。Ease of implementation で RLHF（Multi-stage training、Needs extra models: reward model, value model, base model）と DPO（Supervised learning、Base model is the only extra model needed）を対比し、Performance は共通の絶対的コンセンサスなしと記載" loading="lazy" />
@@ -1399,8 +1663,8 @@ flowchart TB
         <tbody>
           <tr><td><strong>学習の構造</strong></td><td>多段階（reward model → policy 更新）</td><td><strong>教師あり学習の単一ステップ</strong></td></tr>
           <tr><td><strong>必要なモデル数</strong></td><td><strong>4</strong>（policy, value, reward, base）</td><td><strong>2</strong>（policy π<sub>θ</sub> と reference π<sub>ref</sub>）</td></tr>
-          <tr><td><strong>学習の安定性</strong></td><td>懸念あり。直接的な教師信号がない</td><td>直接的な教師信号があり安定</td></tr>
-          <tr><td><strong>on/off policy</strong><br><span style="font-size:12px;color:var(--text-dim);">（本レポートによる補足）</span></td><td>on-policy（現在の policy から生成して更新）※講義で明言</td><td>固定の選好データセットを直接使うため、講義の定義に照らすと off-policy 側に分類される</td></tr>
+          <tr><td><strong>学習の安定性</strong></td><td>reward・value 推定と on-policy 生成が絡み、調整が難しい</td><td>分類損失として直接学べるため比較的安定</td></tr>
+          <tr><td><strong>データの由来</strong><br><span style="font-size:12px;color:var(--text-dim);">（本レポートによる補足）</span></td><td>基本的に on-policy。現在に近い policy から rollout を作る</td><td>固定の選好データを使う offline 手法。広い意味では off-policy 側だが、古典的 off-policy RL ではない</td></tr>
           <tr><td><strong>性能</strong></td><td colspan="2"><strong>絶対的なコンセンサスなし。タスクによって異なり、実装に敏感</strong></td></tr>
         </tbody>
       </table>
@@ -1415,8 +1679,9 @@ flowchart TB
         そして DPO の良さである「直接的な教師信号」は、<strong>モデルが学習時に見た分布とは正確には一致しないものにフィットしてしまう</strong>という代償を伴うことがある。
       </blockquote>
       <p>
-        つまり <strong>DPO は「reward modeling を一切気にせず、既存の選好データセットを持ってくればよい」という利点そのものが、
-        分布シフト（distribution shift）を招く</strong>。DPO に内在する課題である。
+        たとえば選好データが古い SFT model の短い回答だけで作られているのに、更新後の policy が長い推論回答を出すようになれば、
+        学習時に比較した領域と実際の生成領域がずれる。DPO はその新しい領域で人間が何を好むかを自動では観測しない。
+        つまり <strong>「既存の選好データをそのまま再利用できる」という利点の裏返しが分布シフト</strong>である。
         緩和策としては <strong>選好関連データで先に SFT をしておく</strong>、あるいは <strong>自分で生成して自分で評価する</strong>方法があるが、
         <em>「それはまた別のコストを払うことになる」</em>。
       </p>
@@ -1429,6 +1694,15 @@ flowchart TB
         論文は理論・実験の両面から <strong>DPO には根本的な限界がありうる</strong>ことを示し、PPO の性能を引き出す鍵となる要因を洗い出したうえで、
         対話からコード生成までの一連のテストベッドで比較し、<strong>「PPO はすべてのケースで他の alignment 手法を上回り、難度の高いコードコンペティションで SOTA を達成した」</strong>と報告している。
         講義の「大枠では PPO のほうが良い」という表現は、この論文の結論に沿ったものである。</p>
+      </div>
+
+      <div class="callout warning">
+        <p><strong>性能について断定しないための一次資料上の整理。</strong>
+        講義スライド自体は「絶対的な共通見解はなく、タスクと実装に依存する」と明記する。
+        講義が引用した Xu et al. (2024) は同論文の条件で PPO が全比較を上回ったと報告する一方、
+        DPO 原論文は感情制御で PPO を上回り、要約と単発対話で同等以上だったと報告している。
+        データ、reward、計算予算、実装が違う結果を横断して「PPO が常に上」「DPO が常に上」と一般化することはできない。
+        本節の引用は登壇者と各論文の主張を伝えるもので、普遍的な順位を確定するものではない。</p>
       </div>
 
       <h3>実務的な使い分け ― Shervine の結論</h3>
@@ -1447,9 +1721,9 @@ flowchart TB
   Q1{"選好データはあるか？"}
   Q1 -->|"ない"| D0["まず選好ペアを収集<br/>（ログ + T>0 生成 + 人手/LLM 判定）"]
   Q1 -->|"ある"| Q2{"RL の専門知識と<br/>計算予算はあるか？"}
-  Q2 -->|"限られている"| DPO["DPO<br/>教師あり・モデル2つ<br/>実装が容易で安定"]
+  Q2 -->|"限られている"| DPO["DPO<br/>教師あり・モデル2つ<br/>実装が容易で比較的安定"]
   Q2 -->|"十分にある"| Q3{"最後の1滴まで<br/>性能を絞りたいか？"}
-  Q3 -->|"はい"| PPO["PPO ベース RLHF<br/>モデル4つ・多段階<br/>最高性能だがチューニングが難"]
+  Q3 -->|"はい"| PPO["PPO ベース RLHF<br/>モデル4つ・多段階<br/>高性能を狙えるが調整が難しい"]
   Q3 -->|"いいえ"| DPO
   Q2 -->|"学習自体を避けたい"| BON["Best-of-N<br/>学習不要だが<br/>推論コスト・レイテンシ増"]
   D0 --> Q2
@@ -1460,8 +1734,8 @@ flowchart TB
     <section id="s20">
       <h2>20. 効果の実例 ― 「テディベアを洗濯機に入れていい？」</h2>
       <p>
-        Shervine が <strong>「今日のいちばん好きなパート」</strong>と呼んだ締めくくり。前回の講義でも使った同じプロンプトで、
-        preference tuning の効果を目に見える形で示す。
+        本節では同じ事実内容を保ったまま、preference tuning が応答の安全性と親しみやすいトーンをどう変えるかを、
+        Shervine が <strong>「今日のいちばん好きなパート」</strong>と呼んだ teddy bear の before / after で確かめる。
       </p>
       <p>
         プロンプト：<code>Can I put my teddy bear in the washer?</code>（テディベアを洗濯機に入れてもいい？）
@@ -1504,7 +1778,7 @@ flowchart TB
     <section id="s21">
       <h2>21. 講義内 Q&amp;A 総覧</h2>
       <p>
-        この講義は受講生とのやり取りが多く、質疑の中に本編スライドにない重要な整理が数多く含まれている。時系列で一覧化する。
+        本節では、疎な reward、モデルの凍結、policy ratio、BoN、DPO の reference など、本編スライドを補う受講生との質疑を時系列で一覧化する。
       </p>
       <div class="table-wrap">
       <table>
@@ -1543,28 +1817,34 @@ flowchart TB
     <section id="s22">
       <h2>22. 難しい用語の補足（用語集）</h2>
       <p>
-        講義中に前提知識として流された用語を、一次資料に基づいて整理する。<strong>ここは講義の発言そのものではなく、本レポートによる補足</strong>である。
+        本節では、本文で初出時に説明した alignment、reward model、PPO、DPO などの専門語を、定義と講義内での役割から引き直せる形で集約する。
+        <strong>ここは講義の発言そのものではなく、一次資料に基づく本レポートの補足</strong>である。
       </p>
       <div class="table-wrap">
       <table>
         <thead><tr><th>用語</th><th>意味</th><th>この講義での位置づけ</th></tr></thead>
         <tbody>
           <tr><td><strong>alignment（整合）</strong></td><td>モデルの振る舞いを人間の意図・価値観に合わせること</td><td>preference tuning はこの alignment の実装手段のひとつ</td></tr>
+          <tr><td><strong>preference tuning（選好調整）</strong></td><td>好ましい／好ましくない応答の比較を学習信号にし、既存能力の使い方・安全性・トーンを調整する工程</td><td>SFT が表しにくい「これは出すな」という負のシグナルを与える</td></tr>
           <tr><td><strong>preference pair</strong></td><td>同一プロンプトに対する「好まれた応答 <code>y<sub>w</sub></code>」と「好まれなかった応答 <code>y<sub>l</sub></code>」の組</td><td>reward model 学習と DPO の唯一の入力データ</td></tr>
           <tr><td><strong>policy（方策）</strong></td><td>状態から行動への（確率的な）写像。LLM では次 token の確率分布そのもの</td><td>学習対象。<code>π<sub>θ</sub></code> と表記</td></tr>
+          <tr><td><strong>old / reference policy</strong></td><td>old は直前の RL イテレーションの snapshot、reference は通常 SFT 済みベースモデルを固定した基準</td><td>old は局所的な急更新、reference は学習全体での累積的な逸脱を抑える</td></tr>
+          <tr><td><strong>frozen model（凍結モデル）</strong></td><td>推論には使うが重みを更新しないモデル</td><td>reward と reference を安定した採点・比較基準として保つ</td></tr>
           <tr><td><strong>rollout / completion</strong></td><td>モデルがプロンプトに対して生成した応答 1 本まるごと</td><td>reward はこの単位で与えられる（token 単位ではない）</td></tr>
           <tr><td><strong>reward model (RM)</strong></td><td>(prompt, response) を入力にスカラースコアを返すモデル</td><td>Step 1 で学習し、Step 2 では凍結。BoN でも使う</td></tr>
           <tr><td><strong>Bradley-Terry モデル</strong></td><td>ペア比較データから各対象の潜在的な強さを推定する 1952 年の統計モデル</td><td>reward model の損失も DPO の損失も、この定式化が土台</td></tr>
           <tr><td><strong>sigmoid（logistic 関数）</strong></td><td><code>σ(x) = 1/(1+e<sup>−x</sup>)</code>。実数を (0,1) に写す S 字関数</td><td>Bradley-Terry の確率表現に現れる。2 クラスの softmax と一致</td></tr>
           <tr><td><strong>最尤推定（MLE）／負の対数尤度（NLL）</strong></td><td>観測データが最も起きやすくなるパラメータを選ぶ／その対数尤度に負号を付けた損失</td><td>§9 の黒板導出そのもの。cross entropy はその特殊形</td></tr>
-          <tr><td><strong>KL divergence</strong></td><td><code>Σ p log(p/q)</code>。2 分布の乖離度。非対称で距離ではない。常に非負（Jensen の不等式）</td><td>「ベースモデルから離れすぎない」制約の数学的表現</td></tr>
+          <tr><td><strong>Kullback-Leibler（KL）divergence</strong></td><td><code>Σ p log(p/q)</code>。2 分布の乖離度。非対称で距離ではない。常に非負（Jensen の不等式）</td><td>「ベースモデルから離れすぎない」制約の数学的表現</td></tr>
           <tr><td><strong>reward hacking</strong></td><td>不完全な指標に過剰最適化し、指標は上がるが本来の目的は達成されない現象</td><td>KL ペナルティを入れる主要な動機。Goodhart の法則の一形態</td></tr>
           <tr><td><strong>破滅的忘却</strong></td><td>新しい学習によって既習の知識・能力が失われること</td><td>KL ペナルティを入れるもう一つの動機</td></tr>
           <tr><td><strong>advantage</strong></td><td><code>≈ reward − baseline</code>。「期待水準と比べてどれだけ良いか」</td><td>PPO が実際に最大化する量。分散低減により学習が安定・高速化</td></tr>
           <tr><td><strong>value function</strong></td><td>部分生成を入力に、policy に従って続けた場合の期待 reward を返す関数（token 単位・回帰）</td><td>advantage の baseline を供給。policy と同時学習し、4 モデルの 1 つを占める</td></tr>
           <tr><td><strong>GAE</strong></td><td>Generalized Advantage Estimation。value function を使って policy gradient の分散を下げる指数重み付き推定量</td><td>advantage の実際の計算法。講義は範囲外として深入りせず</td></tr>
+          <tr><td><strong>policy gradient（方策勾配）</strong></td><td>行動の対数確率を advantage で重み付けし、期待 reward が増える方向へ policy を直接更新する方法</td><td>PPO と GRPO の土台。正解 token がない RL でも学習できる</td></tr>
           <tr><td><strong>PPO</strong></td><td>Proximal Policy Optimization。同じデータで複数エポックの更新を回せる policy gradient 法</td><td>RLHF の Step 2 で最も一般的なアルゴリズム</td></tr>
-          <tr><td><strong>clip / ε</strong></td><td>policy 比 <code>r<sub>t</sub>(θ)</code> を <code>[1−ε, 1+ε]</code> に切り詰め、1 回の更新幅を制限する仕組み</td><td>PPO-Clip の中核。実装上は <code>ε = 0.2</code> が事実上の標準</td></tr>
+          <tr><td><strong>policy ratio / clip / ε</strong></td><td>現在と old policy の確率比を <code>[1−ε, 1+ε]</code> に切り詰め、1 回の更新幅を制限する仕組み</td><td>PPO-Clip の中核。実装上は <code>ε = 0.2</code> が事実上の標準</td></tr>
+          <tr><td><strong>PPO-KL Penalty</strong></td><td>PPO の目的から reference policy との KL divergence を重み <code>β</code> 付きで差し引く変種</td><td>base からの累積的な逸脱、reward hacking、破滅的忘却を抑える</td></tr>
           <tr><td><strong>β（beta）</strong></td><td>KL ペナルティの重み。ベースモデルから離れることをどれだけ罰するか</td><td>PPO と DPO の<strong>両方に共通</strong>して現れる。DPO では典型的に 0.1 程度</td></tr>
           <tr><td><strong>on-policy / off-policy</strong></td><td>学習中のモデル自身の生成で学習する／しない</td><td>PPO は on-policy、SFT や DPO は自前生成に依存しない</td></tr>
           <tr><td><strong>Best-of-N (BoN)</strong></td><td>N 個生成して reward model で採点し、最良を返す推論時の手法</td><td>RL 学習を回避できるが、コストを推論時に付け替えるだけ</td></tr>
@@ -1573,7 +1853,8 @@ flowchart TB
           <tr><td><strong>分布シフト</strong></td><td>学習に使うデータの分布が、モデル自身の生成分布とずれること</td><td>DPO 固有の弱点。既存の選好データセットをそのまま使えることの裏返し</td></tr>
           <tr><td><strong>RLAIF</strong></td><td>Reinforcement Learning from AI Feedback。選好ラベルを人間でなく AI が付ける</td><td>RLHF の "HF" が人間由来でない場合の呼称</td></tr>
           <tr><td><strong>GRPO</strong></td><td>Group Relative Policy Optimization。グループ内の相対 reward を advantage に使い、value model を不要にする PPO の変種</td><td>DeepSeekMath 論文が導入。次回 Lecture 6 の主題</td></tr>
-          <tr><td><strong>LLM-as-a-judge</strong></td><td>強力な LLM に 2 応答を比較採点させ、人手ラベルの代理にする手法</td><td>選好データのラベル付けにおける proxy の代表格</td></tr>
+          <tr><td><strong>LLM-as-a-judge</strong></td><td>評価基準と候補応答を強力な LLM に渡し、比較採点させる手法。大規模化しやすいが判定モデルの偏りを継承する</td><td>選好データのラベル付けにおける人手評価の proxy</td></tr>
+          <tr><td><strong>BLEU / ROUGE</strong></td><td>Bilingual Evaluation Understudy / Recall-Oriented Understudy for Gisting Evaluation。参照文との n-gram 重なりを測る自動指標</td><td>機械翻訳／要約向けで、自由な対話の意味的な好ましさには弱い</td></tr>
         </tbody>
       </table>
       </div>
@@ -1581,6 +1862,9 @@ flowchart TB
 
     <section id="s23">
       <h2>23. まとめ ― 各手法はどのボトルネックを解くか</h2>
+      <p>
+        本節では SFT、PPO ベース RLHF、Best-of-N、DPO、GRPO を、解消するボトルネック・必要モデル数・新たに払うコストの対応で総括する。
+      </p>
       <div class="table-wrap">
       <table>
         <thead><tr><th>手法</th><th>解こうとしている問題</th><th>必要モデル数</th><th>払うコスト</th></tr></thead>
@@ -1602,6 +1886,9 @@ flowchart TB
 
     <section id="s24">
       <h2>24. 関連レポート</h2>
+      <p>
+        本節では、本講義の前提となる Transformer・LLM・SFT と、先につながる GRPO・post-training 実装を扱う既存レポートを、本文の該当節との関係付きで案内する。
+      </p>
       <ul>
         <li><a href="stanford-cme295-lecture4-llm-training-ja.html">Stanford CME295 Lecture 4「LLM Training」日本語要約</a> ― <strong>本講義の直接の前編</strong>。pretraining、scaling law、ZeRO、FlashAttention、mixed precision、SFT、LoRA・QLoRA。冒頭の復習パートはこの内容を指している。</li>
         <li><a href="stanford-cme295-lecture3-large-language-models-ja.html">Stanford CME295 Lecture 3「Large Language Models」日本語要約</a> ― <strong>temperature と decoding 戦略</strong>の回。§5「T &gt; 0 で 2 回生成して選好ペアを作る」の前提知識。</li>
@@ -1616,6 +1903,9 @@ flowchart TB
 
     <section id="s25">
       <h2>25. 出典・一次資料</h2>
+      <p>
+        本節では、講義動画・公式スライドという直接出典と、Bradley-Terry、PPO、GAE、GRPO、DPO の原論文、実装確認に使った公式ドキュメントを区別して列挙する。
+      </p>
       <h3>本レポートの直接の出典</h3>
       <ul class="refs">
         <li><a href="https://www.youtube.com/watch?v=PmW_TMQ3l0I" target="_blank" rel="noopener">Stanford CME295 Transformers &amp; LLMs | Autumn 2025 | Lecture 5 - LLM tuning</a>（Stanford Online, 2025年11月14日公開・講義 2025年10月31日／1:47:41）</li>
