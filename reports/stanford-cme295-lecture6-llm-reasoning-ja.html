@@ -165,6 +165,59 @@
     display: block; margin-top: 8px; color: var(--text-dim);
     font-family: inherit; font-size: 12px; font-weight: 400;
   }
+  .loss-legend {
+    display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0;
+  }
+  .loss-key {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--bg-elev); color: var(--text-dim); font-size: 12.5px; font-weight: 700;
+  }
+  .loss-key::before { width: 10px; height: 10px; border-radius: 50%; content: ""; }
+  .loss-key.common::before { background: #3b82f6; }
+  .loss-key.grpo::before { background: #f97316; }
+  .loss-key.ppo::before { background: #22c55e; }
+  .loss-panels {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px; margin: 20px 0;
+  }
+  .loss-panel {
+    padding: 18px; border: 1px solid var(--border); border-top-width: 4px;
+    border-radius: var(--radius); background: var(--bg-elev);
+  }
+  .loss-panel.grpo { border-top-color: #f97316; }
+  .loss-panel.ppo { border-top-color: #22c55e; }
+  .loss-panel h4 { margin: 0 0 6px; font-size: 17px; }
+  .loss-panel.grpo h4 { color: #f97316; }
+  .loss-panel.ppo h4 { color: #22c55e; }
+  .loss-panel > p { color: var(--text-dim); font-size: 13.5px; }
+  .loss-flow { display: grid; gap: 8px; margin-top: 14px; }
+  .loss-block {
+    padding: 11px 12px; border: 1px solid var(--border); border-left-width: 4px;
+    border-radius: 9px; font-size: 13.5px; line-height: 1.65;
+  }
+  .loss-block strong { display: block; margin-bottom: 2px; }
+  .loss-block.common {
+    border-left-color: #3b82f6;
+    background: color-mix(in srgb, var(--bg-elev) 90%, #3b82f6 10%);
+  }
+  .loss-block.grpo {
+    border-left-color: #f97316;
+    background: color-mix(in srgb, var(--bg-elev) 90%, #f97316 10%);
+  }
+  .loss-block.ppo {
+    border-left-color: #22c55e;
+    background: color-mix(in srgb, var(--bg-elev) 90%, #22c55e 10%);
+  }
+  .loss-block.common strong { color: #3b82f6; }
+  .loss-block.grpo strong { color: #f97316; }
+  .loss-block.ppo strong { color: #22c55e; }
+  .loss-arrow { color: var(--text-dim); font-size: 16px; line-height: 1; text-align: center; }
+  .tone-common { color: #3b82f6; font-weight: 800; }
+  .tone-grpo { color: #f97316; font-weight: 800; }
+  .tone-ppo { color: #22c55e; font-weight: 800; }
+  td.grpo-cell { background: color-mix(in srgb, var(--bg-elev) 91%, #f97316 9%); }
+  td.ppo-cell { background: color-mix(in srgb, var(--bg-elev) 91%, #22c55e 9%); }
   figure.shot { margin: 24px 0; }
   figure.shot img {
     display: block; width: 100%; height: auto; border: 1px solid var(--border);
@@ -245,7 +298,7 @@
   <main>
     <header class="page">
       <div class="eyebrow">Stanford CME295 · Transformers &amp; Large Language Models · Autumn 2025 · Lecture 6</div>
-      <h1>LLM Reasoning ― 「考えてから答える」モデルはどう作られるのか</h1>
+      <h1>Lecture 6「LLM Reasoning」日本語要約【講義スライド34枚・徹底補足版】</h1>
       <p class="lead">
         reasoning model の定義から、pass@k の黒板導出、verifiable reward による RL、GRPO と PPO の違い、
         出力が延々と長くなる length bias とその修正（DAPO / Dr. GRPO）、そして DeepSeek R1 の 5 段階レシピまで。
@@ -297,10 +350,10 @@
     </div>
 
     <div class="sequence" aria-label="講義全体の因果関係">
-      <div class="step"><span class="step-no">1 · GENERATE</span><p>CoT と sampling で、同じ問題への候補推論を 1 個または複数個生成する。</p></div>
-      <div class="step"><span class="step-no">2 · EVALUATE</span><p>最終結果を verifier で、必要なら途中手順を PRM で評価する。本講義の R1 系は主に規則で最終結果を検証する。</p></div>
-      <div class="step"><span class="step-no">3 · SELECT / LEARN</span><p>推論時なら多数決や Best-of-N、学習時なら GRPO / PPO で評価を次の出力確率へ反映する。</p></div>
-      <div class="step"><span class="step-no">4 · CURATE / DISTILL</span><p>良い推論だけを rejection sampling で残し、SFT や distillation で使いやすいモデルへ移す。</p></div>
+      <div class="step"><span class="step-no">1 · GENERATE</span><p>モデルに問題を与え、最終回答だけでなく、そこへ至る CoT（途中の推論）も token 列として生成させる。temperature を持つ sampling で同じ問題から複数の経路を作れば、最初の発想が外れても別の解法を探索でき、後段で比較できる候補群になる。</p></div>
+      <div class="step"><span class="step-no">2 · EVALUATE</span><p>各候補を「もっともらしい文章か」ではなく、答えの一致やコードのテスト通過など、機械的に確認できる verifier で採点する。途中の各手順を PRM で評価する方法もあるが、本講義の R1 系は主に format reward と accuracy reward を使い、最終結果を規則で検証する。</p></div>
+      <div class="step"><span class="step-no">3 · SELECT / LEARN</span><p>推論時は複数候補の多数決（self-consistency）や verifier 得点による Best-of-N で、実際に返す回答を選ぶ。この場合、モデルの重みは変わらない。一方、学習時は GRPO が同じ問題への回答を群内比較し、PPO は critic の予測も使って advantage を求め、良い推論を今後生成しやすいよう出力確率を更新する。</p></div>
+      <div class="step"><span class="step-no">4 · CURATE / DISTILL</span><p>検証を通った高品質な推論だけを rejection sampling で選別し、次の SFT 用データへ変換する。さらに、大型 reasoning model の推論例を教師データとして小型モデルへ distillation すれば、探索に使った能力を、低コストで提供しやすいモデルへ移せる。</p></div>
     </div>
 
     <section id="s01">
@@ -1041,22 +1094,53 @@ flowchart TD
         減らせるという意味も大きい。ただしテストや parser 自体の穴を突く余地は残る。</p>
       </div>
 
+      <h3>生成した推論をどう採点するか ― 3 つの選択肢</h3>
+      <p>
+        RL でモデルを改善するには、生成した回答に「どれくらい良かったか」という数値の
+        <strong>reward（報酬）</strong>を付ける必要がある。ここで決めなければならないのは、
+        <strong>誰が採点するか</strong>（固定ルールか、採点用に学習したモデルか）と、
+        <strong>どこまで採点するか</strong>（最終結果だけか、途中の各手順も見るか）の 2 点である。
+      </p>
+      <p>
+        次の表は、この採点方法を比較している。ORM と PRM は GRPO や PPO のような学習アルゴリズムではなく、
+        <strong>生成された推論へ報酬を付けるための別の「採点モデル」</strong>である。
+        R1 系はこの採点モデルを使わず、答え合わせのルールを採点者にした。
+      </p>
+
       <div class="table-wrap">
       <table>
-        <thead><tr><th>評価する場所</th><th>仕組み</th><th>例</th><th>長所と限界</th></tr></thead>
+        <thead><tr><th>採点方法</th><th>何を見るか</th><th>誰が採点するか</th><th>例</th><th>長所と限界</th></tr></thead>
         <tbody>
-          <tr><td><strong>最終結果を規則で検証</strong><br>（R1 系の RLVR）</td><td>学習モデルを置かず、答え一致やテスト通過を 0 / 1 にする</td><td>最終解が 5、全 unit test が成功</td><td>安く客観的。ただし途中が偶然合ったのか、危険な手順かは見ない</td></tr>
-          <tr><td><strong>ORM</strong><br>Outcome Reward Model</td><td>完成応答全体を見て、最終的な品質を予測する学習済みモデル</td><td>自由回答に「有用さ 0.8」</td><td>規則化しにくい結果も扱えるが、予測誤差と reward hacking がある</td></tr>
-          <tr><td><strong>PRM</strong><br>Process Reward Model</td><td>推論を手順に分け、各段階が妥当かを予測する学習済みモデル</td><td><code>式変形1: ○ / 式変形2: ×</code></td><td>誤りの位置を特定し、探索の枝も早く切れるが、step label の作成が高価</td></tr>
+          <tr><td><strong>規則ベースの検証</strong><br>（R1 系の RLVR）</td><td>最終結果だけ</td><td>人があらかじめ書いた答え合わせ・テストのルール</td><td>最終解が 5 なら 1 点、全 unit test が通れば 1 点</td><td>安く客観的。ただし、途中の誤りが偶然相殺された場合や、危険な手順で正解した場合は見抜けない</td></tr>
+          <tr><td><strong>ORM</strong><br>Outcome Reward Model</td><td>完成した応答全体と最終結果</td><td>人の評価データなどから、応答全体の品質を予測するよう学習したモデル</td><td>自由回答に「有用さ 0.8」「安全性 0.6」と採点</td><td>正解を固定ルールで書けない文章にも使える。ただし採点モデルにも予測誤差があり、その癖を攻略する reward hacking が起こりうる</td></tr>
+          <tr><td><strong>PRM</strong><br>Process Reward Model</td><td>推論の途中にある各手順</td><td>手順ごとの正誤ラベルから、各段階の妥当性を予測するよう学習したモデル</td><td><code>式変形1: ○ / 式変形2: × / 式変形3: ○</code></td><td>どこで間違えたかを特定し、誤った探索を早く止められる。ただし、手順単位の教師データを作る費用が高い</td></tr>
         </tbody>
       </table>
       </div>
 
-      <p><strong>Process supervision（過程監督）</strong>は、各手順に「正しい / 誤り」などの
-      step label（手順ラベル）を付け、その教師信号で PRM や方策を学習する考え方である。
-      最終結果だけの outcome supervision より密な信用割当ができる一方、正しい別解が多数ある問題では
-      ラベル基準を作ること自体が難しい。DeepSeek-R1 論文はニューラルな ORM / PRM を使わず、
-      reward hacking、reward model 再学習の資源、パイプラインの複雑化を避けて規則ベースの RLVR を選んだ。</p>
+      <h3>「結果だけを見る」か「途中も見る」か</h3>
+      <p>
+        ここで出てくる <strong>outcome supervision（結果監督）</strong>と
+        <strong>process supervision（過程監督）</strong>は、上の採点方法とは別に増えた第 4・第 5 の方式ではない。
+        <strong>教師信号をどの細かさで与えるか</strong>を表す呼び方である。
+      </p>
+      <ul>
+        <li><strong>結果監督：</strong>完成した回答にだけ点を付ける。上表の規則ベース検証と ORM がこれに当たる。正解なら報酬を与えられるが、途中のどの判断が良かったのか、どこで間違えたのかまでは教えない。</li>
+        <li><strong>過程監督：</strong>推論を複数の手順に分け、それぞれへ「正しい / 誤り」などの step label（手順ラベル）を付ける。そのラベルで PRM を学習し、途中の各段階を採点できるようにする。</li>
+      </ul>
+      <p>
+        たとえば、計算途中に誤った式変形があっても、後の偶然で最終解だけ正しくなることがある。
+        結果監督はこれを正解として扱うが、過程監督なら誤った式変形の位置を指摘できる。
+        つまり、最終報酬の原因となった手順を見つけやすい。一方で、問題に正しい別解が多数あると、
+        すべての妥当な手順を想定してラベル基準を作ることは難しく、手作業の費用も大きい。
+      </p>
+      <div class="callout">
+        <p><strong>DeepSeek-R1 が選んだのは、最も単純な「規則ベースの結果監督」。</strong>
+        R1 はニューラルな ORM / PRM を採用せず、数学なら最終解の一致、コードならテスト通過という
+        検証可能な結果をそのまま報酬にした。これにより、採点モデルを別途学習・更新する計算資源、
+        複雑な学習パイプライン、採点モデルの癖を突く reward hacking を抑えた。
+        その代わり、途中の推論が本当に正しいかを直接保証する仕組みは持たない。</p>
+      </div>
     </section>
 
     <section id="s13">
@@ -1377,9 +1461,22 @@ flowchart LR
         <figcaption>下段が PPO。<code>q</code> → <strong>Policy Model</strong> → <code>o</code>（<strong>1 つだけ</strong>の completion）→ Reference Model と Reward Model → KL と報酬を合成して <code>r</code>。GRPO と違い群がなく、代わりに（図の続きで）Value Model が登場する。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=4130s" target="_blank" rel="noopener">68:50</a></figcaption>
       </figure>
 
+      <div class="callout info">
+        <p><strong>先に用語：KL とは何か。</strong>
+        KL は <strong>Kullback–Leibler divergence（KL divergence／KL ダイバージェンス）</strong>の略で、
+        2 つの確率分布がどれくらい違うかを表す尺度である。ここでは、学習中の
+        <strong>policy model</strong> が各 token に付ける確率と、学習前の
+        <strong>reference model</strong> が付ける確率を比べる。両者の出力傾向が近ければ KL は小さく、
+        policy が元モデルから大きく変わるほど KL は大きくなる。</p>
+        <p>RL の目的を「問題に正解して高い報酬を得る」だけにすると、モデルが不自然な文章や報酬の抜け道へ急激に変化することがある。
+        そこで <code>実質的な報酬 = タスクの報酬 − β × KL</code> とし、元モデルから離れすぎた分を
+        <strong>罰点</strong>として差し引く。つまり KL 項は、能力を伸ばしながら元の言語能力や振る舞いを壊しにくくする
+        <strong>ブレーキ</strong>である。</p>
+      </div>
+
       <p>PPO 側で、講義がここで初めて明かした<strong>実装上の詳細</strong>が 2 つある。</p>
       <ul>
-        <li><strong>KL 項は報酬に混ぜ込まれる。</strong> <em>「実装の観点では、KL divergence 項を報酬に組み込むのが普通だ。<strong>per-token の報酬</strong>のような形になり、最後の token だけが completion 全体の報酬を持ち、他の全 token は KL divergence 項を持つ」</em>。</li>
+        <li><strong>KL の罰点は token ごとの報酬に混ぜ込まれる。</strong> 各 token では policy と reference の出力確率のずれを計算し、その分を負の報酬として与える。最後の token に到達したときだけ、正解・不正解など completion 全体の報酬も加える。講義では、<em>「実装の観点では、KL divergence 項を報酬に組み込むのが普通だ。<strong>per-token の報酬</strong>のような形になり、最後の token だけが completion 全体の報酬を持ち、他の全 token は KL divergence 項を持つ」</em>と説明された。</li>
         <li><strong>value function は per-token。</strong> <em>「value function は per-token で、policy に従って残りの系列を生成し続けたときの報酬を定量化しようとする」</em>。</li>
       </ul>
 
@@ -1417,9 +1514,9 @@ flowchart LR
     <section id="s19">
       <h2>19. 損失関数を並べて読む ― 講義最難関パート</h2>
       <p class="section-lead">
-        数式全体を一度に読む必要はない。まず「新旧 policy の確率比」「更新を制限する clip」
-        「群相対 advantage」「reference からのずれを罰する KL」の 4 部品に分ける。
-        記号を定義した後、1 token の数値例で更新の向きを確かめる。
+        損失関数は「モデルのどの出力確率を、どちらへ、どれだけ動かすか」を決める採点表である。
+        まず数式を使わず、GRPO と PPO が 1 回の更新で行う処理を日本語のブロックに分ける。
+        その後で、共通部分と異なる部分を対応させ、最後に元の数式を詳細確認用として読む。
       </p>
 
       <figure class="shot">
@@ -1427,30 +1524,100 @@ flowchart LR
         <figcaption>GRPO（上）と PPO（下）の目的関数。共通点として <strong>Ratio</strong> と <strong>clipping</strong> がハイライトされている。<a class="ts" href="https://www.youtube.com/watch?v=k5Fh-UgTuCo&t=4370s" target="_blank" rel="noopener">72:50</a></figcaption>
       </figure>
 
-      <h3>共通点</h3>
+      <h3>数式を日本語に翻訳すると、何をしているのか</h3>
+      <p>
+        両者の最終目的は同じで、<strong>良かった回答を構成する token は次回から出やすくし、
+        悪かった回答の token は出にくくする</strong>ことである。違うのは、その回答が
+        「期待より良かったか」を誰と比べて決めるか、KL の罰点をどこへ入れるかである。
+      </p>
+      <div class="loss-legend" aria-label="色分けの凡例">
+        <span class="loss-key common">青：GRPO・PPO 共通</span>
+        <span class="loss-key grpo">オレンジ：GRPO 固有</span>
+        <span class="loss-key ppo">緑：PPO 固有</span>
+      </div>
+
+      <div class="loss-panels">
+        <article class="loss-panel grpo">
+          <h4>GRPO の関数を日本語で読む</h4>
+          <p>同じ問題への複数回答を互いに比べ、群の平均より良いか悪いかを更新方向に使う。</p>
+          <div class="loss-flow">
+            <div class="loss-block grpo"><strong>1. 同じ問題から G 個の回答を作る</strong>1 問につき複数の completion を生成する。比較相手は、別の問題への回答ではなく、同じ問題に挑戦した仲間である。</div>
+            <div class="loss-arrow" aria-hidden="true">↓</div>
+            <div class="loss-block grpo"><strong>2. 各回答を採点し、群の中で比べる</strong>verifier の報酬から群の平均を引き、通常は標準偏差でも割る。平均より上なら正の advantage、下なら負の advantage になる。value model は使わない。</div>
+            <div class="loss-arrow" aria-hidden="true">↓</div>
+            <div class="loss-block common"><strong>3. 各 token の確率が前回からどう変わったかを見る</strong>現在の policy が付ける確率を、候補生成時の旧 policy の確率で割る。1 より大きければ、その token を前回より出しやすくしたという意味である。</div>
+            <div class="loss-arrow" aria-hidden="true">↓</div>
+            <div class="loss-block common"><strong>4. 良い回答は押し上げ、悪い回答は押し下げる</strong>確率の変化と advantage を掛ける。正の回答なら構成 token を増やす方向、負の回答なら減らす方向へ学習させる。</div>
+            <div class="loss-arrow" aria-hidden="true">↓</div>
+            <div class="loss-block common"><strong>5. 一度に動かしすぎないよう clip する</strong>良い／悪いという評価が正しくても、確率を一気に変えると学習が壊れる。新旧の確率比を許容範囲に収め、過大な更新から得られる利益を止める。</div>
+            <div class="loss-arrow" aria-hidden="true">↓</div>
+            <div class="loss-block grpo"><strong>6. 元モデルから離れた分を明示的に引く</strong>policy と reference model の KL が大きいほど罰点を引く。GRPO の式では、このブレーキが独立した項として見えている。</div>
+            <div class="loss-arrow" aria-hidden="true">↓</div>
+            <div class="loss-block grpo"><strong>7. token 内・回答群内で平均する</strong>まず各回答の token を平均し、さらに G 個の回答を平均して 1 回の更新量にする。この token 平均が、後述する length bias の原因になる。</div>
+          </div>
+        </article>
+
+        <article class="loss-panel ppo">
+          <h4>PPO の関数を日本語で読む</h4>
+          <p>回答の実際の報酬を、critic が予測した「この時点なら普通どれくらい得られるか」と比べる。</p>
+          <div class="loss-flow">
+            <div class="loss-block ppo"><strong>1. 回答を生成し、token ごとの報酬を作る</strong>最後の token に正解度や reward model の評価を置き、各 token には reference model から離れた KL の罰点を入れるのが典型的な実装である。</div>
+            <div class="loss-arrow" aria-hidden="true">↓</div>
+            <div class="loss-block ppo"><strong>2. Value model が各時点の期待報酬を予測する</strong>critic は「ここまで生成した状態から policy を続けたら、最終的に何点くらいになりそうか」を token ごとに見積もる。</div>
+            <div class="loss-arrow" aria-hidden="true">↓</div>
+            <div class="loss-block ppo"><strong>3. 実際の結果と予測の差から advantage を作る</strong>GAE を使い、「critic の期待より良かったか／悪かったか」を token ごとに計算する。同じ問題への他の回答は、GRPO のような直接の比較基準にはしない。</div>
+            <div class="loss-arrow" aria-hidden="true">↓</div>
+            <div class="loss-block common"><strong>4. 各 token の確率が前回からどう変わったかを見る</strong>現在の policy と旧 policy の確率比を計算する。ここから先の更新の骨格は GRPO と同じである。</div>
+            <div class="loss-arrow" aria-hidden="true">↓</div>
+            <div class="loss-block common"><strong>5. Advantage の向きへ動かす</strong>期待以上に良かった token は出やすくし、期待以下だった token は出にくくする。</div>
+            <div class="loss-arrow" aria-hidden="true">↓</div>
+            <div class="loss-block common"><strong>6. Clip で更新幅を制限する</strong>新旧 policy の確率比を許容帯に収め、1 回の更新が大きくなりすぎないようにする。</div>
+            <div class="loss-arrow" aria-hidden="true">↓</div>
+            <div class="loss-block ppo"><strong>7. Policy と value model の両方を学習する</strong>policy は回答生成を改善し、value model は次回の期待報酬予測を改善する。この追加モデルの訓練・保持が PPO の大きなコストになる。</div>
+          </div>
+        </article>
+      </div>
+
+      <div class="worked-example">
+        <strong>同じ 4 回の解答を、GRPO と PPO はどう見るか。</strong>
+        <p>同じ数学問題へ 4 回挑戦し、報酬が <code>1, 1, 0, 0</code> だったとする。
+        <span class="tone-grpo">GRPO</span> は 4 回を直接比べ、正解した 2 回を群平均より良い回答、
+        不正解の 2 回を悪い回答として advantage を作る。
+        <span class="tone-ppo">PPO</span> は各生成時点で critic が予測した期待報酬と実際の結果を比べる。
+        同じ正解でも、critic が「ほぼ確実に正解する」と予測していた token の advantage は小さく、
+        「失敗しそう」と予測していたところから正解した token の advantage は大きくなりうる。</p>
+      </div>
+
+      <h3><span class="tone-common">共通部分</span> ― 更新のエンジンは同じ</h3>
       <div class="table-wrap">
       <table>
         <thead><tr><th>共通点</th><th>中身</th></tr></thead>
         <tbody>
-          <tr><td><strong>① Ratio（比）</strong></td><td>どちらも <code>pi_theta(現在の policy) / pi_theta_old(1 つ前の policy)</code> という確率比の上で動作する</td></tr>
-          <tr><td><strong>② Clipping（切り詰め）</strong></td><td>どちらも更新をある領域内に留める。<em>「advantage が正のときに損失がどう見えるか、負のときどうか、というチャートを Lecture 5 で見た。ぜひ見直してほしい」</em></td></tr>
+          <tr><td><span class="tone-common">① Ratio（比）</span></td><td>どちらも「現在の policy がその token を出す確率 ÷ 候補生成に使った旧 policy の確率」を見る。値が 1.0 なら変化なし、1.2 なら 20% 出やすく、0.8 なら 20% 出にくくなったことを表す</td></tr>
+          <tr><td><span class="tone-common">② Advantage（更新方向）</span></td><td>どちらも advantage が正ならその token を出やすくし、負なら出にくくする。異なるのは advantage の作り方であり、使い方は同じ</td></tr>
+          <tr><td><span class="tone-common">③ Clipping（切り詰め）</span></td><td>どちらも ratio を許容帯へ制限し、1 回の学習で policy が急変するのを防ぐ。評価が良くても、すでに十分大きく動かした token をさらに押し上げる利益は与えない</td></tr>
         </tbody>
       </table>
       </div>
 
-      <h3>相違点</h3>
+      <h3><span class="tone-grpo">GRPO</span> と <span class="tone-ppo">PPO</span> の具体的な違い</h3>
       <div class="table-wrap">
       <table>
-        <thead><tr><th>相違点</th><th>GRPO</th><th>PPO</th></tr></thead>
+        <thead><tr><th>比較軸</th><th>GRPO</th><th>PPO</th></tr></thead>
         <tbody>
-          <tr><td><strong>① KL penalty の置き場所</strong></td><td><strong>目的関数に明示的な項として入っている</strong>（<code>− β D_KL[pi_theta || pi_ref]</code>）</td><td>典型的には <strong>advantage の中（実装上は報酬の中）に混ぜ込まれている</strong></td></tr>
-          <tr><td><strong>② advantage の推定法</strong></td><td>各 completion の報酬を、<strong>群の他の completion と比べて</strong>算出</td><td>報酬と <strong>value model</strong> を使って GAE で算出</td></tr>
+          <tr><td><strong>何と比べて「良い」を決めるか</strong></td><td class="grpo-cell"><span class="tone-grpo">同じ問題への他の回答</span>。群平均より上か下かを見る</td><td class="ppo-cell"><span class="tone-ppo">value model の期待値</span>。予測より実際が良かったかを見る</td></tr>
+          <tr><td><strong>Advantage の細かさ</strong></td><td class="grpo-cell">結果監督では、1 回答に 1 つの群相対 advantage を作り、全 token へ同じ値を配る</td><td class="ppo-cell">GAE により token ごとの advantage を作る。どの時点の判断が期待以上だったかを細かく表せる</td></tr>
+          <tr><td><strong>追加で必要な学習モデル</strong></td><td class="grpo-cell"><span class="tone-grpo">Value model 不要</span>。群内比較が baseline の役割を果たす</td><td class="ppo-cell"><span class="tone-ppo">Value model 必須</span>。policy と並行して critic も訓練する</td></tr>
+          <tr><td><strong>KL penalty の置き場所</strong></td><td class="grpo-cell">目的関数に <span class="tone-grpo">独立した罰点</span>として明示される</td><td class="ppo-cell">典型的には token ごとの<span class="tone-ppo">報酬へ先に混ぜ</span>、その報酬から advantage を計算する</td></tr>
+          <tr><td><strong>データの作り方</strong></td><td class="grpo-cell">1 問から G 個をまとめて生成する必要がある。群内比較には同じ問題の候補群が必要</td><td class="ppo-cell">同一問題の候補群を baseline にする必要はない。各 trajectory と critic の予測を使える</td></tr>
+          <tr><td><strong>主な利点</strong></td><td class="grpo-cell">critic を省けるため、モデル数・GPU メモリ・実装複雑性を減らせる。検証可能な reasoning と相性がよい</td><td class="ppo-cell">token ごとの信用割当が細かい。自由回答を含む一般的な RLHF で実績が多い</td></tr>
+          <tr><td><strong>主な代償</strong></td><td class="grpo-cell">同じ問題から複数回答を生成する計算が必要。群の構成や token 平均による bias が生じる</td><td class="ppo-cell">critic の訓練が不安定さと計算コストを増やし、policy・value・reward・reference の複数モデル管理が必要になりやすい</td></tr>
         </tbody>
       </table>
       </div>
 
       <div class="callout info">
-        <p><strong>周辺情報：GRPO の目的関数を、記号ごとに分解する。</strong>
+        <p><strong>数式そのものを確認したい人向け：GRPO の目的関数を記号ごとに分解する。</strong>
         原論文（DeepSeekMath, Shao et al., 2024）の式をプレーンテキストで書き下す。
         <code>q</code> は問題、<code>G</code> は同じ問題から作る回答数、<code>o_i</code> は i 番目の回答、
         <code>|o_i|</code> はその token 数、<code>t</code> は token 位置である。
