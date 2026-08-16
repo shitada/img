@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<link rel="stylesheet" href="../assets/stash-theme.css" />
+<script src="../assets/stash-theme.js"></script>
+<title>Stanford CME295 Lecture 7「Agentic LLMs」日本語要約【講義スライド17枚付き】</title>
+<meta name="description" content="Stanford CME295 Lecture 7「Agentic LLMs」を公式英語字幕16,871語と講義映像の確認済みフレーム17枚から日本語で再構成。RAG、SBERT、BM25、HyDE、Contextual Retrieval、Prompt Caching、Cross-encoder、NDCG・MRR、Tool Calling、Tool Selection、MCP、ReAct、A2A、安全性までを網羅。" />
+<style>
+  :root {
+    --sidebar-w: 286px;
+    --content-max: 980px;
+    --radius: 14px;
+    --shadow: 0 8px 28px rgba(0,0,0,.34);
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--text); scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.85;
+  }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  strong { color: var(--text); }
+  .layout { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); min-height: 100vh; }
+  aside.sidebar {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    border-right: 1px solid var(--border); background: var(--bg-elev); padding: 24px 18px;
+  }
+  .toc-panel > summary { display: none; color: var(--text); cursor: pointer; font-weight: 700; }
+  .toc-title {
+    margin: 0 0 10px; color: var(--text-dim); font-size: 12px; font-weight: 700;
+    letter-spacing: .12em; text-transform: uppercase;
+  }
+  aside.sidebar ol { list-style: none; padding: 0; margin: 0; }
+  aside.sidebar li { margin: 2px 0; }
+  aside.sidebar a {
+    display: block; padding: 6px 10px; border-left: 2px solid transparent;
+    border-radius: 0 7px 7px 0; color: var(--text-dim); font-size: 13.5px;
+    line-height: 1.45; transition: color .15s, border-color .15s, background .15s;
+  }
+  aside.sidebar a:hover { color: var(--text); background: rgba(127,127,127,.07); text-decoration: none; }
+  aside.sidebar a.active {
+    border-left-color: var(--accent); background: rgba(127,127,127,.1);
+    color: var(--accent); font-weight: 700;
+  }
+  aside.sidebar li.lvl-3 a { padding-left: 22px; font-size: 12.5px; }
+  main { width: min(100%, var(--content-max)); margin: 0 auto; padding: 48px 28px 96px; }
+  header.page { margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+  header.page .eyebrow {
+    color: var(--accent); font-size: 13px; font-weight: 800;
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+  header.page h1 { margin: 8px 0 12px; font-size: clamp(28px, 4vw, 42px); line-height: 1.3; }
+  header.page .lead { margin: 0; color: var(--text-dim); font-size: 16px; }
+  .meta-card {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px 24px; margin: 20px 0 32px; padding: 18px 20px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-elev); font-size: 14px;
+  }
+  .meta-card dt { color: var(--text-dim); font-size: 12px; letter-spacing: .04em; }
+  .meta-card dd { margin: 0 0 7px; color: var(--text); }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border: 1px solid var(--border);
+    border-radius: 999px; background: var(--bg); color: var(--text-dim); font-size: 12px;
+  }
+  .tldr, .callout, .worked-example {
+    margin: 24px 0; padding: 17px 22px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev);
+  }
+  .tldr h2 { margin: 0 0 10px; color: var(--accent); font-size: 17px; letter-spacing: .04em; }
+  .callout { border-left: 3px solid var(--accent); }
+  .callout strong { color: var(--accent); }
+  .callout.info { border-left-color: var(--link); }
+  .callout.info strong { color: var(--link); }
+  .callout.warning { border-left-color: #f59e0b; }
+  .callout.warning strong { color: #f59e0b; }
+  .worked-example { background: color-mix(in srgb, var(--bg-elev) 92%, var(--accent) 8%); }
+  .worked-example > strong:first-child { color: var(--accent); }
+  section { margin: 48px 0; scroll-margin-top: 24px; }
+  section h2 {
+    display: inline-block; margin: 0 0 16px; padding-bottom: 8px;
+    border-bottom: 2px solid var(--accent); font-size: 23px; line-height: 1.45;
+  }
+  section h3 { margin: 28px 0 9px; color: var(--accent); font-size: 18px; }
+  section h4 { margin: 18px 0 6px; font-size: 15px; }
+  .section-lead { margin: 0 0 22px; color: var(--text-dim); font-size: 15.5px; }
+  p { margin: 10px 0; }
+  ul, ol { margin: 12px 0; padding-left: 23px; }
+  li { margin: 6px 0; }
+  code {
+    padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg-elev); font-size: .92em;
+  }
+  .table-wrap { width: 100%; overflow-x: auto; margin: 17px 0; }
+  table {
+    width: 100%; min-width: 680px; border-collapse: collapse;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-elev); overflow: hidden;
+  }
+  th, td {
+    padding: 11px 14px; border-bottom: 1px solid var(--border);
+    text-align: left; vertical-align: top; font-size: 14px;
+  }
+  thead th {
+    background: rgba(127,127,127,.08); color: var(--text-dim);
+    font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  .grid-cards {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px; margin: 18px 0;
+  }
+  .card {
+    padding: 15px 17px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev);
+  }
+  .card h4 { margin: 0 0 6px; color: var(--accent); font-size: 14px; }
+  .card p { margin: 0; color: var(--text-dim); font-size: 13.5px; }
+  .stat-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px; margin: 18px 0;
+  }
+  .stat-card {
+    padding: 14px 15px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev);
+  }
+  .stat-card .num { color: var(--accent); font-size: 25px; font-weight: 800; line-height: 1.2; }
+  .stat-card .label { margin-top: 4px; color: var(--text-dim); font-size: 12px; line-height: 1.5; }
+  .formula {
+    margin: 20px 0; padding: 20px; border: 1px solid var(--border);
+    border-left: 4px solid var(--accent); border-radius: var(--radius);
+    background: var(--bg-elev); text-align: center;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: clamp(14px, 2.2vw, 20px); font-weight: 700; overflow-x: auto;
+  }
+  .formula small {
+    display: block; margin-top: 8px; color: var(--text-dim);
+    font-family: inherit; font-size: 12px; font-weight: 400;
+  }
+  figure.shot { margin: 24px 0; }
+  figure.shot img {
+    display: block; width: 100%; height: auto; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev); cursor: zoom-in;
+  }
+  figure.shot img:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  figure.shot figcaption { margin-top: 8px; color: var(--text-dim); font-size: 13px; line-height: 1.6; }
+  .ts {
+    display: inline-block; margin-left: 6px; padding: 1px 7px; border: 1px solid var(--border);
+    border-radius: 999px; background: var(--bg-elev); color: var(--accent);
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+  }
+  .mermaid {
+    margin: 20px 0; padding: 18px; overflow-x: auto; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev); text-align: center; cursor: zoom-in;
+  }
+  .mermaid:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .mermaid svg { max-width: 100%; height: auto; }
+  .modal {
+    position: fixed; inset: 0; z-index: 50; display: none;
+    grid-template-rows: auto 1fr; gap: 12px; padding: 22px;
+    background: rgba(9,20,38,.82);
+  }
+  .modal.is-open { display: grid; }
+  .modal-toolbar { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  .modal-button {
+    appearance: none; padding: 8px 12px; border: 1px solid var(--border);
+    border-radius: 999px; background: var(--bg-elev); color: var(--text);
+    font-weight: 700; cursor: pointer;
+  }
+  .modal-button:hover { border-color: var(--accent); color: var(--accent); }
+  .modal-body {
+    display: grid; place-items: center; min-height: 0; overflow: hidden;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-elev); box-shadow: var(--shadow);
+  }
+  .modal-body svg { width: 100%; height: 100%; min-height: 70vh; }
+  footer.page {
+    margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--border);
+    color: var(--text-dim); font-size: 13px;
+  }
+  footer.page .disclaimer { font-size: 12.5px; opacity: .92; }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    aside.sidebar {
+      position: static; height: auto; padding: 14px 20px;
+      border-right: 0; border-bottom: 1px solid var(--border);
+    }
+    .toc-panel > summary { display: list-item; }
+    .toc-title { display: none; }
+    .toc-panel:not([open]) ol { display: none; }
+    main { padding: 34px 20px 72px; }
+  }
+  @media (max-width: 720px) {
+    .modal { padding: 12px; }
+    .modal-toolbar { justify-content: center; }
+    .modal-button { padding: 7px 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" aria-label="目次">
+    <details class="toc-panel" open>
+      <summary>目次を開く</summary>
+      <p class="toc-title">目次</p>
+      <ol id="toc"></ol>
+    </details>
+  </aside>
+
+  <main>
+    <header class="page">
+      <div class="eyebrow">Stanford CME295 / Afshine Amidi &amp; Shervine Amidi</div>
+      <h1>Lecture 7「Agentic LLMs」日本語要約</h1>
+      <p class="lead">LLMを「知識を生成するモデル」から「最新情報を探し、外部機能を呼び、自律的に行動するシステム」へ拡張するための、RAG・Tool Calling・MCP・ReActを一気通貫で整理する。</p>
+    </header>
+
+    <dl class="meta-card" aria-label="出典メタデータ">
+      <div><dt>出典</dt><dd><a href="https://www.youtube.com/watch?v=h-7S6HNq0Vg" target="_blank" rel="noopener">Stanford Online / YouTube</a></dd></div>
+      <div><dt>講師</dt><dd>Afshine Amidi / Shervine Amidi</dd></div>
+      <div><dt>講義日 / 公開日</dt><dd>2025年11月14日 / 2025年11月18日</dd></div>
+      <div><dt>講義時間</dt><dd>1時間49分22秒</dd></div>
+      <div><dt>字幕規模</dt><dd>2,210行・16,871語（重複除去後）</dd></div>
+      <div><dt>取得手段</dt><dd>yt-dlp 英語自動字幕 + ffmpeg フレーム抽出</dd></div>
+      <div><dt>画面キャプチャ</dt><dd>17枚（macOS Vision OCRで内容照合）</dd></div>
+      <div><dt>取得時視聴回数</dt><dd>118,494回</dd></div>
+      <div style="grid-column:1/-1">
+        <dt>タグ</dt>
+        <dd class="badges">
+          <span class="badge">RAG</span>
+          <span class="badge">Tool Calling</span>
+          <span class="badge">MCP</span>
+          <span class="badge">ReAct</span>
+          <span class="badge">Agent Safety</span>
+        </dd>
+      </div>
+    </dl>
+
+    <div class="tldr">
+      <h2>3行サマリ</h2>
+      <ul>
+        <li><strong>RAG</strong>は、全文をプロンプトへ詰め込む代わりに、候補検索と再ランキングで必要な知識だけを取り出し、知識カットオフ・長文での注意散漫・入力コストを同時に緩和する。</li>
+        <li><strong>Tool Calling</strong>はLLMに関数を直接実行させる仕組みではなく、LLMがツールと引数を選び、外部実行結果を再びLLMへ渡す制御ループである。Tool SelectionとMCPが、多数ツールの選択と公開方法を整える。</li>
+        <li><strong>Agent</strong>はObserve → Plan → Actを繰り返して目標を追うが、各段階の誤りが累積する。小さく始め、最強モデルで上限を確認し、推論過程を観察できる状態を保つことが実践上の要点となる。</li>
+      </ul>
+    </div>
+
+    <section id="s01">
+      <h2>1. 講義の射程：LLMを外部世界へ接続する</h2>
+      <p class="section-lead">講義の3本柱は <strong>RAG、Tool Calling、Agents</strong>。これまで単独で推論していたLLMを、更新され続ける知識と実行可能な機能へつなぐ。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/01-title-slide.jpg" alt="Stanford CME295 Lecture 7のタイトルスライド" loading="lazy" />
+        <figcaption>CME295 Lecture 7のタイトルスライド。講師はAfshine AmidiとShervine Amidi。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=46s" target="_blank" rel="noopener">00:46</a></figcaption>
+      </figure>
+      <h3>前回Lecture 6の短い振り返り</h3>
+      <p>冒頭ではreasoning modelとGRPOを振り返る。同一プロンプトから複数のcompletionを生成し、グループ内の相対報酬でadvantageを作るため、PPOのような独立したvalue modelを不要にできる。一方で、学習性能が頭打ちになった後も出力長が伸びるlength biasがあり、DAPOやDr. GRPOのような正規化方法の見直しが必要だった。</p>
+      <div class="grid-cards">
+        <div class="card"><h4>今回扱う弱点 1</h4><p>重みの学習時点より後の出来事や、組織固有の知識を直接は持たない。</p></div>
+        <div class="card"><h4>今回扱う弱点 2</h4><p>文章を生成するだけでは、検索・計算・送信・設定変更などの行動を完遂できない。</p></div>
+        <div class="card"><h4>解決の方向</h4><p>前者をRAG、後者をTool CallingとAgentで補い、MCP/A2Aで接続方法を標準化する。</p></div>
+      </div>
+    </section>
+
+    <section id="s02">
+      <h2>2. なぜRAGが必要なのか</h2>
+      <p class="section-lead">モデルの再学習や「全部プロンプトに入れる」方法は、更新性・精度・費用のいずれにも弱点がある。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/02-knowledge-cutoff.jpg" alt="GPT-5のモデル情報と知識カットオフを示すスライド" loading="lazy" />
+        <figcaption>GPT-5のモデル情報を例に、LLMの知識が事前学習データと知識カットオフに制約されることを説明するスライド。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=485s" target="_blank" rel="noopener">08:05</a></figcaption>
+      </figure>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>素朴な方法 / 制約</th><th>問題</th><th>講義での具体化</th></tr></thead>
+          <tbody>
+            <tr><td>重みへ知識を追加学習</td><td>既存能力のregressionが起こり得る。複数の用途別fine-tuneがあると、すべてを再更新する必要がある。</td><td>更新のたびに学習・評価・配備を繰り返すのは保守負荷が大きい。</td></tr>
+            <tr><td>全情報をpromptへ投入</td><td>context windowを使い切り、長い入力ほど費用も増える。</td><td>講義時点のGPT-5は400,000 tokens。数百ページ規模でも上限は有限。</td></tr>
+            <tr><td>長いcontextに頼る</td><td>無関係情報が多いと必要な事実を見失う。</td><td>Needle in a Haystackテストでは、長さと事実の位置の両方が取得精度へ影響。</td></tr>
+            <tr><td>毎回大きなinputを送る</td><td>token課金が積み上がる。</td><td>講義ではGPT-5入力価格を「100万tokenあたり約1ドルのオーダー」と説明。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/03-needle-haystack.jpg" alt="GPT-4のNeedle in a Haystackテストのヒートマップ" loading="lazy" />
+        <figcaption>事実の文書内位置とprompt長によって取得精度が変わるNeedle in a Haystackのヒートマップ。講義では長文中の情報取得が一様に安定しないことを示す。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=771s" target="_blank" rel="noopener">12:51</a></figcaption>
+      </figure>
+      <div class="callout warning"><strong>重要な含意：</strong>context windowが大きいことと、必要情報を正確に使えることは同義ではない。RAGでは「何を取得するか」が生成品質の上限を決める。</div>
+    </section>
+
+    <section id="s03">
+      <h2>3. RAGの基本パイプライン</h2>
+      <p><strong>RAG = Retrieval-Augmented Generation</strong>。ユーザーの質問に関連する情報を取得し、その情報でpromptを拡張してから回答を生成する。検索に失敗すれば、生成段階で正しい答えを作る材料そのものが欠ける。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/04-rag-overview.jpg" alt="Retrieval-Augmented Generationの概要スライド" loading="lazy" />
+        <figcaption>「関連情報でpromptをaugmentする」というRAGの中心アイデア。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=930s" target="_blank" rel="noopener">15:30</a></figcaption>
+      </figure>
+      <div class="mermaid">
+flowchart LR
+  D[文書群] --> C[Chunking]
+  C --> E[Chunk Embedding]
+  E --> V[(Knowledge Base)]
+  Q[User Query] --> QE[Query Embedding]
+  QE --> R[Candidate Retrieval]
+  V --> R
+  R --> RR[Cross-encoderで再ランキング]
+  RR --> K[Top-K Chunks]
+  K --> A[Promptを拡張]
+  Q --> A
+  A --> L[LLM]
+  L --> O[Response]
+      </div>
+      <p>流れは大きく2つに分かれる。事前処理では文書をchunk化してembeddingとともにknowledge baseへ保存する。問い合わせ時にはqueryを表現へ変換して候補を探し、必要なら高価なrerankerで並べ替え、上位chunkだけをLLMへ渡す。</p>
+    </section>
+
+    <section id="s04">
+      <h2>4. Knowledge Base：chunking・embedding・保存</h2>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/05-knowledge-base.jpg" alt="文書を収集し分割しembeddingするKnowledge Base構築図" loading="lazy" />
+        <figcaption>文書を収集（Collect）し、分割（Divide）し、数値ベクトルへ変換（Embed）する事前処理。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=1257s" target="_blank" rel="noopener">20:57</a></figcaption>
+      </figure>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>設計項目</th><th>講義中の目安</th><th>トレードオフ</th></tr></thead>
+          <tbody>
+            <tr><td>Embedding次元</td><td>約1,500次元のオーダー</td><td>大きいほど表現力を持てる一方、保存容量と検索計算量が増える。</td></tr>
+            <tr><td>Chunk size</td><td>約500 tokensなど数百token</td><td>小さすぎると文脈を失い、大きすぎると一つの表現へ複数トピックが混ざる。</td></tr>
+            <tr><td>Overlap</td><td>前後に低い数百token</td><td>境界をまたぐ意味を保持できるが、保存量と候補重複が増える。</td></tr>
+            <tr><td>Chunk境界</td><td>固定長だけに限定しない</td><td>JSONやMarkdownなどの構造を尊重すると、意味単位を壊しにくい。</td></tr>
+            <tr><td>Embedding model</td><td>事前学習済みまたは独自学習</td><td>汎用性・導入速度と、ドメイン適合性の間で選ぶ。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>質問への回答に必要なchunkをground truthとして用意できるなら、検索品質を定量評価できる。chunk設計は単なる前処理ではなく、後段のretrievalが選べる情報単位そのものを決める。</p>
+    </section>
+
+    <section id="s05">
+      <h2>5. Two-Stage Retrieval：まず広く、次に精密に</h2>
+      <p>検索・推薦システムと同様、RAGでも全chunkへ高価なモデルを適用するのではなく、候補取得とランキングを分ける。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/06-two-stage-retrieval.jpg" alt="Candidate RetrievalとRankingからなるTwo-Stage Retrieval図" loading="lazy" />
+        <figcaption>Stage 1ではrecallを優先して候補を広く拾い、Stage 2で高精度に順位付けする。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=1470s" target="_blank" rel="noopener">24:30</a></figcaption>
+      </figure>
+      <div class="grid-cards">
+        <div class="card"><h4>Stage 1: Candidate Retrieval</h4><p>数千〜数百万のchunkから、semantic searchやBM25で約100件の候補へ絞る。取りこぼしを減らすrecall重視。</p></div>
+        <div class="card"><h4>Stage 2: Ranking / Reranking</h4><p>候補だけにqueryとの詳細な相互作用を計算し、LLMへ渡すTop-Kを決める。precisionと順位品質を重視。</p></div>
+      </div>
+    </section>
+
+    <section id="s06">
+      <h2>6. Dense Retrieval：SBERTとBi-encoder</h2>
+      <p>queryと各chunkを別々にencoderへ通し、embedding間の<strong>cosine similarity</strong>を計算する。chunk側は事前計算できるため高速で、queryごとに全モデル推論を繰り返さずに済む。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/07-bi-encoder.jpg" alt="QueryとChunkを別々にencodeして類似度を計算するBi-encoder図" loading="lazy" />
+        <figcaption>QueryとChunkを独立にencodeし、ベクトル間の類似度を計算するbi-encoder。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=1860s" target="_blank" rel="noopener">31:00</a></figcaption>
+      </figure>
+      <h3>SBERTの役割</h3>
+      <p>Sentence-BERTはBERTを文・シーケンスレベルのembedding生成へ適応する。関連ペアのcosine similarityを高くし、非関連ペアを低くするよう学習する。講義ではSBERT論文とドキュメントの一読を強く勧める。</p>
+      <ul>
+        <li>knowledge baseが巨大なら線形な全件比較は重い。FAISSなどの<strong>Approximate Nearest Neighbor</strong>手法で探索を近似・高速化する。</li>
+        <li>Q&amp;Aでは、既定の距離としてcosine similarityが一般的と説明。embeddingをunit normへ正規化すればL2距離と密接に対応する。</li>
+      </ul>
+    </section>
+
+    <section id="s07">
+      <h2>7. BM25とハイブリッド検索</h2>
+      <p>embedding検索は意味的な近さを捉えるが、固有名詞・型番・完全一致が重要な場面では外すことがある。BM25はqueryと文書の語の重なりを用いるlexicalなヒューリスティックで、この弱点を補う。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/08-bm25.jpg" alt="BM25によるキーワード検索を説明するスライド" loading="lazy" />
+        <figcaption>候補検索の第2手法として、キーワード一致に基づくBM25を紹介するスライド。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=2087s" target="_blank" rel="noopener">34:47</a></figcaption>
+      </figure>
+      <div class="worked-example">
+        <strong>Cuddly と Huggy の例</strong>
+        <p>ユーザーが「Cuddly」という名前のテディベアを探しているとする。semantic searchは意味の近い「Huggy」を上位にする可能性があるが、BM25は文字列としてCuddlyを正確に拾える。実務ではdense retrievalとBM25を組み合わせる<strong>hybrid search</strong>がよく使われる。</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>検索方式</th><th>強み</th><th>弱み</th><th>向く対象</th></tr></thead>
+          <tbody>
+            <tr><td>Dense / Semantic</td><td>言い換えや意味の近さを拾う</td><td>固有名詞の完全一致を保証しない</td><td>自然言語の質問、概念検索</td></tr>
+            <tr><td>BM25 / Lexical</td><td>語の一致に強く、説明可能</td><td>言い換えや同義語に弱い</td><td>名前、型番、専門用語</td></tr>
+            <tr><td>Hybrid</td><td>semanticとlexicalの相補性を使う</td><td>スコア統合や重み調整が必要</td><td>一般的な本番RAG</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="s08">
+      <h2>8. HyDEとContextual Retrieval</h2>
+      <h3>HyDE：queryを仮想文書へ変換する</h3>
+      <p>短い疑問文のqueryと、長い説明文のchunkは性質が異なる。同じencoderで比較しづらいなら、LLMにqueryへの<strong>仮想的な回答文書</strong>を生成させ、その文書をembeddingして本物の文書と比較する。これがHypothetical Document Embedding（HyDE）である。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/09-hyde.jpg" alt="質問から仮想文書を生成して検索するHyDEの図" loading="lazy" />
+        <figcaption>「Where is Cuddly?」というqueryから仮想文書を生成し、文書同士に近い表現空間で検索するHyDE。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=2340s" target="_blank" rel="noopener">39:00</a></figcaption>
+      </figure>
+      <p>HyDEは常に効くとは限らず、講義も「効くかもしれないし、効かないかもしれない」として実験を勧める。別案はquery encoderとdocument encoderを別々に学習することだが、学習と保守の負担が増える。</p>
+      <h3>Contextual Retrieval：chunkへ文書全体の文脈を足す</h3>
+      <p>機械的に切ったchunkは、「それ」「この結果」の参照先や章全体のテーマを失う。文書全体と対象chunkをLLMへ渡し、「このchunkを理解するために必要な短い文脈」を生成して先頭へ付加すれば、embeddingとBM25の両方が扱いやすくなる。</p>
+      <div class="callout"><strong>代償：</strong>すべてのchunkについて文書全体を含むLLM呼び出しが必要になる。この反復計算を現実的にするのが、次のPrompt Cachingである。</div>
+    </section>
+
+    <section id="s09">
+      <h2>9. Prompt Caching：共通prefixの計算を再利用する</h2>
+      <p>decoder-only LLMはleft-to-rightに計算するため、同じprefixなら各layerの内部状態も同じになる。共通prefixのactivationを一度保存し、次の呼び出しで再利用すれば、Contextual Retrievalのような反復処理を安くできる。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/10-prompt-caching.jpg" alt="Contextual RetrievalとGPT-5のcached input価格を示すスライド" loading="lazy" />
+        <figcaption>Contextual Retrievalの共通prefixと、GPT-5の通常input $1.25 / 100万tokenに対してcached input $0.125を示す価格例。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=2630s" target="_blank" rel="noopener">43:50</a></figcaption>
+      </figure>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="num">1/10</div><div class="label">講義スライドのGPT-5例におけるcached inputの通常input比</div></div>
+        <div class="stat-card"><div class="num">Prefix</div><div class="label">繰り返す指示・文書・定義はprompt先頭へ集約する</div></div>
+      </div>
+      <p>Q&amp;Aではactivationを「各layerの出力」と説明する。プロバイダのcache機構を使う場合も、変化しない部分を前へ、queryごとに変わる部分を後ろへ置くprompt設計が重要になる。</p>
+    </section>
+
+    <section id="s10">
+      <h2>10. Cross-encoderで候補を再ランキングする</h2>
+      <p>bi-encoderはqueryとchunkを独立に表現するため高速だが、両者のtoken間の細かな相互作用は見ない。cross-encoderはqueryとchunkを同時に入力し、attentionを通じて関連度を直接推定する。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/11-cross-encoder.jpg" alt="QueryとChunkを同時に入力して関連度を出すCross-encoder図" loading="lazy" />
+        <figcaption>QueryとChunkを一つの入力として処理し、より精密なrelevance scoreを出すcross-encoder。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=2748s" target="_blank" rel="noopener">45:48</a></figcaption>
+      </figure>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>観点</th><th>Bi-encoder</th><th>Cross-encoder</th></tr></thead>
+          <tbody>
+            <tr><td>入力</td><td>QueryとChunkを別々にencode</td><td>Query + Chunkを一緒にencode</td></tr>
+            <tr><td>相互作用</td><td>完成したembedding間の距離</td><td>モデル内部でtoken間attentionを計算</td></tr>
+            <tr><td>事前計算</td><td>Chunk embeddingを保存可能</td><td>Queryごと・Chunkごとに推論が必要</td></tr>
+            <tr><td>計算量</td><td>低い</td><td>高い</td></tr>
+            <tr><td>主な段階</td><td>Stage 1 Candidate Retrieval</td><td>Stage 2 Reranking</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>rerankerには事前学習済みモデルも、用途別に学習したモデルも使える。候補全体ではなくStage 1で絞った集合だけへ適用することで、精度と費用のバランスを取る。</p>
+    </section>
+
+    <section id="s11">
+      <h2>11. Retrievalをどう評価するか</h2>
+      <p>「上位K件へ本当に関連chunkが入ったか」をground truth labelと比較する。講義は、論文で頻出するNDCG、MRR、Recall@K、Precision@Kの4指標を押さえるよう勧める。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/12-ndcg.jpg" alt="NDCGの定義とretrieval rankingを示すスライド" loading="lazy" />
+        <figcaption>順位が下がるほど関連文書の寄与をdiscountするNDCGの説明スライド。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=2990s" target="_blank" rel="noopener">49:50</a></figcaption>
+      </figure>
+      <div class="formula">
+        DCG@K = Σ<sub>i=1..K</sub> rel<sub>i</sub> / log<sub>2</sub>(i + 1)
+        <small>NDCG@K = DCG@K / IDCG@K。IDCGは関連文書を理想順に並べたときのDCG。</small>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>指標</th><th>定義</th><th>何を重視するか</th></tr></thead>
+          <tbody>
+            <tr><td>NDCG@K</td><td>順位でdiscountしたgainを理想順位のDCGで正規化</td><td>複数の関連文書をどれだけ上位へ並べたか。理想なら1.0。</td></tr>
+            <tr><td>MRR</td><td>各queryで最初の関連文書の順位の逆数を平均</td><td>最初の正解へどれだけ早く到達するか。2位ならRR=1/2。</td></tr>
+            <tr><td>Recall@K</td><td>Top-Kに入った関連文書数 / 全関連文書数</td><td>取りこぼしの少なさ。Stage 1で特に重要。</td></tr>
+            <tr><td>Precision@K</td><td>Top-Kに入った関連文書数 / K</td><td>取得結果の純度。LLMへ無関係情報を渡さない度合い。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>MTEB（Massive Text Embedding Benchmark）</strong>はretrieverやembeddingを比較する代表的ベンチマークとして紹介される。ただし本番用途では、自分のquery分布と関連ラベルを使った評価が必要である。</p>
+    </section>
+
+    <section id="s12">
+      <h2>12. Tool Calling：構造化機能をLLMへ開く</h2>
+      <p class="section-lead">RAGが非構造文書から情報を取り出すのに対し、Tool Callingは関数として表せる構造化データや行動を扱う。</p>
+      <p>講義は「自律システムが外部resourceへ動的にaccessし、必要なら作用することで複雑なtaskを完遂する能力」という定義を採用する。重要なのは、LLM自身が関数の実装を行うのではなく、<strong>どの関数をどの引数で呼ぶかを予測する</strong>点である。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/13-tool-calling-function.jpg" alt="find_teddy_bear関数のPython実装例" loading="lazy" />
+        <figcaption>位置を受け取り、外部APIから候補を取得してTeddyBearInfoを返す <code>find_teddy_bear</code> の実装例。LLMには主にAPI schemaと説明が見える。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=3962s" target="_blank" rel="noopener">1:06:02</a></figcaption>
+      </figure>
+      <div class="mermaid">
+sequenceDiagram
+  participant U as User
+  participant L as LLM
+  participant O as Orchestrator
+  participant T as External Tool
+  U->>L: Query + Tool schema / explanation
+  L-->>O: Tool名と引数を予測
+  O->>T: 関数を実行
+  T-->>O: 構造化結果
+  O->>L: 会話履歴 + Tool結果
+  L-->>U: 自然言語の最終回答
+      </div>
+      <h3>Tool Callingの3段階</h3>
+      <ol>
+        <li><strong>引数推定：</strong>toolの名前、入力・出力schema、説明とuser queryから、LLMが呼び出しを構造化して出力する。「近くのbear」なら既知の現在位置を座標へ変換する。</li>
+        <li><strong>外部実行：</strong>orchestratorが通常のコードとして関数を実行する。この段階はLLM推論ではない。</li>
+        <li><strong>回答生成：</strong>構造化結果と会話履歴をLLMへ戻し、ユーザー向けの文面へ整える。</li>
+      </ol>
+      <h3>学習する場合：2種類のSFT pair</h3>
+      <ul>
+        <li><strong>Tool prediction pair：</strong>query + function API → 適切なtool名と引数。</li>
+        <li><strong>Response generation pair：</strong>元のquery、tool call、tool resultを含む会話履歴 → 所望形式の最終回答。</li>
+      </ul>
+      <p>データは「near me」「Parisで探す」、明示座標、複数tool、multi-turnなど、実ユーザー分布を反映して多様にする。2つ目のpairはJSONだけの言い換えではなく、tool resultがどのqueryとcallに対応するかを含む履歴全体を入力する。</p>
+      <h3>SFTせず、tool説明を最適化する場合</h3>
+      <p>近年のLLMはコードを大量に学習しており、tool schemaと説明だけでも呼び出せる場合がある。講義は、望ましいtool call pairを評価セットにし、現在の説明で成功・失敗を測り、その結果をreasoning modelへ渡して説明を書き直させる反復を提案する。これはofflineで行い、inference時には固定した説明をschemaとともに渡す。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Toolの種類</th><th>例</th><th>主なリスク</th></tr></thead>
+          <tbody>
+            <tr><td>情報取得</td><td>ニュース、天気、株価、在庫</td><td>古い値、誤った引数、sourceの信頼性</td></tr>
+            <tr><td>計算</td><td>queryをコードへ変換して実行</td><td>生成コードの誤り、実行環境の権限</td></tr>
+            <tr><td>行動</td><td>メール送信、予約、設定変更</td><td>不可逆操作、権限濫用、data exfiltration</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="s13">
+      <h2>13. Tool Selection：大量のtoolから必要なものだけを渡す</h2>
+      <p>すべての完全なAPI定義をpromptへ並べると、tool版Needle in a Haystack、context window消費、latency増加が起きる。講義はGoogle DeepMindのTool Selectorを例に、2段階のrouter方式を紹介する。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/14-tool-selection.jpg" alt="Routerが関連toolを選ぶTool Selection図" loading="lazy" />
+        <figcaption>Queryとtool名・短い説明からrouterが候補toolを選び、選択したtoolの完全なschemaだけを後段へ渡す。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=5220s" target="_blank" rel="noopener">1:27:00</a></figcaption>
+      </figure>
+      <ol>
+        <li>全toolの<strong>名前と短い説明</strong>だけを見て、関連toolを選ぶ。</li>
+        <li>選択されたtoolの<strong>完全なAPI schema</strong>だけをcontextへ入れ、通常のTool Callingを行う。</li>
+      </ol>
+      <p>Q&amp;Aでは「これはRAGではないか」と問われ、RAGで実装することもできるが、それだけに限定されないと回答する。目的はlatencyと選択精度の両方を改善することにある。</p>
+    </section>
+
+    <section id="s14">
+      <h2>14. MCP：tool公開を標準化する</h2>
+      <p>toolごとに独自schema・接続方式を用意すると再利用できない。Anthropic発のModel Context Protocol（MCP）は、LLM hostと外部能力をつなぐ共通語彙と接続方法を定める。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/15-mcp-components.jpg" alt="MCP Host、Client、Server、Tools、Prompts、Resourcesの関係図" loading="lazy" />
+        <figcaption>MCP Host内のClientがServerへ接続し、ServerがTools・Prompts・Resourcesを公開する構成。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=5400s" target="_blank" rel="noopener">1:30:00</a></figcaption>
+      </figure>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>構成要素</th><th>講義での役割</th><th>書籍推薦の例</th></tr></thead>
+          <tbody>
+            <tr><td>MCP Host</td><td>LLMを含むユーザー向けアプリ</td><td>ClaudeなどのLLM host</td></tr>
+            <tr><td>MCP Client</td><td>Host内で1つのServerと1対1に接続するインフラ</td><td>書籍provider serverへの接続</td></tr>
+            <tr><td>MCP Server</td><td>能力を提供するinstance</td><td>書籍providerが運営</td></tr>
+            <tr><td>Tools</td><td>実行できる関数実装</td><td><code>find_books</code>、<code>recommend_books</code></td></tr>
+            <tr><td>Prompts</td><td>toolの使い方を示すtemplate</td><td>title検索、嗜好に沿った推薦</td></tr>
+            <tr><td>Resources</td><td>taskに使える外部データ</td><td>個人collection、人気書籍ranking</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>MCPは「どのtoolを使うべきか」という推論そのものを解決するのではなく、能力を発見・記述・接続する方法をそろえる。Tool Selectionと組み合わせて、必要な能力だけをLLMへ提示する。</p>
+    </section>
+
+    <section id="s15">
+      <h2>15. AgentとReAct：目標まで推論と行動を反復する</h2>
+      <p>講義におけるAgentは、ユーザーに代わって自律的に目標を追い、taskを遂行するsystemである。単発のTool Callingとの違いは、結果を観察して次の行動を決める<strong>recursive loop</strong>にある。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/16-react-loop.jpg" alt="Observe、Plan、Actを反復するReActループ図" loading="lazy" />
+        <figcaption>入力を受け、Observe → Plan → Actを繰り返して出力へ至るReAct（Reason + Act）の基本ループ。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=5640s" target="_blank" rel="noopener">1:34:00</a></figcaption>
+      </figure>
+      <div class="mermaid">
+flowchart LR
+  I[User Goal] --> O[Observe]
+  O --> P[Plan]
+  P --> A[Act / Tool Call]
+  A --> R[Result]
+  R --> G{Goal reached?}
+  G -- No --> O
+  G -- Yes --> F[Final Output]
+      </div>
+      <div class="worked-example">
+        <strong>「テディベアが寒がっている。何かして」</strong>
+        <ol>
+          <li><strong>Observe：</strong>寒いことは分かるが、現在温度が不明。<strong>Plan：</strong>室温を確認する。<strong>Act：</strong><code>get_current_room_temperature()</code> → 65°F。</li>
+          <li><strong>Observe：</strong>65°Fは期待より低い。<strong>Plan：</strong>温度を上げる。<strong>Act：</strong><code>adjust_temperature(increase=5)</code>。</li>
+          <li><strong>Observe：</strong>設定変更が完了。目標達成としてループを止め、「温度を5°上げました」と回答する。</li>
+        </ol>
+      </div>
+      <p>複雑なtaskをatomicなstepへ分解し、各tool resultを次の状態として使う点が本質である。最初から固定されたcall列を実行するのではなく、観測によって経路が変わる。</p>
+    </section>
+
+    <section id="s16">
+      <h2>16. Multi-AgentとA2A</h2>
+      <p>室温管理を例にすると、thermostat、energy management、air qualityなどを独立Agentに分け、互いの出力を使って協調できる。各Agentは固有のcontextと推論loopを持ち、他Agentとはinput/outputを介して通信する。</p>
+      <div class="grid-cards">
+        <div class="card"><h4>分業</h4><p>異なるtool・policy・専門知識を持つAgentへ責務を分ける。</p></div>
+        <div class="card"><h4>通信</h4><p>GoogleのAgent-to-Agent（A2A）Protocolはskill公開、task status、cancelなどの通信を標準化する。</p></div>
+        <div class="card"><h4>予算</h4><p>Q&amp;Aではtoken budgetはAgent間で自動共有されないと説明。ただし複数Agentの金銭コストは合計される。</p></div>
+      </div>
+      <p>MCPがHostとtool providerの境界をそろえるのに対し、A2AはAgent同士の能力発見とtask協調をそろえる、という役割分担で理解できる。</p>
+    </section>
+
+    <section id="s17">
+      <h2>17. 安全性、誤りの累積、実践上の助言</h2>
+      <p>外部世界へ作用できる能力は、文章生成だけのモデルにはなかった被害を生む。講義の代表例は、公開可能なメールtoolを使ってpasswordを外部へ送らせる<strong>data exfiltration</strong>である。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture7-agentic-llms/17-agent-safety.jpg" alt="現実世界への害とdata exfiltrationを挙げるAgent Safetyスライド" loading="lazy" />
+        <figcaption>Agentの安全リスクとして「現実世界への害」と「data exfiltration」を挙げるスライド。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=6190s" target="_blank" rel="noopener">1:43:10</a></figcaption>
+      </figure>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>対策層</th><th>講義での方法</th><th>狙い</th></tr></thead>
+          <tbody>
+            <tr><td>Training-time</td><td>SFT/RLのdata mixtureへ安全・harmlessnessの例を含める</td><td>危険なtool useや要求をモデルのpolicy自体で避ける。</td></tr>
+            <tr><td>Inference-time</td><td>Safety classifierでquery、tool call、outputを監視</td><td>運用時に危険な入力・出力をblockまたはreviewへ回す。</td></tr>
+            <tr><td>Evaluation</td><td>ToolSword、Agent Safety Benchなどでhazardを測る</td><td>正常taskの成功率だけでなく、悪用耐性を定量化する。</td></tr>
+            <tr><td>Operations</td><td>最小権限、確認、trace、取消可能性を持たせる</td><td>誤りが現実の不可逆操作へ直結する範囲を狭める。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>講義前日に公開されたAnthropicのcyber attack報告にも触れ、Agent能力は攻撃側にも使われるが、防御側も高度化できるため「負け戦ではない」と述べる。ただし対策なしに能力だけを追加してはならない。</p>
+      <h3>Error Compounding</h3>
+      <p>Agentは引数推定、tool選択、実行結果のgrounding、次stepの計画を何度も繰り返す。各stepが高精度でも、長いchainでは誤りが累積する。講師はこれを「大規模Agentがまだ世界を支配していない理由」の一つとして説明する。</p>
+      <div class="callout info">
+        <strong>構築時の3つの助言</strong>
+        <ol>
+          <li><strong>Start small：</strong>「最寄りのbearを探す」のような単純taskからpromptと実装を確認する。</li>
+          <li><strong>Start smart：</strong>最初は最も能力の高いmodelでheadroomを確認し、正しさを確立してからlatency・costを最適化する。</li>
+          <li><strong>Debuggability：</strong>推論chainとtool traceを観察し、どのstepで判断が崩れたか追えるようにする。</li>
+        </ol>
+      </div>
+      <h3>締め：コード生成より、正しさを判断するtaste</h3>
+      <p>講師が現在もっとも気に入っているAgent用途はAI coding assistantである。定型作業を委譲してmental loadを減らせる一方、基礎的なcodingを学ばなくてよいわけではない。<strong>「コード生成は安くなるが、そのコードが正しく意図どおりかを判断するtasteがもっとも重要になる」</strong>という言葉で講義を閉じる。次回はevaluation landscapeを扱う。</p>
+    </section>
+
+    <footer class="page">
+      <p class="disclaimer">
+        本レポートは、上記の出典元コンテンツを参照し、内容を省略せず日本語で要約・再構成した非公式まとめです。記述に誤りがある場合は出典元の表現が正となります。
+      </p>
+      <p class="disclaimer">
+        講義画面17枚は理解を助けるための少数引用であり、各画像に出典タイムスタンプを付記しています。
+      </p>
+      <p>
+        出典: <a href="https://www.youtube.com/watch?v=h-7S6HNq0Vg" target="_blank" rel="noopener">https://www.youtube.com/watch?v=h-7S6HNq0Vg</a>
+        ／ 取得手段: yt-dlp公式英語自動字幕 + ffmpeg映像フレーム抽出
+        ／ 生成日: 2026年8月16日
+      </p>
+    </footer>
+  </main>
+</div>
+
+<div id="diagramModal" class="modal" role="dialog" aria-modal="true" aria-label="図と講義画面の拡大ビューア">
+  <div class="modal-toolbar">
+    <button class="modal-button" type="button" onclick="zoomCmd('in')">拡大</button>
+    <button class="modal-button" type="button" onclick="zoomCmd('out')">縮小</button>
+    <button class="modal-button" type="button" onclick="zoomCmd('reset')">リセット</button>
+    <button class="modal-button" type="button" onclick="closeModal()">閉じる</button>
+  </div>
+  <div id="modalBody" class="modal-body"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+<script>
+  const themeAttr = document.documentElement.getAttribute('data-theme');
+  const isDark = themeAttr ? themeAttr === 'dark'
+    : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: true, theme: isDark ? 'dark' : 'default', securityLevel: 'loose' });
+
+  const tocPanel = document.querySelector('.toc-panel');
+  const mobileMedia = window.matchMedia('(max-width: 900px)');
+  function syncTocMode() {
+    if (!tocPanel) return;
+    tocPanel.open = !mobileMedia.matches;
+  }
+  syncTocMode();
+  mobileMedia.addEventListener('change', syncTocMode);
+
+  const toc = document.getElementById('toc');
+  const headings = [...document.querySelectorAll('main section[id] > h2, main section[id] > h3')];
+  if (toc && headings.length) {
+    headings.forEach((heading, index) => {
+      const section = heading.closest('section');
+      if (!heading.id) heading.id = section ? section.id + '-h' + index : 'heading-' + index;
+      const item = document.createElement('li');
+      item.className = heading.tagName === 'H3' ? 'lvl-3' : 'lvl-2';
+      const link = document.createElement('a');
+      link.href = '#' + heading.id;
+      link.textContent = heading.textContent.trim();
+      link.addEventListener('click', () => {
+        if (mobileMedia.matches && tocPanel) tocPanel.open = false;
+      });
+      item.appendChild(link);
+      toc.appendChild(item);
+    });
+
+    const links = [...toc.querySelectorAll('a')];
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter(entry => entry.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (!visible) return;
+      links.forEach(link => {
+        link.classList.toggle('active', link.getAttribute('href') === '#' + visible.target.id);
+      });
+    }, { rootMargin: '-20% 0px -65% 0px', threshold: [0, 1] });
+    headings.forEach(heading => observer.observe(heading));
+  }
+
+  let panZoomInstance = null;
+
+  function tightenViewBox(svg) {
+    if (!svg || !svg.getBBox) return;
+    try {
+      const box = svg.getBBox();
+      if (!Number.isFinite(box.width) || !Number.isFinite(box.height) || box.width === 0 || box.height === 0) return;
+      const padding = 20;
+      svg.setAttribute('viewBox', [
+        box.x - padding,
+        box.y - padding,
+        box.width + padding * 2,
+        box.height + padding * 2
+      ].join(' '));
+    } catch (error) {
+      console.warn('Unable to tighten viewBox', error);
+    }
+  }
+
+  function mountPanZoom(svg, maxZoom) {
+    if (panZoomInstance) panZoomInstance.destroy();
+    panZoomInstance = svgPanZoom(svg, {
+      zoomEnabled: true,
+      controlIconsEnabled: false,
+      fit: true,
+      center: true,
+      minZoom: 0.4,
+      maxZoom
+    });
+    panZoomInstance.resize();
+    panZoomInstance.fit();
+    panZoomInstance.center();
+  }
+
+  function openDiagramFromElement(diagram) {
+    const sourceSvg = diagram ? diagram.querySelector('svg') : null;
+    if (!sourceSvg) return;
+    const modal = document.getElementById('diagramModal');
+    const body = document.getElementById('modalBody');
+    body.innerHTML = '';
+    const svg = sourceSvg.cloneNode(true);
+    svg.removeAttribute('style');
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    body.appendChild(svg);
+    tightenViewBox(svg);
+    modal.classList.add('is-open');
+    mountPanZoom(svg, 8);
+  }
+
+  function openImageFromElement(img) {
+    const modal = document.getElementById('diagramModal');
+    const body = document.getElementById('modalBody');
+    body.innerHTML = '';
+    const ns = 'http://www.w3.org/2000/svg';
+    const width = img.naturalWidth || 1280;
+    const height = img.naturalHeight || 720;
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    const image = document.createElementNS(ns, 'image');
+    image.setAttribute('href', img.src);
+    image.setAttribute('x', '0');
+    image.setAttribute('y', '0');
+    image.setAttribute('width', width);
+    image.setAttribute('height', height);
+    svg.appendChild(image);
+    body.appendChild(svg);
+    modal.classList.add('is-open');
+    mountPanZoom(svg, 12);
+  }
+
+  function closeModal() {
+    const modal = document.getElementById('diagramModal');
+    const body = document.getElementById('modalBody');
+    if (panZoomInstance) {
+      panZoomInstance.destroy();
+      panZoomInstance = null;
+    }
+    modal.classList.remove('is-open');
+    body.innerHTML = '';
+  }
+
+  function zoomCmd(command) {
+    if (!panZoomInstance) return;
+    if (command === 'in') panZoomInstance.zoomIn();
+    if (command === 'out') panZoomInstance.zoomOut();
+    if (command === 'reset') {
+      panZoomInstance.resetZoom();
+      panZoomInstance.fit();
+      panZoomInstance.center();
+    }
+  }
+
+  window.closeModal = closeModal;
+  window.zoomCmd = zoomCmd;
+
+  document.querySelectorAll('.mermaid').forEach((diagram) => {
+    diagram.setAttribute('role', 'button');
+    diagram.setAttribute('aria-label', 'Mermaid図を拡大表示');
+    diagram.setAttribute('title', 'クリックで拡大表示');
+    diagram.tabIndex = 0;
+    diagram.addEventListener('click', () => openDiagramFromElement(diagram));
+    diagram.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openDiagramFromElement(diagram);
+      }
+    });
+  });
+
+  document.querySelectorAll('figure.shot img').forEach((img) => {
+    img.setAttribute('role', 'button');
+    img.setAttribute('aria-label', '講義画面を拡大表示');
+    img.setAttribute('title', 'クリックで拡大表示');
+    img.tabIndex = 0;
+    img.addEventListener('click', () => openImageFromElement(img));
+    img.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openImageFromElement(img);
+      }
+    });
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeModal();
+  });
+  document.getElementById('diagramModal').addEventListener('click', (event) => {
+    if (event.target.id === 'diagramModal') closeModal();
+  });
+</script>
+</body>
+</html>
