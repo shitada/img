@@ -6,8 +6,8 @@
 <meta name="color-scheme" content="light dark" />
 <link rel="stylesheet" href="../assets/stash-theme.css" />
 <script src="../assets/stash-theme.js"></script>
-<title>Stanford CME295 Lecture 8「LLM Evaluation」日本語要約</title>
-<meta name="description" content="Stanford CME295 Transformers &amp; LLMs Lecture 8「LLM Evaluation」の日本語要約。人手評価、評価者間一致、METEOR・BLEU・ROUGE、LLM-as-a-Judge、事実性評価、エージェントの失敗分析、MMLU・AIME・PIQA・SWE-bench・HarmBench・τ-benchを網羅。" />
+<title>Stanford CME295 Lecture 8「LLM Evaluation」日本語要約【講義スライド17枚付き】</title>
+<meta name="description" content="Stanford CME295 Transformers &amp; LLMs Lecture 8「LLM Evaluation」を公式英語字幕16,465語と講義映像の確認済みフレーム17枚から日本語で再構成。人手評価、評価者間一致、LLM-as-a-Judge、事実性評価、エージェントの失敗分析、MMLU・AIME・PIQA・SWE-bench・HarmBench・τ-benchを網羅。" />
 <style>
   :root {
     --bg: #0e1116; --bg-elev: #161b22; --border: #2a3240;
@@ -112,6 +112,20 @@
   .grid-cards .card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
   .grid-cards .card h4 { margin: 0 0 6px; font-size: 14px; color: var(--accent); }
   .grid-cards .card p { margin: 0; font-size: 13.5px; color: var(--text-dim); }
+  figure.shot { margin: 24px 0; }
+  figure.shot img {
+    display: block; width: 100%; height: auto;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-elev); cursor: zoom-in;
+  }
+  figure.shot img:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  figure.shot figcaption { margin-top: 8px; color: var(--text-dim); font-size: 13px; line-height: 1.6; }
+  figure.shot figcaption .ts {
+    display: inline-block; margin-left: 6px; padding: 1px 7px;
+    border: 1px solid var(--border); border-radius: 999px;
+    background: var(--bg-elev); color: var(--accent);
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+  }
   .mermaid {
     background: var(--bg-elev); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 16px; margin: 18px 0;
@@ -159,7 +173,7 @@
   <main>
     <header class="page">
       <div class="eyebrow">Stanford CME295 Transformers &amp; LLMs / Autumn 2025</div>
-      <h1>Lecture 8: LLM Evaluation</h1>
+      <h1>Lecture 8: LLM Evaluation【講義スライド17枚付き】</h1>
       <p class="lead">「測れなければ、何を改善すべきか分からない」。自由形式の LLM 出力をどう評価し、エージェントの失敗をどう切り分け、公開ベンチマークをどう読めばよいかを、人手評価から LLM-as-a-Judge、MMLU・SWE-bench・τ-benchまで体系化した講義。</p>
     </header>
 
@@ -169,7 +183,7 @@
       <div><dt>講義日 / 公開日</dt><dd>2025年11月21日 / 2025年12月2日</dd></div>
       <div><dt>媒体</dt><dd>Stanford CME295（Autumn 2025）Lecture 8</dd></div>
       <div><dt>所要時間</dt><dd>1時間49分25秒</dd></div>
-      <div><dt>取得手段</dt><dd>yt-dlp（公式英語自動字幕）</dd></div>
+      <div><dt>取得手段</dt><dd>yt-dlp字幕＋ffmpeg映像フレーム抽出</dd></div>
       <div><dt>精読量</dt><dd>整形後 2,092行・16,465語</dd></div>
       <div><dt>ライセンス</dt><dd>動画上の明示なし</dd></div>
       <div style="grid-column: 1 / -1;">
@@ -198,6 +212,10 @@
       <h2>1. 評価とは何を測ることか</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=0s" target="_blank" rel="noopener">動画 00:00</a>
       <p>前回までに、RAG による外部知識の取得、bi-encoder での候補検索と cross-encoder での再ランキング、tool calling、ReAct の Observe → Plan → Act を扱った。Lecture 8 は、それらを含む LLM システムの性能をどう定量化するかに焦点を移す。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/01-title-slide.jpg" alt="Stanford CME295 Lecture 8のタイトルスライド。CME 295 Transformers and Large Language Models、Afshine AmidiとShervine Amidiの名前が表示されている" loading="lazy" />
+        <figcaption>CME295 Lecture 8のタイトルスライド。Lecture 6のreasoning、Lecture 7のRAG・Tool Calling・Agentsに続き、vanilla LLMの残る弱点「Hard to evaluate」を扱う。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=12s" target="_blank" rel="noopener">00:12</a></figcaption>
+      </figure>
       <p>「LLM を評価する」には、出力の一貫性・事実性・有用性だけでなく、レイテンシ、価格、稼働率などのシステム指標も含み得る。本講義の主対象は<strong>出力品質</strong>、つまり「実際の応答がどれほど良いか」である。自然言語、コード、数学的推論など出力形式が多様なため、すべてに通用する単一指標を作るのは難しい。</p>
 
       <div class="stat-grid">
@@ -228,6 +246,10 @@ flowchart LR
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=428s" target="_blank" rel="noopener">動画 07:08</a>
       <p>理想は、各プロンプトに対する各応答を人が毎回採点することだ。しかし「誕生日プレゼントにテディベアを勧める応答は有用か」のような問いでは、評価者によって「十分具体的」「種類まで指定していないので不十分」と判断が割れる。そこで、評価ガイドラインの明確さを測る健康指標として<strong>評価者間一致</strong>を追跡する。</p>
       <p>単純一致率だけでは不十分である。二人がランダムに Yes/No を半々で選んでも、一致率は <code>0.5² + 0.5² = 0.5</code>、つまり50%になる。したがって、観測一致率を「偶然でも起こる一致」と比較する必要がある。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/03-kappa-agreement.jpg" alt="評価タスクの主観性を扱うスライド。Cohenのカッパ係数の式が映り、黒板にはランダム一致率の導出が残っている" loading="lazy" />
+        <figcaption>観測一致率 <em>p<sub>o</sub></em> を偶然一致率 <em>p<sub>e</sub></em> で補正する Cohen's κ の式。左の黒板には、二人が独立に判定するときの一致率を <code>pA·pB + (1−pA)(1−pB)</code> と置く導出が残る。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=920s" target="_blank" rel="noopener">15:20</a></figcaption>
+      </figure>
 
       <table>
         <thead><tr><th>指標</th><th>想定</th><th>講義での位置づけ</th></tr></thead>
@@ -265,7 +287,15 @@ flowchart LR
       <h2>4. LLM-as-a-Judge の基本設計</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=1680s" target="_blank" rel="noopener">動画 28:00</a>
       <p>大規模事前学習と選好チューニングを経た LLM は、知識と人間の好みに関する信号を持つ。そこで、評価対象の<strong>プロンプト・応答・評価基準</strong>を別の LLM に渡し、<strong>理由（rationale）とスコア</strong>を返させる。ルール指標の数字だけでは分からなかった「なぜその点数なのか」を自然言語で説明できることが大きな違いである。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/05-llm-as-judge.jpg" alt="プロンプト、モデル応答、評価基準をLLM-as-a-Judgeへ入力する概要図" loading="lazy" />
+        <figcaption>「なぜテディベアは心地よいのか」というprompt、そのmodel response、評価criteria「Relevance」をJudgeへ入力する基本構成。評価対象だけでなく、元の質問と採点軸を一緒に渡す。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=1735s" target="_blank" rel="noopener">28:55</a></figcaption>
+      </figure>
       <p>実務では、まず理由を出させ、その後にスコアを出させる。この順序は、モデルが判断材料を言語化してから結論を出すため、経験的に品質が上がる。通常の生成では JSON などの形式が保証されないので、guided / constrained decoding に基づく<strong>structured output</strong>を利用し、<code>{ rationale, score }</code> のようなスキーマを強制する。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/06-structured-output.jpg" alt="guided decodingでJSON出力を強制するLecture 3のスライドを再掲した画面" loading="lazy" />
+        <figcaption>Judgeの <code>rationale</code> と <code>score</code> を確実にparseするため、guided decodingでJSON schemaを強制する。画面は<a href="stanford-cme295-lecture3-large-language-models-ja.html">Lecture 3</a>のstructured output説明を再掲している。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=2050s" target="_blank" rel="noopener">34:10</a></figcaption>
+      </figure>
 
       <div class="grid-cards">
         <div class="card"><h4>Pointwise</h4><p>単一応答を「良い / 悪い」「合格 / 不合格」などで評価する。</p></div>
@@ -289,6 +319,18 @@ flowchart LR
           <tr><td>自己強化バイアス</td><td>Judge と同じモデルが生成した応答を好む</td><td>生成モデルと Judge を分け、可能ならより高能力な Judge を使う</td></tr>
         </tbody>
       </table>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/07-position-bias.jpg" alt="応答AとBの比較で先に置かれた応答AをJudgeが選ぶposition biasのスライド" loading="lazy" />
+        <figcaption>Position biasの症状。内容ではなく先に提示されたという理由でResponse Aへ寄る可能性があるため、A/BとB/Aの両順序で再評価する。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=2355s" target="_blank" rel="noopener">39:15</a></figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/08-verbosity-bias.jpg" alt="短く正しい応答Aと長いが不要な説明を含む応答Bを比較するverbosity biasのスライド" loading="lazy" />
+        <figcaption>Verbosity biasの対比。Response Aは短く正しい一方、Response Bは長いが不要な詳細を含み有用性が低い。長さを品質と取り違えない基準が必要になる。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=2440s" target="_blank" rel="noopener">40:40</a></figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/09-self-enhancement-bias.jpg" alt="人間が作った回答AとJudge自身が生成した回答Bを比較するself-enhancement biasのスライド" loading="lazy" />
+        <figcaption>Self-enhancement biasの症状。人間が作った正解Response Aよりも、Judgeと同系統のモデルが生成したResponse Bを好むことがあるため、生成器と評価器を分ける。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=2560s" target="_blank" rel="noopener">42:40</a></figcaption>
+      </figure>
       <p>この三つは網羅的ではない。特定ラベルへの偏りや、人間の選好そのものとの不一致もあり得る。また、別モデルでも学習データが似ていれば完全に独立とは限らない。それでも、生成器と Judge を同一にしないことはリスク低減になる。Judge は必ず大きくなければならないわけではないが、微妙な違いを見抜くには、より強い推論能力を持つモデルがよく使われる。</p>
     </section>
 
@@ -306,6 +348,10 @@ flowchart LR
           <tr><td>低温度を使う</td><td><code>temperature = 0.1〜0.2</code> 程度で再現性を高める</td></tr>
         </tbody>
       </table>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/10-best-practices.jpg" alt="LLM-as-a-Judgeの6つのベストプラクティスを列挙し、低temperatureによる再現性を図示するスライド" loading="lazy" />
+        <figcaption>Crisp guidelines、binary scale、rationale先行、bias緩和、人手とのcalibration、低temperatureという6項目の総括。最後の図は低温度ほど次tokenの選択が集中し、評価を再現しやすいことを示す。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=3075s" target="_blank" rel="noopener">51:15</a></figcaption>
+      </figure>
       <blockquote>Judge の点数を上げること自体が目的になると、人間の評価とはずれた代理指標へ最適化してしまう。Judge と人手の乖離を継続監視する必要がある。</blockquote>
       <p>評価軸は大きく、<strong>タスク性能</strong>（有用性、事実性、関連性など）と、<strong>出力の整合性</strong>（トーン、スタイル、安全性など）に分けられる。何を測るかを先に定義し、異なる軸を一つの曖昧なスコアへ潰しすぎないことが重要である。</p>
     </section>
@@ -314,6 +360,10 @@ flowchart LR
       <h2>7. 事実性は「原子化してから測る」</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=3246s" target="_blank" rel="noopener">動画 54:06</a>
       <p>文章全体を単純な合格 / 不合格で判定すると、一部だけ誤っている長文のニュアンスを失う。講義の例文「テディベアは1920年代に作られ、捕らえた熊を誇らしげに撃とうとした Theodore Roosevelt にちなむ」には、年代（実際は1900年代）と行動（Roosevelt は撃つことを拒否）の二つの誤りがある一方、名前の由来など正しい事実も含まれる。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/11-factuality-pipeline.jpg" alt="テディベアに関する長文を4つの独立した事実へ分解するQuantifying factualityスライド" loading="lazy" />
+        <figcaption>文章全体を一括判定せず、「1920年代に作られた」「Theodore Rooseveltにちなむ」「狩猟旅行で熊が捕獲された」「捕獲熊を撃ちたがった」の4事実へ分解する最初の工程。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=3390s" target="_blank" rel="noopener">56:30</a></figcaption>
+      </figure>
 
       <div class="mermaid">
 flowchart LR
@@ -342,6 +392,10 @@ flowchart LR
       <h2>8. エージェントは段階別に評価する</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=3615s" target="_blank" rel="noopener">動画 1:00:15</a>
       <p>エージェントは Observe → Plan → Act のループを繰り返すため、最終回答だけを見ても根本原因が分からない。一回の tool calling を、<strong>ツール予測</strong>、<strong>ツール実行</strong>、<strong>結果の統合</strong>へ分け、それぞれの失敗を分類する。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/12-agent-tool-call-steps.jpg" alt="tool callingをツールと引数の予測、backend実行、結果からの応答生成に分けた3段階図" loading="lazy" />
+        <figcaption><a href="stanford-cme295-lecture7-agentic-llms-ja.html">Lecture 7</a>で導入したtool callingを、①関数名と引数の予測、②backendでの関数実行、③結果を使った結論生成の3段階へ分解した図。評価もこの境界ごとに行う。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=3690s" target="_blank" rel="noopener">1:01:30</a></figcaption>
+      </figure>
 
       <div class="mermaid">
 flowchart LR
@@ -369,6 +423,10 @@ flowchart LR
           <tr><td>ツールは正しいが引数が誤る</td><td>位置情報など必要な文脈がない、引数の意味が不明瞭</td><td>先行ツールで情報取得、権限エラーを明示、API / SFT / prompt を改善</td></tr>
         </tbody>
       </table>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/13-agent-failure-summary.jpg" alt="tool prediction、backend実行、応答統合の各段階で起きる失敗を赤いバツ印でまとめたスライド" loading="lazy" />
+        <figcaption>7つの代表的失敗を3段階へ配置した総括。上段は未使用・hallucination・誤tool・誤argument、中段はbackendの誤応答・無応答、下段は正しいtool結果から誤った最終応答を作る失敗。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=4890s" target="_blank" rel="noopener">1:21:30</a></figcaption>
+      </figure>
       <p>tool router は、すべての API 定義を毎回コンテキストに入れないための候補絞り込みである。コンテキストを節約しつつ必要なツールを落とさない必要があるため、precision より<strong>recall を重視</strong>する。問題が router か LLM 本体かを分けて測らないと、誤った層を修正してしまう。</p>
     </section>
 
@@ -419,12 +477,20 @@ flowchart LR
       <p>AIME は数学オリンピックを目指す高校生向けの難しい試験で、問題文に対して3桁の整数を答える。回答形式が厳密なので採点は容易だが、答えに至るには途中の推論が必要であり、reasoning model の能力を測りやすい。</p>
       <h3>PIQA: 物理世界の常識推論</h3>
       <p>PIQA（Physical Interaction: Question Answering）は、日常の物理世界に根ざした約2万件の二択問題を持つ。講義では「カーペットで失くした小物を見つけるには、密閉した掃除機より吸入口にヘアネットを付ける」という例を挙げた。数学知識ではなく、物や空気がどう振る舞うかという常識を問う。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/16-piqa.jpg" alt="PIQAの正式名称、約2万例、2択をhardcoded matchで採点する特徴をまとめたスライド" loading="lazy" />
+        <figcaption>PIQAはeveryday situations anchored in Physicsを約2万例収録し、二つの解法候補から正しい方を選ばせる。自由文Judgeを使わずhardcoded matchで採点できる設計。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5460s" target="_blank" rel="noopener">1:31:00</a></figcaption>
+      </figure>
     </section>
 
     <section id="s14">
       <h2>14. コード評価: SWE-bench</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5637s" target="_blank" rel="noopener">動画 1:33:57</a>
       <p>コーディング能力は、AI 支援開発そのものだけでなく、エージェントが Python 等で書かれたツールを読み、呼び出し、出力を解釈するためにも重要である。SWE-bench は、人気の Python リポジトリから、issue を解決しテストも追加した pull request を抽出する。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/17-swe-bench.jpg" alt="SWE-benchでissueとcodebaseをモデルへ渡し、生成PRを適用してunit testsで採点する流れ" loading="lazy" />
+        <figcaption>実際のGitHub issueとcodebaseからpatchを生成し、PR前後のunit testsで解決を判定するSWE-benchの流れ。文章としてもっともらしい修正ではなく、実行可能な成果で測る。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5760s" target="_blank" rel="noopener">1:36:00</a></figcaption>
+      </figure>
       <ol>
         <li>モデルへコードベースと issue を与える。</li>
         <li>モデルが修正パッチを生成する。</li>
@@ -437,6 +503,10 @@ flowchart LR
       <h2>15. 安全性評価: HarmBench</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5775s" target="_blank" rel="noopener">動画 1:36:15</a>
       <p>安全性は各プロバイダーのポリシーに依存し、全社が同じ目標を採用しているとは限らない。そのためモデルカードには安全性評価が載っても、単一スコアで横並び比較しにくい。ベンチマークを使う前に、その中身が自社ポリシーと合うかを確認する必要がある。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/18-harmbench.jpg" alt="HarmBenchの510種類の有害行動、4区分、classifierによるattack success rateをまとめたスライド" loading="lazy" />
+        <figcaption>HarmBenchは510種類（text-based 400、multimodal 110）の有害行動をStandard・Copyright・Contextual・Multimodalへ分け、classifierでAttack Success Rateを判定する。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5895s" target="_blank" rel="noopener">1:38:15</a></figcaption>
+      </figure>
 
       <table>
         <thead><tr><th>HarmBench の区分</th><th>対象</th></tr></thead>
@@ -456,6 +526,10 @@ flowchart LR
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=6051s" target="_blank" rel="noopener">動画 1:40:51</a>
       <p>τ-bench は航空と小売の二領域で、ツール群、守るべきポリシー、ユーザーのタスクを提供する。対話は前のターンに依存するため、別の大規模 LLM がユーザー役をシミュレートし、評価対象エージェントと複数ターン対話する。</p>
       <p>たとえばフライト変更では、最終的なデータベース状態や、キャンセルなど要求されたアクションが実現したかで reward を計算する。会話が自然だったかだけでなく、<strong>実世界の状態が正しく変わったか</strong>で判定する点が重要である。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/19-tau-bench.jpg" alt="tau-benchの航空と小売の2領域、データ規模、ツール数、評価基準をまとめたスライド" loading="lazy" />
+        <figcaption>τ-bench（Tool-Agent-User Interaction Benchmark）の構成。航空と小売のDB schema・API・policy・taskを与え、状態変化をhardcoded matchし、rewardとpass<sup>k</sup>を測る。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=6105s" target="_blank" rel="noopener">1:41:45</a></figcaption>
+      </figure>
 
       <table>
         <thead><tr><th>指標</th><th>意味</th><th>適した問い</th></tr></thead>
@@ -464,6 +538,10 @@ flowchart LR
           <tr><td>pass<sup>k</sup></td><td>k回すべてが成功する確率</td><td>ユーザー対応を自動化できるほど一貫して信頼できるか</td></tr>
         </tbody>
       </table>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/20-pass-k-reliability.jpg" alt="pass^kをk回すべての試行が成功する確率と定義した一貫性と信頼性のスライド" loading="lazy" />
+        <figcaption>pass<sup>k</sup>を「k回の試行が<strong>すべて</strong>成功する確率」と定義するスライド。少なくとも一度の成功を見るpass@kとは反対に、反復運用の一貫性を厳しく測る。pass@kの詳細は<a href="stanford-cme295-lecture6-llm-reasoning-ja.html">Lecture 6</a>を参照。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=6235s" target="_blank" rel="noopener">1:43:55</a></figcaption>
+      </figure>
 
       <div class="callout">
         <strong>エージェントで重要なのは反復信頼性:</strong> 一度だけ成功するデモではなく、同じタスクを何度実行しても成功することが運用投入の条件になる。そのため τ-bench は pass<sup>k</sup> を重視する。
@@ -474,6 +552,10 @@ flowchart LR
       <h2>17. ベンチマークをモデル選定へつなぐ</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=6314s" target="_blank" rel="noopener">動画 1:45:14</a>
       <p>ベンチマークはモデルを「全面的に良い / 悪い」と決めるものではなく、能力プロファイルを描くものだ。あるモデルはコードに強く、別のモデルは高速・低価格かもしれない。価格、安全性、コンテキスト長など、実際に重視する軸と性能を並べ、ある軸を改善するために他を犠牲にしない選択肢の境界、つまり<strong>Pareto frontier</strong>を見る。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/21-pareto-frontier.jpg" alt="LLM Arena ELO ratingと100万tokenあたり価格の散布図にPareto frontierを描いたスライド" loading="lazy" />
+        <figcaption>縦軸をLLM Arena ELO rating、横軸を100万tokenあたり価格として各モデルを配置した例。赤い点線上は、その価格以下ではより高性能な選択肢がないPareto frontierを表す。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=6450s" target="_blank" rel="noopener">1:47:30</a></figcaption>
+      </figure>
 
       <div class="grid-cards">
         <div class="card"><h4>データ汚染</h4><p>モデルが問題や正解を学習中に見ていれば、ベンチマークは能力を正しく測れない。hash、Web blocklist、新しい試験問題などで漏洩を抑える。</p></div>
@@ -486,7 +568,8 @@ flowchart LR
 
     <footer class="page">
       <p class="disclaimer">本レポートは、上記の出典元コンテンツを参照し、内容を省略せず日本語で要約・再構成した非公式まとめです。記述に誤りがある場合は出典元の表現が正となります。</p>
-      <p>出典: <a href="https://www.youtube.com/watch?v=8fNP4N46RRo" target="_blank" rel="noopener">https://www.youtube.com/watch?v=8fNP4N46RRo</a> ／ 取得手段: yt-dlp（公式英語自動字幕） ／ 生成日: 2026年8月16日</p>
+      <p class="disclaimer">講義画面のキャプチャ17枚は、内容理解に必要な範囲で動画から引用し、各画像に出典タイムスタンプを付記しています。</p>
+      <p>出典: <a href="https://www.youtube.com/watch?v=8fNP4N46RRo" target="_blank" rel="noopener">https://www.youtube.com/watch?v=8fNP4N46RRo</a> ／ 取得手段: yt-dlp（公式英語自動字幕）＋ ffmpeg（講義フレーム抽出・全点目視確認） ／ 生成日: 2026年8月16日</p>
     </footer>
   </main>
 </div>
@@ -580,6 +663,40 @@ flowchart LR
     panZoomInstance.center();
   }
 
+  function openImageFromElement(img) {
+    const modal = document.getElementById('diagramModal');
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = '';
+    const SVGNS = 'http://www.w3.org/2000/svg';
+    const width = img.naturalWidth || 1280;
+    const height = img.naturalHeight || 720;
+    const svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    const image = document.createElementNS(SVGNS, 'image');
+    image.setAttribute('href', img.src);
+    image.setAttribute('x', '0');
+    image.setAttribute('y', '0');
+    image.setAttribute('width', width);
+    image.setAttribute('height', height);
+    svg.appendChild(image);
+    modalBody.appendChild(svg);
+    modal.classList.add('is-open');
+    if (panZoomInstance) panZoomInstance.destroy();
+    panZoomInstance = svgPanZoom(svg, {
+      zoomEnabled: true,
+      controlIconsEnabled: false,
+      fit: true,
+      center: true,
+      minZoom: .4,
+      maxZoom: 12
+    });
+    panZoomInstance.resize();
+    panZoomInstance.fit();
+    panZoomInstance.center();
+  }
+
   function closeModal() {
     const modal = document.getElementById('diagramModal');
     const modalBody = document.getElementById('modalBody');
@@ -615,6 +732,20 @@ flowchart LR
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         openDiagramFromElement(diagram);
+      }
+    });
+  });
+
+  document.querySelectorAll('figure.shot img').forEach((img) => {
+    img.setAttribute('role', 'button');
+    img.setAttribute('aria-label', '講義画面を拡大表示');
+    img.setAttribute('title', 'クリックで拡大表示');
+    img.tabIndex = 0;
+    img.addEventListener('click', () => openImageFromElement(img));
+    img.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openImageFromElement(img);
       }
     });
   });
