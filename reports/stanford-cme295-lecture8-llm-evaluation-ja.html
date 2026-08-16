@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<link rel="stylesheet" href="../assets/stash-theme.css" />
+<script src="../assets/stash-theme.js"></script>
+<title>Stanford CME295 Lecture 8「LLM Evaluation」日本語要約</title>
+<meta name="description" content="Stanford CME295 Transformers &amp; LLMs Lecture 8「LLM Evaluation」の日本語要約。人手評価、評価者間一致、METEOR・BLEU・ROUGE、LLM-as-a-Judge、事実性評価、エージェントの失敗分析、MMLU・AIME・PIQA・SWE-bench・HarmBench・τ-benchを網羅。" />
+<style>
+  :root {
+    --bg: #0e1116; --bg-elev: #161b22; --border: #2a3240;
+    --text: #e6edf3; --text-dim: #9aa6b2; --accent: #f97316; --link: #60a5fa;
+    --sidebar-w: 280px; --content-max: 900px;
+    --radius: 14px; --shadow: 0 6px 24px rgba(0,0,0,.35);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f8fafc; --bg-elev: #ffffff; --border: #e2e8f0;
+      --text: #0f172a; --text-dim: #475569; --accent: #ea580c; --link: #2563eb;
+      --shadow: 0 6px 24px rgba(15,23,42,.08);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--text); scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.85;
+  }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .layout { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  aside.sidebar {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    border-right: 1px solid var(--border); background: var(--bg-elev); padding: 24px 18px;
+  }
+  aside.sidebar .toc-title {
+    font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--text-dim); margin: 0 0 10px;
+  }
+  aside.sidebar ol { list-style: none; padding: 0; margin: 0; }
+  aside.sidebar li { margin: 2px 0; }
+  aside.sidebar a {
+    display: block; padding: 6px 10px; border-left: 2px solid transparent;
+    color: var(--text-dim); font-size: 13px; line-height: 1.45;
+    border-radius: 0 6px 6px 0;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  aside.sidebar a:hover { color: var(--text); background: rgba(127,127,127,.06); text-decoration: none; }
+  aside.sidebar a.active {
+    color: var(--accent); border-left-color: var(--accent);
+    background: rgba(127,127,127,.08); font-weight: 600;
+  }
+  aside.sidebar li.lvl-3 a { padding-left: 22px; font-size: 12.5px; }
+  @media (max-width: 900px) {
+    aside.sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+  }
+  main { max-width: var(--content-max); margin: 0 auto; padding: 48px 24px 96px; }
+  header.page { border-bottom: 1px solid var(--border); padding-bottom: 24px; margin-bottom: 24px; }
+  header.page .eyebrow { color: var(--accent); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; }
+  header.page h1 { margin: 8px 0 12px; font-size: clamp(24px, 3.4vw, 34px); line-height: 1.35; }
+  header.page .lead { color: var(--text-dim); margin: 0; }
+  .meta-card {
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 20px; margin: 20px 0 32px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px 24px; font-size: 14px;
+  }
+  .meta-card dt { color: var(--text-dim); font-size: 12px; letter-spacing: .04em; }
+  .meta-card dd { margin: 0 0 6px; color: var(--text); }
+  .meta-card .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    background: var(--bg); border: 1px solid var(--border);
+    font-size: 12px; color: var(--text-dim);
+  }
+  .tldr, .callout {
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 22px; margin: 24px 0;
+  }
+  .tldr h2 { margin: 0 0 10px; font-size: 16px; color: var(--accent); letter-spacing: .04em; }
+  .callout { border-left: 4px solid var(--accent); }
+  .callout strong { color: var(--accent); }
+  .callout.info { border-left-color: var(--link); }
+  .callout.info strong { color: var(--link); }
+  section { margin: 46px 0; scroll-margin-top: 24px; }
+  section h2 { font-size: 22px; margin: 0 0 14px; padding-bottom: 8px; border-bottom: 2px solid var(--accent); display: inline-block; }
+  section h3 { font-size: 17px; margin: 26px 0 8px; color: var(--accent); }
+  .chapter-link { font-size: 12px; margin-left: 8px; white-space: nowrap; font-weight: 400; }
+  ul, ol { margin: 12px 0; padding-left: 22px; }
+  li { margin: 6px 0; }
+  blockquote {
+    border-left: 3px solid var(--accent); margin: 16px 0; padding: 8px 16px;
+    color: var(--text-dim); background: var(--bg-elev); border-radius: 0 var(--radius) var(--radius) 0;
+  }
+  code { background: var(--bg-elev); border: 1px solid var(--border); padding: 1px 6px; border-radius: 6px; font-size: .92em; }
+  table {
+    width: 100%; border-collapse: collapse; margin: 16px 0;
+    background: var(--bg-elev); border-radius: var(--radius); overflow: hidden;
+  }
+  th, td { padding: 10px 14px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; font-size: 14.5px; }
+  thead th { background: rgba(127,127,127,.06); color: var(--text-dim); font-size: 13px; letter-spacing: .04em; text-transform: uppercase; }
+  tbody tr:last-child td { border-bottom: none; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 18px 0; }
+  .stat-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .stat-card .num { font-size: 26px; font-weight: 700; color: var(--accent); line-height: 1.2; }
+  .stat-card .label { color: var(--text-dim); font-size: 12.5px; margin-top: 4px; }
+  .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 18px 0; }
+  .grid-cards .card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .grid-cards .card h4 { margin: 0 0 6px; font-size: 14px; color: var(--accent); }
+  .grid-cards .card p { margin: 0; font-size: 13.5px; color: var(--text-dim); }
+  .mermaid {
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; margin: 18px 0;
+    text-align: center; overflow-x: auto; cursor: zoom-in;
+  }
+  .mermaid:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .mermaid svg { max-width: 100%; height: auto; }
+  .modal {
+    position: fixed; inset: 0; display: none;
+    background: rgba(9,20,38,.76); z-index: 50; padding: 22px;
+  }
+  .modal.is-open { display: grid; grid-template-rows: auto 1fr; gap: 12px; }
+  .modal-toolbar { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  .modal-button {
+    appearance: none; border: 1px solid var(--border); background: var(--bg-elev);
+    color: var(--text); border-radius: 999px; padding: 8px 12px;
+    font-weight: 700; cursor: pointer;
+  }
+  .modal-button:hover { border-color: var(--accent); color: var(--accent); }
+  .modal-body {
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+    display: grid; place-items: center; min-height: 0;
+  }
+  .modal-body svg { width: 100%; height: 100%; min-height: 70vh; }
+  @media (max-width: 720px) {
+    .modal { padding: 12px; }
+    .modal-toolbar { justify-content: center; }
+    .modal-button { padding: 7px 10px; }
+  }
+  footer.page {
+    margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--border);
+    color: var(--text-dim); font-size: 13px;
+  }
+  footer.page .disclaimer { font-size: 12.5px; opacity: .9; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" aria-label="目次">
+    <p class="toc-title">目次</p>
+    <ol id="toc"></ol>
+  </aside>
+
+  <main>
+    <header class="page">
+      <div class="eyebrow">Stanford CME295 Transformers &amp; LLMs / Autumn 2025</div>
+      <h1>Lecture 8: LLM Evaluation</h1>
+      <p class="lead">「測れなければ、何を改善すべきか分からない」。自由形式の LLM 出力をどう評価し、エージェントの失敗をどう切り分け、公開ベンチマークをどう読めばよいかを、人手評価から LLM-as-a-Judge、MMLU・SWE-bench・τ-benchまで体系化した講義。</p>
+    </header>
+
+    <dl class="meta-card" aria-label="出典メタデータ">
+      <div><dt>出典</dt><dd><a href="https://www.youtube.com/watch?v=8fNP4N46RRo" target="_blank" rel="noopener">YouTube — Stanford Online</a></dd></div>
+      <div><dt>登壇者</dt><dd>Afshine Amidi / Shervine Amidi</dd></div>
+      <div><dt>講義日 / 公開日</dt><dd>2025年11月21日 / 2025年12月2日</dd></div>
+      <div><dt>媒体</dt><dd>Stanford CME295（Autumn 2025）Lecture 8</dd></div>
+      <div><dt>所要時間</dt><dd>1時間49分25秒</dd></div>
+      <div><dt>取得手段</dt><dd>yt-dlp（公式英語自動字幕）</dd></div>
+      <div><dt>精読量</dt><dd>整形後 2,092行・16,465語</dd></div>
+      <div><dt>ライセンス</dt><dd>動画上の明示なし</dd></div>
+      <div style="grid-column: 1 / -1;">
+        <dt>タグ</dt>
+        <dd class="badges">
+          <span class="badge">LLM Evaluation</span>
+          <span class="badge">LLM-as-a-Judge</span>
+          <span class="badge">Agent Evaluation</span>
+          <span class="badge">Benchmarks</span>
+          <span class="badge">SWE-bench</span>
+          <span class="badge">τ-bench</span>
+        </dd>
+      </div>
+    </dl>
+
+    <div class="tldr">
+      <h2>3行サマリ</h2>
+      <ul>
+        <li>自由形式の出力品質は単一の万能指標では測れない。人手評価は高品質だが主観・費用・速度に限界があり、参照文ベースの指標は言い換えに弱いため、実務では<strong>明確な基準を与えた LLM-as-a-Judge</strong>が重要になる。</li>
+        <li>LLM Judge には位置・冗長性・自己強化などのバイアスがある。明瞭なガイドライン、二値判定、理由先行、低温度、人手との相関確認を組み合わせ、<strong>代理指標への過剰最適化</strong>を避ける。</li>
+        <li>エージェント評価は最終回答だけでなく、ツール選択・引数・実行結果・応答統合を段階別に診断する。公開ベンチマークは能力の輪郭を示すにすぎず、<strong>価格・安全性・実タスクとの Pareto 最適</strong>で選ぶべきである。</li>
+      </ul>
+    </div>
+
+    <section id="s1">
+      <h2>1. 評価とは何を測ることか</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=0s" target="_blank" rel="noopener">動画 00:00</a>
+      <p>前回までに、RAG による外部知識の取得、bi-encoder での候補検索と cross-encoder での再ランキング、tool calling、ReAct の Observe → Plan → Act を扱った。Lecture 8 は、それらを含む LLM システムの性能をどう定量化するかに焦点を移す。</p>
+      <p>「LLM を評価する」には、出力の一貫性・事実性・有用性だけでなく、レイテンシ、価格、稼働率などのシステム指標も含み得る。本講義の主対象は<strong>出力品質</strong>、つまり「実際の応答がどれほど良いか」である。自然言語、コード、数学的推論など出力形式が多様なため、すべてに通用する単一指標を作るのは難しい。</p>
+
+      <div class="stat-grid">
+        <div class="stat-card"><div class="num">3系統</div><div class="label">人手評価・ルールベース・LLM Judge</div></div>
+        <div class="stat-card"><div class="num">7種</div><div class="label">講義で整理されたエージェント失敗モード</div></div>
+        <div class="stat-card"><div class="num">6領域</div><div class="label">知識・推論・コード・安全性・エージェント・実運用</div></div>
+      </div>
+
+      <table>
+        <thead><tr><th>評価方法</th><th>必要なもの</th><th>強み</th><th>主な限界</th></tr></thead>
+        <tbody>
+          <tr><td>人手評価</td><td>評価者と基準</td><td>人間の選好を直接測れる</td><td>主観差、遅い、高価</td></tr>
+          <tr><td>参照文＋ルールベース</td><td>正解参照文</td><td>高速、安価、再現可能</td><td>言い換え・文体差に弱い</td></tr>
+          <tr><td>LLM-as-a-Judge</td><td>評価基準と Judge モデル</td><td>参照文なしでも開始でき、理由も返せる</td><td>バイアス、確率性、人間とのずれ</td></tr>
+        </tbody>
+      </table>
+
+      <div class="mermaid">
+flowchart LR
+  A[人が全応答を評価] -->|高コスト・低速| B[固定参照文とルール指標]
+  B -->|言い換えに弱い| C[LLM-as-a-Judge]
+  C -->|人手で校正| D[継続的な評価系]
+      </div>
+    </section>
+
+    <section id="s2">
+      <h2>2. 人手評価と評価者間一致</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=428s" target="_blank" rel="noopener">動画 07:08</a>
+      <p>理想は、各プロンプトに対する各応答を人が毎回採点することだ。しかし「誕生日プレゼントにテディベアを勧める応答は有用か」のような問いでは、評価者によって「十分具体的」「種類まで指定していないので不十分」と判断が割れる。そこで、評価ガイドラインの明確さを測る健康指標として<strong>評価者間一致</strong>を追跡する。</p>
+      <p>単純一致率だけでは不十分である。二人がランダムに Yes/No を半々で選んでも、一致率は <code>0.5² + 0.5² = 0.5</code>、つまり50%になる。したがって、観測一致率を「偶然でも起こる一致」と比較する必要がある。</p>
+
+      <table>
+        <thead><tr><th>指標</th><th>想定</th><th>講義での位置づけ</th></tr></thead>
+        <tbody>
+          <tr><td>単純一致率</td><td>同じ判定の割合</td><td>直感的だが、偶然一致を補正しない</td></tr>
+          <tr><td>Cohen's κ</td><td>主に2名の評価者</td><td>観測一致と偶然一致の差を正規化</td></tr>
+          <tr><td>Fleiss' κ</td><td>複数評価者</td><td>Cohen's κ を複数評価者へ拡張</td></tr>
+          <tr><td>Krippendorff's α</td><td>複数評価者・欠損等を含む柔軟な設定</td><td>より一般的な一致度の測定</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <strong>運用上の使い方:</strong> 一致度が低ければ「評価者が悪い」と結論づけず、評価者同士の alignment session を開き、基準と例を揃える。人手評価の弱点は完全には消えないが、主観性を測定・改善可能な問題に変えられる。
+      </div>
+    </section>
+
+    <section id="s3">
+      <h2>3. 参照文とルールベース指標</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=1104s" target="_blank" rel="noopener">動画 18:24</a>
+      <p>毎回の人手採点を避ける次の案は、プロンプトごとに人が一度だけ理想回答（reference）を作り、モデルを更新するたびに自動比較することだ。自然言語には同じ意味を表す複数の言い方があるため、完全一致ではなく、語や n-gram の重なりを柔軟に測る指標が使われてきた。</p>
+
+      <table>
+        <thead><tr><th>指標</th><th>主用途</th><th>中心となる考え方</th><th>補正</th></tr></thead>
+        <tbody>
+          <tr><td>METEOR</td><td>機械翻訳</td><td>unigram の precision / recall を重み付き F-score で統合</td><td>一致語の並びが分断されるほど chunk penalty。語幹・同義語も一部考慮</td></tr>
+          <tr><td>BLEU</td><td>機械翻訳</td><td>予測側 n-gram の一致を重視する precision 寄りの指標</td><td>短い出力で指標を稼ぐのを防ぐ brevity penalty</td></tr>
+          <tr><td>ROUGE</td><td>要約</td><td>参照要約との n-gram 等の重なり</td><td>複数の派生形が存在</td></tr>
+        </tbody>
+      </table>
+
+      <p>共通の弱点は、意味が同じでも表現が異なると低得点になり得ることだ。「plush teddy bear」「soft stuffed bear」「gentle toy companion」は意味が近くても表層一致が少ない。また、人手評価との相関を高めるために多くのハイパーパラメータを調整しても相関は完全ではなく、参照文を作る初期コストも残る。</p>
+    </section>
+
+    <section id="s4">
+      <h2>4. LLM-as-a-Judge の基本設計</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=1680s" target="_blank" rel="noopener">動画 28:00</a>
+      <p>大規模事前学習と選好チューニングを経た LLM は、知識と人間の好みに関する信号を持つ。そこで、評価対象の<strong>プロンプト・応答・評価基準</strong>を別の LLM に渡し、<strong>理由（rationale）とスコア</strong>を返させる。ルール指標の数字だけでは分からなかった「なぜその点数なのか」を自然言語で説明できることが大きな違いである。</p>
+      <p>実務では、まず理由を出させ、その後にスコアを出させる。この順序は、モデルが判断材料を言語化してから結論を出すため、経験的に品質が上がる。通常の生成では JSON などの形式が保証されないので、guided / constrained decoding に基づく<strong>structured output</strong>を利用し、<code>{ rationale, score }</code> のようなスキーマを強制する。</p>
+
+      <div class="grid-cards">
+        <div class="card"><h4>Pointwise</h4><p>単一応答を「良い / 悪い」「合格 / 不合格」などで評価する。</p></div>
+        <div class="card"><h4>Pairwise</h4><p>応答 A と B を比較し、どちらが優れているかを選ぶ。</p></div>
+        <div class="card"><h4>合成選好データ</h4><p>Pairwise Judge の選択を、reward model や preference tuning 用ラベルとして利用できる。</p></div>
+      </div>
+
+      <div class="callout info">
+        <strong>二つの利点:</strong> 正解参照文や人手ラベルがなくても評価を開始できること、スコアと一緒に解釈可能な理由を得られること。ただし「人手不要」ではなく、後述する校正のために人手評価は依然重要である。
+      </div>
+    </section>
+
+    <section id="s5">
+      <h2>5. Judge の3大バイアス</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=2327s" target="_blank" rel="noopener">動画 38:47</a>
+      <table>
+        <thead><tr><th>バイアス</th><th>症状</th><th>主な対策</th></tr></thead>
+        <tbody>
+          <tr><td>位置バイアス</td><td>Pairwise 比較で先に置かれた A を選びやすい</td><td>A/B と B/A の両順序で評価し、結果の一致や多数決を見る</td></tr>
+          <tr><td>冗長性バイアス</td><td>正確さではなく、長く詳細な応答を好む</td><td>長さを評価しないと明記、few-shot で例示、必要なら長さペナルティ</td></tr>
+          <tr><td>自己強化バイアス</td><td>Judge と同じモデルが生成した応答を好む</td><td>生成モデルと Judge を分け、可能ならより高能力な Judge を使う</td></tr>
+        </tbody>
+      </table>
+      <p>この三つは網羅的ではない。特定ラベルへの偏りや、人間の選好そのものとの不一致もあり得る。また、別モデルでも学習データが似ていれば完全に独立とは限らない。それでも、生成器と Judge を同一にしないことはリスク低減になる。Judge は必ず大きくなければならないわけではないが、微妙な違いを見抜くには、より強い推論能力を持つモデルがよく使われる。</p>
+    </section>
+
+    <section id="s6">
+      <h2>6. LLM Judge のベストプラクティス</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=2842s" target="_blank" rel="noopener">動画 47:22</a>
+      <table>
+        <thead><tr><th>実践</th><th>理由</th></tr></thead>
+        <tbody>
+          <tr><td>評価基準を crisp にする</td><td>欲しいもの・避けたいものを明示し、主観的な解釈余地を減らす</td></tr>
+          <tr><td>二値スケールを優先</td><td>多段階採点より Judge と人間の双方が判断しやすく、余計なノイズを減らせる</td></tr>
+          <tr><td>理由を先に出す</td><td>判断材料を外化してからスコアを確定させる</td></tr>
+          <tr><td>既知のバイアスを検査・緩和</td><td>位置入れ替え、長さの明示、別モデル利用などを評価系に組み込む</td></tr>
+          <tr><td>人手評価と校正する</td><td>Judge は人間の選好の代理なので、相関分析でずれを確認しプロンプトを改善する</td></tr>
+          <tr><td>低温度を使う</td><td><code>temperature = 0.1〜0.2</code> 程度で再現性を高める</td></tr>
+        </tbody>
+      </table>
+      <blockquote>Judge の点数を上げること自体が目的になると、人間の評価とはずれた代理指標へ最適化してしまう。Judge と人手の乖離を継続監視する必要がある。</blockquote>
+      <p>評価軸は大きく、<strong>タスク性能</strong>（有用性、事実性、関連性など）と、<strong>出力の整合性</strong>（トーン、スタイル、安全性など）に分けられる。何を測るかを先に定義し、異なる軸を一つの曖昧なスコアへ潰しすぎないことが重要である。</p>
+    </section>
+
+    <section id="s7">
+      <h2>7. 事実性は「原子化してから測る」</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=3246s" target="_blank" rel="noopener">動画 54:06</a>
+      <p>文章全体を単純な合格 / 不合格で判定すると、一部だけ誤っている長文のニュアンスを失う。講義の例文「テディベアは1920年代に作られ、捕らえた熊を誇らしげに撃とうとした Theodore Roosevelt にちなむ」には、年代（実際は1900年代）と行動（Roosevelt は撃つことを拒否）の二つの誤りがある一方、名前の由来など正しい事実も含まれる。</p>
+
+      <div class="mermaid">
+flowchart LR
+  A[自由形式の応答] --> B[LLMで原子的な事実へ分解]
+  B --> C1[Fact 1]
+  B --> C2[Fact 2]
+  B --> C3[Fact 3]
+  B --> C4[Fact 4]
+  C1 --> D[RAG / Web検索で二値検証]
+  C2 --> D
+  C3 --> D
+  C4 --> D
+  D --> E[重要度で重み付けして集約]
+  E --> F[文章全体の事実性スコア]
+      </div>
+
+      <ol>
+        <li>複数文・複数段落の応答を、検証可能な事実の一覧へ分解する。</li>
+        <li>各事実を RAG、Web 検索、知識ベースなどで確認し、基本は正誤の二値で判定する。</li>
+        <li>事実ごとの重要度を重みとして、正しい事実の割合を集約する。重みはすべて同一でもよい。</li>
+      </ol>
+      <p>この設計により「二つ誤りがあるが、残りは正しい」という部分点を表現できる。重要な主張の誤りを、周辺的な細部の誤りより重く扱うことも可能になる。</p>
+    </section>
+
+    <section id="s8">
+      <h2>8. エージェントは段階別に評価する</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=3615s" target="_blank" rel="noopener">動画 1:00:15</a>
+      <p>エージェントは Observe → Plan → Act のループを繰り返すため、最終回答だけを見ても根本原因が分からない。一回の tool calling を、<strong>ツール予測</strong>、<strong>ツール実行</strong>、<strong>結果の統合</strong>へ分け、それぞれの失敗を分類する。</p>
+
+      <div class="mermaid">
+flowchart LR
+  U[ユーザー要求] --> P[1. ツール名と引数を予測]
+  P --> X[2. ツールを実行]
+  X --> S[3. 結果から応答を統合]
+  S --> A[ユーザーへ回答]
+  S -.次の行動が必要.-> P
+      </div>
+
+      <div class="callout">
+        <strong>診断の原則:</strong> 失敗例を個別の珍事件として追うのではなく、共通する失敗モードへ分類し、同じ原因の群をまとめて直す。エージェント評価ではこの方法論が特に重要になる。
+      </div>
+    </section>
+
+    <section id="s9">
+      <h2>9. ツール予測の4つの失敗</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=3739s" target="_blank" rel="noopener">動画 1:02:19</a>
+      <table>
+        <thead><tr><th>失敗モード</th><th>考えられる原因</th><th>改善策</th></tr></thead>
+        <tbody>
+          <tr><td>必要なツールを使わず punt する</td><td>tool router の recall 不足、または LLM が利用判断を学べていない</td><td>router の recall 改善、SFT 例の追加、プロンプト修正</td></tr>
+          <tr><td>存在しないツール名を生成</td><td>モデルが弱い、上位指示が曖昧、API 名・引数・説明が不自然</td><td>まず水平指示と API 設計を点検し、必要ならモデルを強化</td></tr>
+          <tr><td>存在するが不適切なツールを選択</td><td>ツール間のスコープが競合、router が候補を落としている</td><td>適用条件を明記し、API の責務を分離、router を調整</td></tr>
+          <tr><td>ツールは正しいが引数が誤る</td><td>位置情報など必要な文脈がない、引数の意味が不明瞭</td><td>先行ツールで情報取得、権限エラーを明示、API / SFT / prompt を改善</td></tr>
+        </tbody>
+      </table>
+      <p>tool router は、すべての API 定義を毎回コンテキストに入れないための候補絞り込みである。コンテキストを節約しつつ必要なツールを落とさない必要があるため、precision より<strong>recall を重視</strong>する。問題が router か LLM 本体かを分けて測らないと、誤った層を修正してしまう。</p>
+    </section>
+
+    <section id="s10">
+      <h2>10. 実行と応答統合の3つの失敗</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=4452s" target="_blank" rel="noopener">動画 1:14:12</a>
+      <table>
+        <thead><tr><th>段階</th><th>失敗</th><th>実務的な対策</th></tr></thead>
+        <tbody>
+          <tr><td>ツール実行</td><td>実装バグや不明瞭なエラーを返す</td><td>通常のソフトウェアとして修正。ユーザーが行動できる構造化結果へ変換する</td></tr>
+          <tr><td>ツール実行</td><td>応答を何も返さない</td><td>副作用の成功・失敗を必ず明示。該当なしでも <code>{}</code> など意味のある空結果を返す</td></tr>
+          <tr><td>応答統合</td><td>正しい結果を誤読・無視する</td><td>モデル強化、出力量の削減、意味のあるクラス名・属性・構造へ整形</td></tr>
+        </tbody>
+      </table>
+      <p>特に副作用のあるツールが何も返さないと、モデルは成功したか判断できず、偽の成功確認を生成し得る。また、情報が多すぎる出力では重要情報が「海に沈む」。ツール出力は人間向けログの投げ込みではなく、次の LLM ステップが利用しやすい最小限の構造化データにする。</p>
+      <p>七つの失敗は、最終的にモデル能力、コンテキストの関連性、tool router / API の設計・学習、ツール実装の四領域へ整理できる。原因の層を特定してから対処することが、エージェントのデバッグを再現可能にする。</p>
+    </section>
+
+    <section id="s11">
+      <h2>11. ベンチマークの設計原則</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5030s" target="_blank" rel="noopener">動画 1:23:50</a>
+      <p>モデル同士を比較する公開ベンチマークは、自由形式の回答をそのまま別の LLM に判定させるより、可能な限り<strong>答えを機械的に採点できる形式</strong>を選ぶ。Judge を挟むと、Judge 自身の誤差が新たな層として加わるためである。</p>
+
+      <table>
+        <thead><tr><th>能力領域</th><th>代表例</th><th>出力 / 採点</th><th>主に見るもの</th></tr></thead>
+        <tbody>
+          <tr><td>知識</td><td>MMLU</td><td>4択、正解文字の一致</td><td>広範な事前学習知識の保持</td></tr>
+          <tr><td>数学推論</td><td>AIME</td><td>3桁の数値</td><td>難しい問題を解く推論能力</td></tr>
+          <tr><td>常識推論</td><td>PIQA</td><td>2択</td><td>物理世界の日常的理解</td></tr>
+          <tr><td>ソフトウェア工学</td><td>SWE-bench</td><td>パッチ適用後のテスト</td><td>実リポジトリの issue 解決</td></tr>
+          <tr><td>安全性</td><td>HarmBench</td><td>専用 classifier</td><td>有害行動への応答</td></tr>
+          <tr><td>エージェント</td><td>τ-bench</td><td>DB状態・要求アクション</td><td>対話、ツール利用、ポリシー遵守、反復信頼性</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="s12">
+      <h2>12. 知識評価: MMLU</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5112s" target="_blank" rel="noopener">動画 1:25:12</a>
+      <p>MMLU（Massive Multitask Language Understanding）は約60の多様なタスクを含み、日常知識から法律、医学まで幅広い。問題と4つの選択肢を提示し、モデルに正解の文字を出させるため、採点を標準化できる。</p>
+      <p>純粋な論理だけでは解けず、各分野の事前知識を必要とする設問が多い。そのため、主として「大規模コーパスで事前学習した情報を、推論時にどれだけ取り出せるか」を測る。ただし、特定分野の専門能力を一つの平均値だけで表すものではない。</p>
+    </section>
+
+    <section id="s13">
+      <h2>13. 推論評価: AIME と PIQA</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5374s" target="_blank" rel="noopener">動画 1:29:34</a>
+      <h3>AIME: 数学推論</h3>
+      <p>AIME は数学オリンピックを目指す高校生向けの難しい試験で、問題文に対して3桁の整数を答える。回答形式が厳密なので採点は容易だが、答えに至るには途中の推論が必要であり、reasoning model の能力を測りやすい。</p>
+      <h3>PIQA: 物理世界の常識推論</h3>
+      <p>PIQA（Physical Interaction: Question Answering）は、日常の物理世界に根ざした約2万件の二択問題を持つ。講義では「カーペットで失くした小物を見つけるには、密閉した掃除機より吸入口にヘアネットを付ける」という例を挙げた。数学知識ではなく、物や空気がどう振る舞うかという常識を問う。</p>
+    </section>
+
+    <section id="s14">
+      <h2>14. コード評価: SWE-bench</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5637s" target="_blank" rel="noopener">動画 1:33:57</a>
+      <p>コーディング能力は、AI 支援開発そのものだけでなく、エージェントが Python 等で書かれたツールを読み、呼び出し、出力を解釈するためにも重要である。SWE-bench は、人気の Python リポジトリから、issue を解決しテストも追加した pull request を抽出する。</p>
+      <ol>
+        <li>モデルへコードベースと issue を与える。</li>
+        <li>モデルが修正パッチを生成する。</li>
+        <li>パッチを適用し、関連テストが通るかで解決を判定する。</li>
+      </ol>
+      <p>実際の issue とリポジトリを使い、テストによる before / after を得られるため、表面的なコード生成ではなくソフトウェア工学タスクの完遂を測れる。</p>
+    </section>
+
+    <section id="s15">
+      <h2>15. 安全性評価: HarmBench</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5775s" target="_blank" rel="noopener">動画 1:36:15</a>
+      <p>安全性は各プロバイダーのポリシーに依存し、全社が同じ目標を採用しているとは限らない。そのためモデルカードには安全性評価が載っても、単一スコアで横並び比較しにくい。ベンチマークを使う前に、その中身が自社ポリシーと合うかを確認する必要がある。</p>
+
+      <table>
+        <thead><tr><th>HarmBench の区分</th><th>対象</th></tr></thead>
+        <tbody>
+          <tr><td>Standard</td><td>一般的な有害行動</td></tr>
+          <tr><td>Copyright</td><td>望ましくない著作物の生成</td></tr>
+          <tr><td>Contextual</td><td>テキスト文脈によって有害となる行動</td></tr>
+          <tr><td>Multimodal</td><td>テキスト以外のモダリティを含む文脈依存の有害行動</td></tr>
+        </tbody>
+      </table>
+
+      <p>自由形式の有害応答は regex だけでは判定できないため、HarmBench は専用 classifier を使う。重要なのは、モデルが実行能力不足で失敗しても、有害行動を試みたなら攻撃成功と数える点である。これは「能力の高さ」と「安全性」を分離する。一方で classifier 自身の誤差が入る点は、固定正解で採点できる他のベンチマークとの違いである。</p>
+    </section>
+
+    <section id="s16">
+      <h2>16. エージェント評価: τ-bench</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=6051s" target="_blank" rel="noopener">動画 1:40:51</a>
+      <p>τ-bench は航空と小売の二領域で、ツール群、守るべきポリシー、ユーザーのタスクを提供する。対話は前のターンに依存するため、別の大規模 LLM がユーザー役をシミュレートし、評価対象エージェントと複数ターン対話する。</p>
+      <p>たとえばフライト変更では、最終的なデータベース状態や、キャンセルなど要求されたアクションが実現したかで reward を計算する。会話が自然だったかだけでなく、<strong>実世界の状態が正しく変わったか</strong>で判定する点が重要である。</p>
+
+      <table>
+        <thead><tr><th>指標</th><th>意味</th><th>適した問い</th></tr></thead>
+        <tbody>
+          <tr><td>pass@k</td><td>k回のうち少なくとも1回成功する確率</td><td>候補を複数試せる問題で、成功解を見つけられるか</td></tr>
+          <tr><td>pass<sup>k</sup></td><td>k回すべてが成功する確率</td><td>ユーザー対応を自動化できるほど一貫して信頼できるか</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <strong>エージェントで重要なのは反復信頼性:</strong> 一度だけ成功するデモではなく、同じタスクを何度実行しても成功することが運用投入の条件になる。そのため τ-bench は pass<sup>k</sup> を重視する。
+      </div>
+    </section>
+
+    <section id="s17">
+      <h2>17. ベンチマークをモデル選定へつなぐ</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=6314s" target="_blank" rel="noopener">動画 1:45:14</a>
+      <p>ベンチマークはモデルを「全面的に良い / 悪い」と決めるものではなく、能力プロファイルを描くものだ。あるモデルはコードに強く、別のモデルは高速・低価格かもしれない。価格、安全性、コンテキスト長など、実際に重視する軸と性能を並べ、ある軸を改善するために他を犠牲にしない選択肢の境界、つまり<strong>Pareto frontier</strong>を見る。</p>
+
+      <div class="grid-cards">
+        <div class="card"><h4>データ汚染</h4><p>モデルが問題や正解を学習中に見ていれば、ベンチマークは能力を正しく測れない。hash、Web blocklist、新しい試験問題などで漏洩を抑える。</p></div>
+        <div class="card"><h4>Goodhart の法則</h4><p>「測定値が目標になると、良い測定値ではなくなる」。公開指標への過剰最適化を疑う。</p></div>
+        <div class="card"><h4>実体験との接続</h4><p>Chatbot Arena のような人間選好も参考にしつつ、最後は自分のデータとタスクで候補モデルを試す。</p></div>
+      </div>
+
+      <blockquote>公開ベンチマークの点数は「あなたの用途に最適か」を直接は答えない。評価対象、採点方法、データ汚染、運用コストを理解したうえで、実タスク評価と組み合わせる。</blockquote>
+    </section>
+
+    <footer class="page">
+      <p class="disclaimer">本レポートは、上記の出典元コンテンツを参照し、内容を省略せず日本語で要約・再構成した非公式まとめです。記述に誤りがある場合は出典元の表現が正となります。</p>
+      <p>出典: <a href="https://www.youtube.com/watch?v=8fNP4N46RRo" target="_blank" rel="noopener">https://www.youtube.com/watch?v=8fNP4N46RRo</a> ／ 取得手段: yt-dlp（公式英語自動字幕） ／ 生成日: 2026年8月16日</p>
+    </footer>
+  </main>
+</div>
+
+<div id="diagramModal" class="modal" role="dialog" aria-modal="true" aria-label="Mermaid 図ビューア">
+  <div class="modal-toolbar">
+    <button class="modal-button" type="button" onclick="zoomCmd('in')">拡大</button>
+    <button class="modal-button" type="button" onclick="zoomCmd('out')">縮小</button>
+    <button class="modal-button" type="button" onclick="zoomCmd('reset')">リセット</button>
+    <button class="modal-button" type="button" onclick="closeModal()">閉じる</button>
+  </div>
+  <div id="modalBody" class="modal-body"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+<script>
+  const themeAttr = document.documentElement.getAttribute('data-theme');
+  const isDark = themeAttr ? themeAttr === 'dark'
+    : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: true, theme: isDark ? 'dark' : 'default', securityLevel: 'loose' });
+
+  const toc = document.getElementById('toc');
+  const headings = [...document.querySelectorAll('main section[id] > h2, main section[id] > h3')];
+  if (toc && headings.length) {
+    headings.forEach((heading, index) => {
+      const section = heading.closest('section');
+      if (!heading.id) heading.id = section ? section.id + '-h' + index : 'heading-' + index;
+      const li = document.createElement('li');
+      li.className = heading.tagName === 'H3' ? 'lvl-3' : 'lvl-2';
+      const anchor = document.createElement('a');
+      anchor.href = '#' + heading.id;
+      anchor.textContent = heading.textContent.trim();
+      li.appendChild(anchor);
+      toc.appendChild(li);
+    });
+    const links = [...toc.querySelectorAll('a')];
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter(entry => entry.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (!visible) return;
+      links.forEach(link => link.classList.toggle('active', link.getAttribute('href') === '#' + visible.target.id));
+    }, { rootMargin: '-20% 0px -65% 0px', threshold: [0, 1] });
+    headings.forEach(heading => observer.observe(heading));
+  }
+
+  let panZoomInstance = null;
+
+  function tightenViewBox(svg) {
+    if (!svg || !svg.getBBox) return;
+    try {
+      const bbox = svg.getBBox();
+      if (!Number.isFinite(bbox.width) || !Number.isFinite(bbox.height) || bbox.width === 0 || bbox.height === 0) return;
+      const padding = 20;
+      svg.setAttribute('viewBox', [
+        bbox.x - padding,
+        bbox.y - padding,
+        bbox.width + padding * 2,
+        bbox.height + padding * 2
+      ].join(' '));
+    } catch (error) {
+      console.warn('Unable to tighten Mermaid viewBox', error);
+    }
+  }
+
+  function openDiagramFromElement(diagram) {
+    const sourceSvg = diagram ? diagram.querySelector('svg') : null;
+    if (!sourceSvg) return;
+    const modal = document.getElementById('diagramModal');
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = '';
+    const clonedSvg = sourceSvg.cloneNode(true);
+    clonedSvg.removeAttribute('style');
+    clonedSvg.setAttribute('width', '100%');
+    clonedSvg.setAttribute('height', '100%');
+    modalBody.appendChild(clonedSvg);
+    tightenViewBox(clonedSvg);
+    modal.classList.add('is-open');
+    if (panZoomInstance) panZoomInstance.destroy();
+    panZoomInstance = svgPanZoom(clonedSvg, {
+      zoomEnabled: true,
+      controlIconsEnabled: false,
+      fit: true,
+      center: true,
+      minZoom: .4,
+      maxZoom: 8
+    });
+    panZoomInstance.resize();
+    panZoomInstance.fit();
+    panZoomInstance.center();
+  }
+
+  function closeModal() {
+    const modal = document.getElementById('diagramModal');
+    const modalBody = document.getElementById('modalBody');
+    if (panZoomInstance) {
+      panZoomInstance.destroy();
+      panZoomInstance = null;
+    }
+    modal.classList.remove('is-open');
+    modalBody.innerHTML = '';
+  }
+
+  function zoomCmd(command) {
+    if (!panZoomInstance) return;
+    if (command === 'in') panZoomInstance.zoomIn();
+    if (command === 'out') panZoomInstance.zoomOut();
+    if (command === 'reset') {
+      panZoomInstance.resetZoom();
+      panZoomInstance.fit();
+      panZoomInstance.center();
+    }
+  }
+
+  window.closeModal = closeModal;
+  window.zoomCmd = zoomCmd;
+
+  document.querySelectorAll('.mermaid').forEach((diagram) => {
+    diagram.setAttribute('role', 'button');
+    diagram.setAttribute('aria-label', 'Mermaid 図を拡大表示');
+    diagram.setAttribute('title', 'クリックで拡大表示');
+    diagram.tabIndex = 0;
+    diagram.addEventListener('click', () => openDiagramFromElement(diagram));
+    diagram.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openDiagramFromElement(diagram);
+      }
+    });
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeModal();
+  });
+  document.getElementById('diagramModal').addEventListener('click', (event) => {
+    if (event.target.id === 'diagramModal') closeModal();
+  });
+</script>
+</body>
+</html>

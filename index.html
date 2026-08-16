@@ -228,6 +228,18 @@
   // meta 文字列はカードにそのまま表示する原文（情報を欠落させないため保持）。
   const REPORTS = [
     {
+      href: "reports/stanford-cme295-lecture8-llm-evaluation-ja.html",
+      title: "Stanford CME295 Lecture 8「LLM Evaluation」日本語要約",
+      desc: "Stanford CME295 Transformers & LLMs（Autumn 2025）第8回を、yt-dlpで取得した公式英語自動字幕2,092行・16,465語の全文精読から日本語で再構成。人手評価と評価者間一致、Cohen's κ・Fleiss' κ・Krippendorff's α、METEOR・BLEU・ROUGE、LLM-as-a-Judgeの設計・structured output・pointwise/pairwise、位置・冗長性・自己強化バイアス、二値判定・理由先行・人手校正・低温度などの実践、事実の原子化とRAGによる事実性評価、tool routerから応答統合まで7種のエージェント失敗モード、MMLU・AIME・PIQA・SWE-bench・HarmBench・τ-bench、pass@k対pass^k、Pareto frontier・データ汚染・Goodhartの法則までを網羅。全17セクション・表10点・Mermaid図3点。",
+      category: "AI モデル・研究論文",
+      event: "Stanford CME295 Autumn 2025",
+      speakers: ["Afshine Amidi", "Shervine Amidi"],
+      source: "YouTube",
+      published: "2025-12-02",
+      generated: "2026-08-16",
+      meta: "出典: YouTube (Stanford Online / CME295 Lecture 8) / 講義: 2025年11月21日 / 公開: 2025年12月2日 / 取得手段: yt-dlp公式英語自動字幕（整形後2,092行・16,465語を全文精読）/ 生成日: 2026年8月16日"
+    },
+    {
       href: "reports/stanford-cme295-lecture7-agentic-llms-ja.html",
       title: "Stanford CME295 Lecture 7「Agentic LLMs」日本語要約【講義スライド17枚付き】",
       desc: "Stanford CME295 Transformers & LLMs（Autumn 2025）第7回を、yt-dlpで取得した公式英語自動字幕2,210行・16,871語の全文精読と、講義映像から抽出してmacOS Vision OCRで内容照合したスライド17枚から日本語で再構成。知識カットオフ・context制約・Needle in a HaystackをRAGで補う動機、chunking/embedding/overlap、Two-Stage Retrieval、SBERT/bi-encoder/ANN、BM25とhybrid search、HyDE、Contextual Retrieval、Prompt Caching、cross-encoder reranking、NDCG/MRR/Recall@K/Precision@K、Tool Callingのschema・3段階実行・2種類のSFT pair・説明文のoffline最適化、Tool Selection、MCPのHost/Client/Server/Tools/Prompts/Resources、ReActのObserve→Plan→Act、Multi-Agent/A2A、data exfiltrationとAgent Safety、error compounding、start small/start smart/debuggabilityまでを網羅。全17セクション・表8点・Mermaid図3点・講義スライド17枚付き。",
