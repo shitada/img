@@ -131,6 +131,16 @@
     background: var(--bg-elev); font-size: .92em;
   }
   .table-wrap { width: 100%; overflow-x: auto; margin: 17px 0; }
+  .table-purpose {
+    margin: 20px 0 10px; padding: 12px 15px; border-left: 3px solid var(--link);
+    border-radius: 0 9px 9px 0; background: color-mix(in srgb, var(--bg-elev) 94%, var(--link) 6%);
+  }
+  .table-purpose strong {
+    display: block; margin-bottom: 3px; color: var(--link);
+    font-size: 13px; letter-spacing: .03em;
+  }
+  .table-purpose p { margin: 0; color: var(--text-dim); font-size: 13.5px; line-height: 1.65; }
+  .table-purpose + .table-wrap { margin-top: 10px; }
   table {
     width: 100%; min-width: 680px; border-collapse: collapse;
     border: 1px solid var(--border); border-radius: var(--radius);
@@ -343,14 +353,18 @@
         <img src="../images/stanford-cme295-lecture7-agentic-llms/02-knowledge-cutoff.jpg" alt="GPT-5のモデル情報と知識カットオフを示すスライド" loading="lazy" />
         <figcaption>GPT-5のモデル情報を例に、LLMの知識が事前学習データと知識カットオフに制約されることを説明するスライド。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=485s" target="_blank" rel="noopener">08:05</a></figcaption>
       </figure>
+      <div class="table-purpose">
+        <strong>この表で確認すること</strong>
+        <p>素朴な解決策が、知識の更新・context容量・情報の見つけやすさ・費用のどこで破綻するかを切り分ける。4つの問題を同時に避けるため、RAGは「必要な情報だけを外部から選ぶ」。</p>
+      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>素朴な方法 / 制約</th><th>問題</th><th>講義での具体化</th></tr></thead>
+          <thead><tr><th>素朴な方法 / 制約</th><th>なぜ解決にならないか</th><th>RAG設計への含意</th></tr></thead>
           <tbody>
-            <tr><td>重みへ知識を追加学習</td><td>既存能力のregressionが起こり得る。複数の用途別fine-tuneがあると、すべてを再更新する必要がある。</td><td>更新のたびに学習・評価・配備を繰り返すのは保守負荷が大きい。</td></tr>
-            <tr><td>全情報をpromptへ投入</td><td>context windowを使い切り、長い入力ほど費用も増える。</td><td>講義時点のGPT-5は400,000 tokens。数百ページ規模でも上限は有限。</td></tr>
-            <tr><td>長いcontextに頼る</td><td>無関係情報が多いと必要な事実を見失う。</td><td>Needle in a Haystackテストでは、長さと事実の位置の両方が取得精度へ影響。</td></tr>
-            <tr><td>毎回大きなinputを送る</td><td>token課金が積み上がる。</td><td>講義ではGPT-5入力価格を「100万tokenあたり約1ドルのオーダー」と説明。</td></tr>
+            <tr><td>重みへ知識を追加学習</td><td>新しい事実のたびに再学習・評価・配備が必要で、既存能力がregressionする可能性もある。用途別にfine-tuneした派生modelが複数あれば、更新作業もmodel数だけ増える。</td><td>知識はmodel weightと分離して更新し、問い合わせ時に外部knowledge baseから取得する。</td></tr>
+            <tr><td>全情報をpromptへ投入</td><td>講義時点のGPT-5でもcontext windowは400,000 tokensで有限。組織文書全体が収まらず、同じ大量文書をqueryごとに再送することになる。</td><td>knowledge base全体ではなく、queryに関連するTop-K chunkだけをpromptへ入れる。</td></tr>
+            <tr><td>長いcontextに頼る</td><td>収まったとしても、Needle in a Haystackテストではprompt長と事実の位置の両方で取得精度が変わる。無関係情報が多いほど必要な根拠を使い損ねる。</td><td>候補取得と再ランキングで、関連情報を上位へ集めてからLLMへ渡す。</td></tr>
+            <tr><td>毎回大きなinputを送る</td><td>input tokenは呼び出しごとに課金される。講義のGPT-5価格例では通常inputが100万tokenあたり$1.25で、反復利用では累積する。</td><td>取得chunk数を絞り、共通prefixにはPrompt Cachingを使って反復コストを抑える。</td></tr>
           </tbody>
         </table>
       </div>
@@ -402,15 +416,19 @@ flowchart LR
         <img src="../images/stanford-cme295-lecture7-agentic-llms/05-knowledge-base.jpg" alt="文書を収集し分割しembeddingするKnowledge Base構築図" loading="lazy" />
         <figcaption>文書を収集（Collect）し、分割（Divide）し、数値ベクトルへ変換（Embed）する事前処理。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=1257s" target="_blank" rel="noopener">20:57</a></figcaption>
       </figure>
+      <div class="table-purpose">
+        <strong>この表で確認すること</strong>
+        <p>knowledge base構築では、検索対象の「意味単位」と「数値表現」を決める。各値を大きくすればよいのではなく、検索精度、promptへ入る情報量、保存・計算コストが同時に変わるため、評価結果を見ながら組み合わせを選ぶ。</p>
+      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>設計項目</th><th>講義中の目安</th><th>トレードオフ</th></tr></thead>
+          <thead><tr><th>設計項目</th><th>講義中の目安・選択肢</th><th>何が変わるか / どう決めるか</th></tr></thead>
           <tbody>
-            <tr><td>Embedding次元</td><td>約1,500次元のオーダー</td><td>大きいほど表現力を持てる一方、保存容量と検索計算量が増える。</td></tr>
-            <tr><td>Chunk size</td><td>約500 tokensなど数百token</td><td>小さすぎると文脈を失い、大きすぎると一つの表現へ複数トピックが混ざる。</td></tr>
-            <tr><td>Overlap</td><td>前後に低い数百token</td><td>境界をまたぐ意味を保持できるが、保存量と候補重複が増える。</td></tr>
-            <tr><td>Chunk境界</td><td>固定長だけに限定しない</td><td>JSONやMarkdownなどの構造を尊重すると、意味単位を壊しにくい。</td></tr>
-            <tr><td>Embedding model</td><td>事前学習済みまたは独自学習</td><td>汎用性・導入速度と、ドメイン適合性の間で選ぶ。</td></tr>
+            <tr><td>Embedding次元</td><td>講義では約1,500次元のオーダーを例示。実際の次元数は選んだembedding modelの出力仕様で決まる。</td><td>高次元ほど保存容量と類似度計算が増える。次元数だけを最大化せず、対象domainのretrieval評価とindex規模でmodelを比較する。</td></tr>
+            <tr><td>Chunk size</td><td>約500 tokensなど、数百tokenを初期値にする例。</td><td>小さすぎると主語・根拠・結論が別chunkへ分断される。大きすぎると複数topicが1 embeddingへ混ざり、Top-Kがpromptを圧迫する。</td></tr>
+            <tr><td>Overlap</td><td>隣接chunk間に低い数百tokenを重ねる例。</td><td>少なすぎると境界をまたぐ説明を失う。多すぎると似たchunkがTop-Kを占有するため、境界欠落と候補重複の両方を確認する。</td></tr>
+            <tr><td>Chunk境界</td><td>固定token長だけで切らず、Markdown見出し、段落、JSON fieldなど文書構造も使う。</td><td>「単独で読んでも意味が通る単位」を保つと、embeddingとrerankerが関連性を判断しやすい。長さ上限は構造分割と併用する。</td></tr>
+            <tr><td>Embedding model</td><td>事前学習済みmodelから始めるか、domain固有の関連pairで独自学習・fine-tuneする。</td><td>前者は導入が速く、後者は専門語や社内表現へ適応できる。独自学習にはlabel作成と再評価が必要で、queryとchunkは互換性のある表現空間へencodeする。</td></tr>
           </tbody>
         </table>
       </div>
@@ -471,13 +489,17 @@ flowchart LR
         <strong>Cuddly と Huggy の例</strong>
         <p>ユーザーが「Cuddly」という名前のテディベアを探しているとする。semantic searchは意味の近い「Huggy」を上位にする可能性があるが、BM25は文字列としてCuddlyを正確に拾える。実務ではdense retrievalとBM25を組み合わせる<strong>hybrid search</strong>がよく使われる。</p>
       </div>
+      <div class="table-purpose">
+        <strong>この表で確認すること</strong>
+        <p>3方式は優劣ではなく、何を「関連」とみなすかが異なる。自然言語の言い換えにはdense、固有名詞の一致にはBM25を使い、両方が現れる用途では候補集合を統合する。</p>
+      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>検索方式</th><th>強み</th><th>弱み</th><th>向く対象</th></tr></thead>
+          <thead><tr><th>検索方式</th><th>関連度の作り方</th><th>得意なquery</th><th>失敗しやすい条件 / 使い方</th></tr></thead>
           <tbody>
-            <tr><td>Dense / Semantic</td><td>言い換えや意味の近さを拾う</td><td>固有名詞の完全一致を保証しない</td><td>自然言語の質問、概念検索</td></tr>
-            <tr><td>BM25 / Lexical</td><td>語の一致に強く、説明可能</td><td>言い換えや同義語に弱い</td><td>名前、型番、専門用語</td></tr>
-            <tr><td>Hybrid</td><td>semanticとlexicalの相補性を使う</td><td>スコア統合や重み調整が必要</td><td>一般的な本番RAG</td></tr>
+            <tr><td>Dense / Semantic</td><td>query embeddingとchunk embeddingのcosine similarityで、文面が違っても意味が近い候補を上げる。</td><td>説明文、自然言語の質問、同義語や言い換えを含む概念検索。</td><td>「Cuddly」のような名前を意味の近い「Huggy」と混同し得る。固有名詞だけに依存するqueryはBM25で補う。</td></tr>
+            <tr><td>BM25 / Lexical</td><td>queryとchunkに共通する語を、出現頻度や語の希少性を考慮したkeyword scoreで順位付けする。</td><td>人名、製品名、型番、エラーコードなど、表記一致が強い証拠になるquery。</td><td>同じ意味でも別の単語を使う文書は拾いにくい。説明的なqueryはdense retrievalと併用する。</td></tr>
+            <tr><td>Hybrid</td><td>denseとBM25の候補・scoreを統合し、意味の近さと語の一致の両方を候補取得へ反映する。</td><td>自然文と固有名詞が混在する一般的な業務検索。</td><td>統合比率が用途で変わるため、ground truthを使って重みとTop-Kを評価する。</td></tr>
           </tbody>
         </table>
       </div>
@@ -533,15 +555,19 @@ flowchart LR
         <img src="../images/stanford-cme295-lecture7-agentic-llms/11-cross-encoder.jpg" alt="QueryとChunkを同時に入力して関連度を出すCross-encoder図" loading="lazy" />
         <figcaption>QueryとChunkを一つの入力として処理し、より精密なrelevance scoreを出すcross-encoder。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=2748s" target="_blank" rel="noopener">45:48</a></figcaption>
       </figure>
+      <div class="table-purpose">
+        <strong>この表で確認すること</strong>
+        <p>bi-encoderとcross-encoderは競合する代替案ではなく、同じpipelineの前段と後段を分担する。前者で全knowledge baseから候補を安く集め、後者はその候補だけを精密に並べ直す。</p>
+      </div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>観点</th><th>Bi-encoder</th><th>Cross-encoder</th></tr></thead>
           <tbody>
-            <tr><td>入力</td><td>QueryとChunkを別々にencode</td><td>Query + Chunkを一緒にencode</td></tr>
-            <tr><td>相互作用</td><td>完成したembedding間の距離</td><td>モデル内部でtoken間attentionを計算</td></tr>
-            <tr><td>事前計算</td><td>Chunk embeddingを保存可能</td><td>Queryごと・Chunkごとに推論が必要</td></tr>
-            <tr><td>計算量</td><td>低い</td><td>高い</td></tr>
-            <tr><td>主な段階</td><td>Stage 1 Candidate Retrieval</td><td>Stage 2 Reranking</td></tr>
+            <tr><td>入力単位</td><td>QueryとChunkを別々にencodeし、同じ次元のembeddingへ変換する。</td><td>Queryと1件のChunkを連結し、1つの入力pairとしてmodelへ渡す。</td></tr>
+            <tr><td>関連性の捉え方</td><td>完成した2つのembedding間の距離だけを見る。個々のquery tokenとchunk tokenの対応は直接計算しない。</td><td>query tokenとchunk tokenのattentionを計算できるため、「どの記述が質問へ答えるか」を細かく判定する。</td></tr>
+            <tr><td>再利用性</td><td>全Chunk embeddingを索引構築時に計算・保存し、query時はquery embeddingだけを追加計算できる。</td><td>queryが変わるたびに各query–chunk pairを再計算するため、chunk側だけの事前計算はできない。</td></tr>
+            <tr><td>計算範囲</td><td>大規模knowledge base全体を高速探索し、講義例ではTop 100程度の候補へ絞る。</td><td>Stage 1の候補だけへ適用し、最終的にpromptへ渡す少数のTop-Kを決める。</td></tr>
+            <tr><td>pipeline上の役割</td><td>Stage 1 Candidate Retrieval。まず関連候補を落とさないrecallを重視する。</td><td>Stage 2 Reranking。候補内の順序と上位のprecisionを重視する。</td></tr>
           </tbody>
         </table>
       </div>
@@ -564,14 +590,18 @@ flowchart LR
         DCG@K = Σ<sub>i=1..K</sub> rel<sub>i</sub> / log<sub>2</sub>(i + 1)
         <small>NDCG@K = DCG@K / IDCG@K。IDCGは関連文書を理想順に並べたときのDCG。</small>
       </div>
+      <div class="table-purpose">
+        <strong>この表で確認すること</strong>
+        <p>同じTop-K結果でも、4指標は別の失敗を測る。候補を漏らしたか、最初の根拠が遅いか、複数の根拠を正しい順序へ並べたか、無関係chunkが多いかを分け、Stage 1とStage 2のどちらを改善すべきか判断する。</p>
+      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>指標</th><th>定義</th><th>何を重視するか</th></tr></thead>
+          <thead><tr><th>指標</th><th>計算するもの</th><th>答える設計上の質問</th></tr></thead>
           <tbody>
-            <tr><td>NDCG@K</td><td>順位でdiscountしたgainを理想順位のDCGで正規化</td><td>複数の関連文書をどれだけ上位へ並べたか。理想なら1.0。</td></tr>
-            <tr><td>MRR</td><td>各queryで最初の関連文書の順位の逆数を平均</td><td>最初の正解へどれだけ早く到達するか。2位ならRR=1/2。</td></tr>
-            <tr><td>Recall@K</td><td>Top-Kに入った関連文書数 / 全関連文書数</td><td>取りこぼしの少なさ。Stage 1で特に重要。</td></tr>
-            <tr><td>Precision@K</td><td>Top-Kに入った関連文書数 / K</td><td>取得結果の純度。LLMへ無関係情報を渡さない度合い。</td></tr>
+            <tr><td>NDCG@K</td><td>各順位のrelevanceを下位ほどdiscountして合計し、理想順位のDCGで割る。関連chunkが理想順なら1.0。</td><td>複数の関連chunkを、重要なものから上位へ並べられているか。主にrerankerの順位品質を見る。</td></tr>
+            <tr><td>MRR</td><td>各queryで最初に現れる関連chunkの順位を逆数にして平均する。最初が2位ならそのqueryのRRは0.5。</td><td>回答に使える最初の根拠へどれだけ早く到達できるか。最初の1件が重要な用途に向く。</td></tr>
+            <tr><td>Recall@K</td><td>ground truth上の全関連chunkのうち、Top-Kへ入った割合。</td><td>必要な根拠を候補段階で落としていないか。Stage 1のcandidate retrievalで優先する。</td></tr>
+            <tr><td>Precision@K</td><td>取得したK件のうち、ground truthで関連ありと判定された割合。</td><td>LLMへ渡すcontextに無関係chunkがどれだけ混ざるか。Top-Kとrerankingの調整に使う。</td></tr>
           </tbody>
         </table>
       </div>
@@ -618,13 +648,17 @@ sequenceDiagram
       <p>データは「near me」「Parisで探す」、明示座標、複数tool、multi-turnなど、実ユーザー分布を反映して多様にする。2つ目のpairはJSONだけの言い換えではなく、tool resultがどのqueryとcallに対応するかを含む履歴全体を入力する。</p>
       <h3>SFTせず、tool説明を最適化する場合</h3>
       <p>近年のLLMはコードを大量に学習しており、tool schemaと説明だけでも呼び出せる場合がある。講義は、望ましいtool call pairを評価セットにし、現在の説明で成功・失敗を測り、その結果をreasoning modelへ渡して説明を書き直させる反復を提案する。これはofflineで行い、inference時には固定した説明をschemaとともに渡す。</p>
+      <div class="table-purpose">
+        <strong>この表で確認すること</strong>
+        <p>toolは「読む・計算する・現実へ作用する」の順に副作用が大きくなる。分類の目的は機能一覧を作ることではなく、LLMの予測をそのまま実行してよい範囲と、検証・承認が必要な範囲を分けることにある。</p>
+      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Toolの種類</th><th>例</th><th>主なリスク</th></tr></thead>
+          <thead><tr><th>Toolの種類</th><th>入力から実行結果まで</th><th>例</th><th>実装時の確認点</th></tr></thead>
           <tbody>
-            <tr><td>情報取得</td><td>ニュース、天気、株価、在庫</td><td>古い値、誤った引数、sourceの信頼性</td></tr>
-            <tr><td>計算</td><td>queryをコードへ変換して実行</td><td>生成コードの誤り、実行環境の権限</td></tr>
-            <tr><td>行動</td><td>メール送信、予約、設定変更</td><td>不可逆操作、権限濫用、data exfiltration</td></tr>
+            <tr><td>情報取得</td><td>LLMが場所・日付・銘柄などの引数を作り、read-only APIから構造化データを受け取る。</td><td>ニュース検索、天気、株価、在庫、近くのteddy bear。</td><td>対象・時刻・単位を検証し、古い結果や誤ったlocationを自然言語回答へ混ぜない。</td></tr>
+            <tr><td>計算</td><td>自然言語queryを式やコードへ変換し、LLM外の実行環境で計算して結果を戻す。</td><td>数値計算、集計、queryから生成したPythonの実行。</td><td>生成コードと入力値を検証し、実行環境の権限・時間・resourceを制限する。</td></tr>
+            <tr><td>行動</td><td>宛先・対象・変更値を引数として、外部systemへ書き込みや状態変更を行う。</td><td>メール送信、予約、温度調整、設定変更。</td><td>誤送信や不可逆変更を防ぐため、最小権限、重要操作の確認、実行記録を設ける。</td></tr>
           </tbody>
         </table>
       </div>
@@ -661,16 +695,20 @@ sequenceDiagram
         <img src="../images/stanford-cme295-lecture7-agentic-llms/15-mcp-components.jpg" alt="MCP Host、Client、Server、Tools、Prompts、Resourcesの関係図" loading="lazy" />
         <figcaption>MCP Host内のClientがServerへ接続し、ServerがTools・Prompts・Resourcesを公開する構成。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=5400s" target="_blank" rel="noopener">1:30:00</a></figcaption>
       </figure>
+      <div class="table-purpose">
+        <strong>この表で確認すること</strong>
+        <p>MCPの用語は同じ階層の部品ではない。Host内のClientがServerへ接続し、ServerがTools・Prompts・Resourcesを公開する、という要求の流れに沿って役割を読む。右列は講義で使われた「詩好きのteddy bearへ書籍を推薦する」1つのシナリオで統一している。</p>
+      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>構成要素</th><th>講義での役割</th><th>書籍推薦の例</th></tr></thead>
+          <thead><tr><th>構成要素</th><th>要求の流れでの役割</th><th>書籍推薦の例</th></tr></thead>
           <tbody>
-            <tr><td>MCP Host</td><td>LLMを含むユーザー向けアプリ</td><td>ClaudeなどのLLM host</td></tr>
-            <tr><td>MCP Client</td><td>Host内で1つのServerと1対1に接続するインフラ</td><td>書籍provider serverへの接続</td></tr>
-            <tr><td>MCP Server</td><td>能力を提供するinstance</td><td>書籍providerが運営</td></tr>
-            <tr><td>Tools</td><td>実行できる関数実装</td><td><code>find_books</code>、<code>recommend_books</code></td></tr>
-            <tr><td>Prompts</td><td>toolの使い方を示すtemplate</td><td>title検索、嗜好に沿った推薦</td></tr>
-            <tr><td>Resources</td><td>taskに使える外部データ</td><td>個人collection、人気書籍ranking</td></tr>
+            <tr><td>MCP Host</td><td>ユーザーとの会話、LLM、許可されたServer接続をまとめるアプリケーション側の実行主体。</td><td>詩好きのteddy bearへの推薦依頼を受けるClaudeなどのLLM host。</td></tr>
+            <tr><td>MCP Client</td><td>Host内にあり、特定のMCP Serverと1対1で接続して、能力一覧の取得と要求・応答の受け渡しを行う。</td><td>Claude側で、書籍provider serverとの通信を担当する接続。</td></tr>
+            <tr><td>MCP Server</td><td>対象domainの能力をまとめ、Hostから利用できる形でTools・Prompts・Resourcesを公開する。</td><td>書籍データに詳しいproviderが運営するserver。</td></tr>
+            <tr><td>Tools</td><td>modelが引数を指定して実行できる、入出力schema付きの関数。</td><td><code>find_books(title)</code>、<code>recommend_books(preference)</code>。</td></tr>
+            <tr><td>Prompts</td><td>特定taskでtoolや情報をどう使うかを示す、再利用可能なprompt template。</td><td>titleから探す手順、teddy bearの嗜好から詩集を推薦する手順。</td></tr>
+            <tr><td>Resources</td><td>回答やtool実行のcontextとして読み取る外部データ。関数の実行そのものとは区別する。</td><td>teddy bear本人の蔵書collection、人気書籍ranking。</td></tr>
           </tbody>
         </table>
       </div>
@@ -738,14 +776,18 @@ flowchart LR
         <img src="../images/stanford-cme295-lecture7-agentic-llms/17-agent-safety.jpg" alt="現実世界への害とdata exfiltrationを挙げるAgent Safetyスライド" loading="lazy" />
         <figcaption>Agentの安全リスクとして「現実世界への害」と「data exfiltration」を挙げるスライド。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=6190s" target="_blank" rel="noopener">1:43:10</a></figcaption>
       </figure>
+      <div class="table-purpose">
+        <strong>この表で確認すること</strong>
+        <p>Agent安全性は1つのfilterで完結しない。modelを学習する段階、実行直前、配備前の評価、実環境の権限制御を重ね、1層の見逃しがそのまま外部への副作用にならないようにする。</p>
+      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>対策層</th><th>講義での方法</th><th>狙い</th></tr></thead>
+          <thead><tr><th>対策層</th><th>具体的に何をするか</th><th>data exfiltration例にどう効くか</th></tr></thead>
           <tbody>
-            <tr><td>Training-time</td><td>SFT/RLのdata mixtureへ安全・harmlessnessの例を含める</td><td>危険なtool useや要求をモデルのpolicy自体で避ける。</td></tr>
-            <tr><td>Inference-time</td><td>Safety classifierでquery、tool call、outputを監視</td><td>運用時に危険な入力・出力をblockまたはreviewへ回す。</td></tr>
-            <tr><td>Evaluation</td><td>ToolSword、Agent Safety Benchなどでhazardを測る</td><td>正常taskの成功率だけでなく、悪用耐性を定量化する。</td></tr>
-            <tr><td>Operations</td><td>最小権限、確認、trace、取消可能性を持たせる</td><td>誤りが現実の不可逆操作へ直結する範囲を狭める。</td></tr>
+            <tr><td>Training-time</td><td>SFT/RLのdata mixtureへ、危険な要求を拒否し安全な代替へ導くharmlessness例を含める。</td><td>「passwordを外部へ送る」という要求を、tool callへ変換する前にmodelのpolicyで拒否する。</td></tr>
+            <tr><td>Inference-time</td><td>Safety classifierでuser query、生成されたtool call、最終outputを実行前に判定する。</td><td>送信先・本文・機密情報を含むcallをblockし、必要ならhuman reviewへ回す。</td></tr>
+            <tr><td>Evaluation</td><td>ToolSwordやAgent Safety Benchなどのhazard testを継続実行し、model・prompt・tool変更前後を比較する。</td><td>通常taskの成功率だけでは見えない、誘導された機密送信の成功率とregressionを配備前に検出する。</td></tr>
+            <tr><td>Operations</td><td>toolへ最小権限を与え、重要操作には確認、trace、取消可能な実行設計を組み合わせる。</td><td>modelとclassifierが誤っても、passwordへアクセスできない、または外部送信前に止められる境界を作る。</td></tr>
           </tbody>
         </table>
       </div>
