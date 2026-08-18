@@ -402,17 +402,27 @@ flowchart LR
 
     <section id="s06">
       <h2>6. Dense Retrieval：SBERTとBi-encoder</h2>
-      <p class="section-lead">候補取得の第1手法は、queryとchunkを別々にembedding化し、<strong>cosine similarity</strong>で意味の近いものを探すdense retrievalである。chunk側を事前計算できるため大規模検索に向く一方、固有名詞の完全一致は保証しない。この弱点が、次のBM25を併用する理由になる。</p>
+      <p class="section-lead">候補取得には、queryとchunkを「意味が比較できる数値ベクトル」へ変換するencoderが必要になる。講義ではこの役割を担う代表例として<strong>Sentence-BERT（SBERT）</strong>を紹介し、queryとchunkを別々に処理するbi-encoder構成でdense retrievalを組み立てる。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/07-bi-encoder.jpg" alt="QueryとChunkを別々にencodeして類似度を計算するBi-encoder図" loading="lazy" />
         <figcaption>QueryとChunkを独立にencodeし、ベクトル間の類似度を計算するbi-encoder。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=1860s" target="_blank" rel="noopener">31:00</a></figcaption>
       </figure>
-      <h3>SBERTの役割</h3>
-      <p>Sentence-BERTはBERTを文・シーケンスレベルのembedding生成へ適応する。関連ペアのcosine similarityを高くし、非関連ペアを低くするよう学習する。講義ではSBERT論文とドキュメントの一読を強く勧める。</p>
-      <ul>
-        <li>knowledge baseが巨大なら線形な全件比較は重い。FAISSなどの<strong>Approximate Nearest Neighbor</strong>手法で探索を近似・高速化する。</li>
-        <li>Q&amp;Aでは、既定の距離としてcosine similarityが一般的と説明。embeddingをunit normへ正規化すればL2距離と密接に対応する。</li>
-      </ul>
+      <h3>SBERTはbi-encoderの「Encoder」に当たる</h3>
+      <p>上図の2つのEncoderに同じSBERTを使う。通常のBERTはtokenごとの表現を作ることに長けているが、文や段落全体を1本のベクトルとして比較する用途にそのまま最適化されているわけではない。SBERTはBERTを土台に、文全体を固定長ベクトルへまとめ、<strong>意味が近い文ほどベクトルも近くなる</strong>ように学習したmodelである。</p>
+      <p>学習時には、質問と正しい根拠のような関連pairを近づけ、無関係なpairを遠ざける。たとえば「Where is Cuddly?」と「Cuddly is on the sofa.」は表現が完全一致しなくても近くなり、天気を説明するchunkは遠くなる。この幾何的な近さを、検索時の関連度として利用する。</p>
+      <p>bi-encoderでの検索は次の順序になる。</p>
+      <ol>
+        <li><strong>索引構築：</strong>knowledge baseの各chunkをSBERTへ通し、embeddingを事前計算して保存する。</li>
+        <li><strong>問い合わせ：</strong>user queryも同じSBERTでembeddingへ変換する。</li>
+        <li><strong>候補取得：</strong>query embeddingに近いchunk embeddingを探し、上位のTop-Kを返す。</li>
+      </ol>
+
+      <h3>巨大なknowledge baseではANNで探索範囲を絞る</h3>
+      <p>chunkが少なければ、queryと全chunkの類似度を計算してもよい。しかし件数が増えると、queryのたびに全ベクトルを比較する線形探索が重くなる。<strong>Approximate Nearest Neighbor（ANN）</strong>はベクトル空間を索引化し、近そうな領域だけを探索することで高速化する。厳密な最近傍をまれに逃す可能性と引き換えに、検索時間を大きく減らす方法であり、FAISSはこの種のvector searchを実装する代表的なlibraryとして紹介される。</p>
+
+      <h3>Cosine similarityとL2距離の違い</h3>
+      <p>cosine similarityはベクトルの<strong>向き</strong>がどれだけ近いかを測り、値が大きいほど意味が近いとみなす。L2距離は2点間の直線距離で、値が小さいほど近い。embeddingの長さを1へ正規化すると <code>||a - b||² = 2 - 2 cos(a, b)</code> となるため、cosine similarityの高い順とL2距離の小さい順は同じになる。講義中の質疑応答で両者が密接に関係すると説明されたのはこのためである。</p>
+      <p>SBERTとANNを組み合わせれば、文面が違っても意味の近いchunkを高速に集められる。ただし「Cuddly」と「Huggy」のように意味は近いが名前は別という場合もあるため、次のBM25で文字列一致を補う。</p>
     </section>
 
     <section id="s07">
