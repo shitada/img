@@ -466,7 +466,7 @@ flowchart LR
 
     <section id="s09">
       <h2>9. Prompt Caching：共通prefixの計算を再利用する</h2>
-      <p class="section-lead">Contextual Retrievalでは、同じ文書全体をprefixにして異なるchunkを何度も処理する。decoder-only LLMは同じprefixなら内部計算も共通になるため、そのactivationを保存・再利用すればoffline前処理を安くできる。これで候補の準備と取得が実用的になり、次は候補の順序を精密化できる。</p>
+      <p class="section-lead">Contextual Retrievalでは、1つの文書から切り出した各chunkへ短い背景説明を付けるため、同じ文書全体を何度もLLMへ入力する。毎回先頭から計算し直す無駄を減らす仕組みがPrompt Cachingである。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/10-prompt-caching.jpg" alt="Contextual RetrievalとGPT-5のcached input価格を示すスライド" loading="lazy" />
         <figcaption>Contextual Retrievalの共通prefixと、GPT-5の通常input $1.25 / 100万tokenに対してcached input $0.125を示す価格例。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=2630s" target="_blank" rel="noopener">43:50</a></figcaption>
@@ -475,17 +475,37 @@ flowchart LR
         <div class="stat-card"><div class="num">1/10</div><div class="label">講義スライドのGPT-5例におけるcached inputの通常input比</div></div>
         <div class="stat-card"><div class="num">Prefix</div><div class="label">繰り返す指示・文書・定義はprompt先頭へ集約する</div></div>
       </div>
-      <p>Q&amp;Aではactivationを「各layerの出力」と説明する。プロバイダのcache機構を使う場合も、変化しない部分を前へ、queryごとに変わる部分を後ろへ置くprompt設計が重要になる。</p>
+      <p>再利用するのは文書の文字列だけではなく、そのprefixをmodelへ通したときに各Transformer layerで得られる<strong>中間状態</strong>である。decoder-only LLMには「各tokenは自分より前にあるtokenだけを参照する」というcausal attentionの制約がある。そのため後ろへ別のchunkを追加しても、先頭にある文書部分の計算結果は変わらない。</p>
+      <p>具体的には、各layerが文書tokenから作るKey・Value tensorを再利用する。KeyとValueは、modelが「過去のどのtokenをどれだけ参照するか」を計算するために保持する内部データで、推論時にはKV cacheとして保存される。prompt cachingは、このprefixのprefill結果を1回の応答内だけでなく、同じprefixを使う後続requestでも読み戻す考え方である。</p>
+      <p>たとえばContextual Retrievalの入力は次のように分けられる。</p>
+      <ul>
+        <li><strong>毎回同じprefix：</strong>文書全体</li>
+        <li><strong>呼び出しごとに変わるsuffix：</strong>「以下が対象chunk」という導入文 + chunk A、chunk B、chunk C + そのchunkの短い背景説明を求める指示</li>
+      </ul>
+      <p>最初の呼び出しではprefixの全tokenを処理し、各layerのKey・Valueなどをcacheへ保存する。次のchunkを処理するときは、入力が同じprefixから始まることを確認してcacheを読み戻し、異なるchunk部分と生成outputだけを追加計算する。文書全体の長いprefillをchunk数だけ繰り返さずに済むため、処理時間とinput費用を減らせる。</p>
+      <p>この再利用を成立させるには、共通部分が同じtoken列としてpromptの先頭に並んでいる必要がある。文書、共通指示、tool定義などの変わらない情報を前へ置き、chunkやqueryのように変わる情報を後ろへ置くのはこのためである。cacheが自動で使われるか明示指定が必要か、最低prefix長、保持時間などはproviderによって異なる。Contextual Retrievalの前処理を終えた後は、得られた候補をcross-encoderで精密に並べ直す。</p>
     </section>
 
     <section id="s10">
       <h2>10. Cross-encoderで候補を再ランキングする</h2>
-      <p class="section-lead">Stage 1で候補を集めた後は、LLMへ渡すTop-Kの順序を決める。bi-encoderは高速だがqueryとchunkの細かな対応を見ないため、候補だけをcross-encoderへ渡し、両者のtoken間attentionから関連度を再計算する。これでRAGの検索pipelineが一通り完成する。</p>
+      <p class="section-lead">Stage 1は「関連しそうな候補を落とさず集める」処理であり、Stage 2は「候補のどれがqueryへ直接答えるかを精密に判定する」処理である。この2つの問いに、bi-encoderとcross-encoderがそれぞれ異なる計算方法で答える。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/11-cross-encoder.jpg" alt="QueryとChunkを同時に入力して関連度を出すCross-encoder図" loading="lazy" />
         <figcaption>QueryとChunkを一つの入力として処理し、より精密なrelevance scoreを出すcross-encoder。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=2748s" target="_blank" rel="noopener">45:48</a></figcaption>
       </figure>
-      <p>bi-encoderとcross-encoderは競合する代替案ではなく、同じpipelineの前段と後段を分担する。前者でknowledge base全体から候補を安く集め、後者はその候補だけを精密に並べ直す。</p>
+
+      <h3>Bi-encoderは別々に読み、再利用できるembeddingを作る</h3>
+      <p>前述のbi-encoderは、queryとchunkを互いに見せず別々のembeddingへ変換し、ベクトル間の距離だけで関連度を求める。chunk embeddingを事前保存して大規模なvector searchに再利用できる一方、「queryのどの語がchunkのどの記述へ対応するか」は直接見ていない。</p>
+
+      <h3>Cross-encoderはqueryと候補を一緒に読み、1つのscoreを返す</h3>
+      <p>cross-encoderは独立したembeddingを作らない。1つの入力へqueryと1件の候補chunkを連結し、Transformerに同時に読ませる。するとqueryとchunkのtokenがmodel内部で直接参照し合えるため、「queryのこの語が、chunkのどの記述へ対応するか」まで考慮し、最後にそのpairのrelevance scoreを1つ返せる。</p>
+      <p>たとえばqueryが「Berlinの人口は何人か」で、候補に「Berlinの人口を数値で述べる文」と「Berlinには多くの博物館があるという文」があるとする。どちらもBerlinというtopicには近いが、cross-encoderは「人口」「何人」と具体的な数値記述の対応を見て、前者を高く評価できる。一方、この計算はqueryと候補のpairごとに必要なので、knowledge base全体へ直接適用すると遅い。そこでbi-encoderやBM25が絞ったTop 100程度の候補だけを再評価する。</p>
+
+      <h3>現在のRAGでもrerankerとして使われる</h3>
+      <p>講義外の現在情報を補足すると、cross-encoderは現在のRAGでも検索品質を上げる一般的な選択肢である。<a href="https://sbert.net/docs/cross_encoder/usage/usage.html" target="_blank" rel="noopener">Sentence Transformers公式ドキュメント</a>は、cross-encoderをbi-encoderより高精度だがpairごとの計算で遅いmodelと説明し、Top-Kのrerankingを代表用途としている。<a href="https://docs.cohere.com/docs/reranking-with-cohere" target="_blank" rel="noopener">Cohereの公式ガイド</a>も、vector searchまたはkeyword searchの結果をRAGの第2段階でrerankする構成を示している。</p>
+      <p>したがって典型的な流れは、<strong>vector search / BM25で候補取得 → cross-encoder系rerankerで並べ替え → 上位だけをLLMへ渡す</strong>となる。ただし必須ではなく、latencyと費用を優先するsystemではrerankingを省き、品質を重視するsystemでは追加する。</p>
+
+      <p>この分担を踏まえると、両者は競合する代替案ではなく、同じpipelineの前段と後段を担当していることが分かる。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>観点</th><th>Bi-encoder</th><th>Cross-encoder</th></tr></thead>
@@ -498,7 +518,7 @@ flowchart LR
           </tbody>
         </table>
       </div>
-      <p>rerankerには事前学習済みモデルも、用途別に学習したモデルも使える。候補全体ではなくStage 1で絞った集合だけへ適用することで、精度と費用のバランスを取る。</p>
+      <p>rerankerには事前学習済みmodelやAPIを使う方法と、domain固有の関連pairで学習する方法がある。どちらを選んでも、次節のNDCGやMRRで追加コストに見合う順位改善が得られたかを確認する。</p>
     </section>
 
     <section id="s11">
