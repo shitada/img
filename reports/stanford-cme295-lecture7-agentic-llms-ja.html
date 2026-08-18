@@ -532,6 +532,19 @@ flowchart LR
         DCG@K = Σ<sub>i=1..K</sub> rel<sub>i</sub> / log<sub>2</sub>(i + 1)
         <small>NDCG@K = DCG@K / IDCG@K。IDCGは関連文書を理想順に並べたときのDCG。</small>
       </div>
+      <h3>式を言葉に置き換える</h3>
+      <p><strong>DCG@Kは「上位K件に入った関連chunkへ、順位に応じた点数を与えて合計する」指標</strong>である。関連chunkが上位にあるほど大きく加点し、下位へ行くほど点数を小さくする。</p>
+      <ul>
+        <li><code>K</code> は評価する検索結果の件数。<code>DCG@5</code> なら上位5件だけを見る。</li>
+        <li><code>rel<sub>i</sub></code> はi位のchunkが正解に関連する度合い。講義の単純な例では、関連ありを1、なしを0とする。</li>
+        <li><code>log<sub>2</sub>(i + 1)</code> は順位の割引である。1位では1で割るため満点、3位では2で割るため同じ関連chunkでも半分の点になる。</li>
+      </ul>
+      <p>ただしDCGだけでは、queryごとに関連chunkの総数が違うとscoreを比較しにくい。そこで、関連chunkを可能な限り上位へ並べた<strong>理想順位のDCG（IDCG）</strong>を計算し、実際のDCGをIDCGで割る。言葉にすれば、<strong>NDCG@K = 実際の並び順で得た点数 ÷ そのqueryで取り得る理想点</strong>であり、理想どおりなら1、関連chunkが下位へ落ちるほど0へ近づく。</p>
+
+      <h3>3件の検索結果で計算する例</h3>
+      <p>上位3件のrelevanceが順に <code>[1, 0, 1]</code> だったとする。1位の関連chunkは <code>1 / log₂(2) = 1</code> 点、2位は非関連なので0点、3位の関連chunkは <code>1 / log₂(4) = 0.5</code> 点となり、<code>DCG@3 = 1.5</code> である。</p>
+      <p>理想順位は関連chunkを1位と2位へ並べた <code>[1, 1, 0]</code> なので、<code>IDCG@3 = 1 + 1 / log₂(3) ≈ 1.63</code>。したがって <code>NDCG@3 = 1.5 / 1.63 ≈ 0.92</code> となる。必要なchunkは取得できているが、1件が2位ではなく3位へ下がった分だけ、理想値1.0から減点されたと読める。</p>
+
       <p>同じTop-K結果でも、4指標が捉える失敗は異なる。候補の漏れ、最初の根拠の遅さ、複数根拠の順序、無関係chunkの混入を分けて測ることで、Stage 1とStage 2のどちらを改善すべきか判断できる。</p>
       <div class="table-wrap">
         <table>
