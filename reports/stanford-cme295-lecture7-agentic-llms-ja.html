@@ -475,15 +475,33 @@ flowchart LR
         <div class="stat-card"><div class="num">1/10</div><div class="label">講義スライドのGPT-5例におけるcached inputの通常input比</div></div>
         <div class="stat-card"><div class="num">Prefix</div><div class="label">繰り返す指示・文書・定義はprompt先頭へ集約する</div></div>
       </div>
-      <p>再利用するのは文書の文字列だけではなく、そのprefixをmodelへ通したときに各Transformer layerで得られる<strong>中間状態</strong>である。decoder-only LLMには「各tokenは自分より前にあるtokenだけを参照する」というcausal attentionの制約がある。そのため後ろへ別のchunkを追加しても、先頭にある文書部分の計算結果は変わらない。</p>
-      <p>具体的には、各layerが文書tokenから作るKey・Value tensorを再利用する。KeyとValueは、modelが「過去のどのtokenをどれだけ参照するか」を計算するために保持する内部データで、推論時にはKV cacheとして保存される。prompt cachingは、このprefixのprefill結果を1回の応答内だけでなく、同じprefixを使う後続requestでも読み戻す考え方である。</p>
-      <p>たとえばContextual Retrievalの入力は次のように分けられる。</p>
-      <ul>
-        <li><strong>毎回同じprefix：</strong>文書全体</li>
-        <li><strong>呼び出しごとに変わるsuffix：</strong>「以下が対象chunk」という導入文 + chunk A、chunk B、chunk C + そのchunkの短い背景説明を求める指示</li>
-      </ul>
-      <p>最初の呼び出しではprefixの全tokenを処理し、各layerのKey・Valueなどをcacheへ保存する。次のchunkを処理するときは、入力が同じprefixから始まることを確認してcacheを読み戻し、異なるchunk部分と生成outputだけを追加計算する。文書全体の長いprefillをchunk数だけ繰り返さずに済むため、処理時間とinput費用を減らせる。</p>
-      <p>この再利用を成立させるには、共通部分が同じtoken列としてpromptの先頭に並んでいる必要がある。文書、共通指示、tool定義などの変わらない情報を前へ置き、chunkやqueryのように変わる情報を後ろへ置くのはこのためである。cacheが自動で使われるか明示指定が必要か、最低prefix長、保持時間などはproviderによって異なる。Contextual Retrievalの前処理を終えた後は、得られた候補をcross-encoderで精密に並べ直す。</p>
+      <p>decoder-only LLMでは、先頭のtokenは後ろへ追加されるtokenを参照しない。そのため同じ文書全体をprefixにすれば、文書tokenから各layerが計算したKey・Valueを後続requestでも再利用できる。最初のchunkでは文書全体を計算し、2件目以降はcacheを読み戻して、異なるchunkと生成outputだけを追加計算する。</p>
+
+      <div class="mermaid">
+flowchart LR
+  subgraph OFF["索引構築時（文書ごとに一度）"]
+    direction TB
+    D[文書全体] --> C[Chunking]
+    D --> K["共通prefixを1回prefill<br/>文書tokenのKey・Valueをcache"]
+    C --> S["可変suffix<br/>対象chunk + 背景説明を求める指示"]
+    K --> L[Contextualization用LLM]
+    S --> L
+    L --> E["短い文脈説明をchunk先頭へ付加"]
+    E --> I["Embedding / BM25 indexへ保存"]
+  end
+
+  subgraph ON["問い合わせ時（user queryごと）"]
+    direction TB
+    Q[User query] --> R[関連chunkを候補取得]
+    I --> R
+    R --> RR[Cross-encoderでrerank]
+    RR --> P["最終promptを作成<br/>query + 上位chunk"]
+    P --> A[回答用LLM]
+  end
+      </div>
+
+      <p><strong>Contextual Retrievalは最終回答を作るたびに行う処理ではない。</strong> 文書をknowledge baseへ登録する索引構築時に、各chunkへ背景説明を付け、その結果をembedding・BM25 indexへ保存する。user queryが来た後は、すでに文脈付きになったchunkを検索・再ランキングし、選ばれた上位chunkだけを最終promptへ入れる。</p>
+      <p>つまりPrompt Cachingが減らすのは、索引構築時に文書全体をchunk数だけ読み直す計算である。cacheの自動利用、最低prefix長、保持時間はproviderによって異なるが、共通部分を同じtoken列で先頭へ置くという原則は共通する。</p>
     </section>
 
     <section id="s10">
