@@ -77,15 +77,11 @@
     background: var(--bg); border: 1px solid var(--border);
     font-size: 12px; color: var(--text-dim);
   }
-  .tldr, .callout {
+  .tldr {
     background: var(--bg-elev); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 16px 22px; margin: 24px 0;
   }
   .tldr h2 { margin: 0 0 10px; font-size: 16px; color: var(--accent); letter-spacing: .04em; }
-  .callout { border-left: 4px solid var(--accent); }
-  .callout strong { color: var(--accent); }
-  .callout.info { border-left-color: var(--link); }
-  .callout.info strong { color: var(--link); }
   section { margin: 46px 0; scroll-margin-top: 24px; }
   section h2 { font-size: 22px; margin: 0 0 14px; padding-bottom: 8px; border-bottom: 2px solid var(--accent); display: inline-block; }
   section h3 { font-size: 17px; margin: 26px 0 8px; color: var(--accent); }
@@ -108,10 +104,6 @@
   .stat-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
   .stat-card .num { font-size: 26px; font-weight: 700; color: var(--accent); line-height: 1.2; }
   .stat-card .label { color: var(--text-dim); font-size: 12.5px; margin-top: 4px; }
-  .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 18px 0; }
-  .grid-cards .card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
-  .grid-cards .card h4 { margin: 0 0 6px; font-size: 14px; color: var(--accent); }
-  .grid-cards .card p { margin: 0; font-size: 13.5px; color: var(--text-dim); }
   figure.shot { margin: 24px 0; }
   figure.shot img {
     display: block; width: 100%; height: auto;
@@ -224,12 +216,13 @@
         <div class="stat-card"><div class="num">6領域</div><div class="label">知識・推論・コード・安全性・エージェント・実運用</div></div>
       </div>
 
+      <p>この難しさに対する三つの代表的な方法は、必要な教師信号、評価できる範囲、運用コストが異なる。以降の流れを見通すため、まず各方法が何を解決し、どこで次の方法が必要になるかを整理する。</p>
       <table>
         <thead><tr><th>評価方法</th><th>必要なもの</th><th>強み</th><th>主な限界</th></tr></thead>
         <tbody>
-          <tr><td>人手評価</td><td>評価者と基準</td><td>人間の選好を直接測れる</td><td>主観差、遅い、高価</td></tr>
-          <tr><td>参照文＋ルールベース</td><td>正解参照文</td><td>高速、安価、再現可能</td><td>言い換え・文体差に弱い</td></tr>
-          <tr><td>LLM-as-a-Judge</td><td>評価基準と Judge モデル</td><td>参照文なしでも開始でき、理由も返せる</td><td>バイアス、確率性、人間とのずれ</td></tr>
+          <tr><td>人手評価</td><td>対象プロンプト、応答、採点基準、訓練された評価者</td><td>有用性や自然さなど、人間の選好を直接判断できる。後続手法を校正するground truthにもなる</td><td>評価者間で判断が割れ、反復ごとの採点は遅く高価。大量の回帰評価には向かない</td></tr>
+          <tr><td>参照文＋ルールベース</td><td>プロンプトごとの理想回答と、METEOR・BLEU・ROUGEなどの比較式</td><td>同じ参照文を再利用して高速・安価・再現可能に比較でき、モデル更新の回帰確認に使いやすい</td><td>意味が同じ言い換えや文体差でも低得点になり、参照文のない新しい問いには適用できない</td></tr>
+          <tr><td>LLM-as-a-Judge</td><td>元のプロンプト、モデル応答、明示した評価基準、Judgeモデル</td><td>参照文なしでも自由形式の応答を評価でき、スコアに加えて判断理由を返せる</td><td>位置・冗長性・自己強化などのbiasと確率性があり、人手との相関を継続確認する必要がある</td></tr>
         </tbody>
       </table>
 
@@ -251,32 +244,31 @@ flowchart LR
         <figcaption>観測一致率 <em>p<sub>o</sub></em> を偶然一致率 <em>p<sub>e</sub></em> で補正する Cohen's κ の式。左の黒板には、二人が独立に判定するときの一致率を <code>pA·pB + (1−pA)(1−pB)</code> と置く導出が残る。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=920s" target="_blank" rel="noopener">15:20</a></figcaption>
       </figure>
 
+      <p>一致の測り方は、評価者数やデータの欠損を扱う必要によって変わる。単純一致率を出発点に、偶然一致を補正する指標へ進む理由と使い分けは次のとおりである。</p>
       <table>
-        <thead><tr><th>指標</th><th>想定</th><th>講義での位置づけ</th></tr></thead>
+        <thead><tr><th>指標</th><th>計算と想定</th><th>評価設計で分かること</th></tr></thead>
         <tbody>
-          <tr><td>単純一致率</td><td>同じ判定の割合</td><td>直感的だが、偶然一致を補正しない</td></tr>
-          <tr><td>Cohen's κ</td><td>主に2名の評価者</td><td>観測一致と偶然一致の差を正規化</td></tr>
-          <tr><td>Fleiss' κ</td><td>複数評価者</td><td>Cohen's κ を複数評価者へ拡張</td></tr>
-          <tr><td>Krippendorff's α</td><td>複数評価者・欠損等を含む柔軟な設定</td><td>より一般的な一致度の測定</td></tr>
+          <tr><td>単純一致率</td><td>全項目のうち、評価者が同じlabelを付けた割合を数える</td><td>直感的な現状把握には使えるが、Yes/Noを半々でランダムに選んでも50%一致するため、基準の品質を単独では判断できない</td></tr>
+          <tr><td>Cohen's κ</td><td>主に2名を対象に、観測一致率 <em>p<sub>o</sub></em> を偶然一致率 <em>p<sub>e</sub></em> で補正する</td><td>二人の一致が偶然をどれだけ上回るかを見て、採点基準をすり合わせる必要性を判断できる</td></tr>
+          <tr><td>Fleiss' κ</td><td>Cohen's κの考え方を、同じ項目を判定する複数評価者へ拡張する</td><td>評価チーム全体の一貫性を追跡し、alignment session前後の改善を見る用途に向く</td></tr>
+          <tr><td>Krippendorff's α</td><td>複数評価者に加え、欠損を含むデータなど、より一般的な設定を扱う</td><td>評価者数や回答状況が均一でない運用でも、一致度を共通の健康指標として扱える</td></tr>
         </tbody>
       </table>
 
-      <div class="callout">
-        <strong>運用上の使い方:</strong> 一致度が低ければ「評価者が悪い」と結論づけず、評価者同士の alignment session を開き、基準と例を揃える。人手評価の弱点は完全には消えないが、主観性を測定・改善可能な問題に変えられる。
-      </div>
+      <p>一致度が低ければ「評価者が悪い」と結論づけず、評価者同士の alignment session を開き、基準と例を揃える。こうして主観性は測定・改善できるが、人手評価の速度と費用は残るため、次は参照文を再利用する自動評価へ進む。</p>
     </section>
 
     <section id="s3">
       <h2>3. 参照文とルールベース指標</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=1104s" target="_blank" rel="noopener">動画 18:24</a>
-      <p>毎回の人手採点を避ける次の案は、プロンプトごとに人が一度だけ理想回答（reference）を作り、モデルを更新するたびに自動比較することだ。自然言語には同じ意味を表す複数の言い方があるため、完全一致ではなく、語や n-gram の重なりを柔軟に測る指標が使われてきた。</p>
+      <p>毎回の人手採点を避ける次の案は、プロンプトごとに人が一度だけ理想回答（reference）を作り、モデルを更新するたびに自動比較することだ。完全一致では自然な言い換えまで失敗扱いになるため、翻訳や要約では、語やn-gramの重なりを異なる方針で集約する指標が使われてきた。</p>
 
       <table>
-        <thead><tr><th>指標</th><th>主用途</th><th>中心となる考え方</th><th>補正</th></tr></thead>
+        <thead><tr><th>指標</th><th>処理内容と主用途</th><th>得意な条件</th><th>失敗しやすい条件・補正</th></tr></thead>
         <tbody>
-          <tr><td>METEOR</td><td>機械翻訳</td><td>unigram の precision / recall を重み付き F-score で統合</td><td>一致語の並びが分断されるほど chunk penalty。語幹・同義語も一部考慮</td></tr>
-          <tr><td>BLEU</td><td>機械翻訳</td><td>予測側 n-gram の一致を重視する precision 寄りの指標</td><td>短い出力で指標を稼ぐのを防ぐ brevity penalty</td></tr>
-          <tr><td>ROUGE</td><td>要約</td><td>参照要約との n-gram 等の重なり</td><td>複数の派生形が存在</td></tr>
+          <tr><td>METEOR</td><td>機械翻訳向け。unigramのprecisionとrecallを重み付きF-scoreでまとめる</td><td>語の一致に加えて語幹や同義語を一部認め、表層一致より柔軟に比較したい場合</td><td>一致語の順序が分断されるほどchunk penaltyを課す。それでも大きな言い換えや文体差は十分に扱えない</td></tr>
+          <tr><td>BLEU</td><td>機械翻訳向け。予測文に含まれるn-gramが参照文にも現れる割合を重視する</td><td>参照に近い語句と局所的な並びを再現できたかを、corpus規模で反復比較する場合</td><td>短い文はprecisionを稼ぎやすいためbrevity penaltyで補正する。意味が正しくても別表現なら一致しにくい</td></tr>
+          <tr><td>ROUGE</td><td>要約向け。参照要約に含まれるn-gram等を予測がどれだけ覆うかを見る派生指標群</td><td>参照側の重要語句や内容を取りこぼしていないかを確認する場合</td><td>語彙の重なりに依存するため、同じ内容を別の語で要約すると低くなり得る。用途に応じて派生形を選ぶ必要がある</td></tr>
         </tbody>
       </table>
 
@@ -297,26 +289,29 @@ flowchart LR
         <figcaption>Judgeの <code>rationale</code> と <code>score</code> を確実にparseするため、guided decodingでJSON schemaを強制する。画面は<a href="stanford-cme295-lecture3-large-language-models-ja.html">Lecture 3</a>のstructured output説明を再掲している。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=2050s" target="_blank" rel="noopener">34:10</a></figcaption>
       </figure>
 
-      <div class="grid-cards">
-        <div class="card"><h4>Pointwise</h4><p>単一応答を「良い / 悪い」「合格 / 不合格」などで評価する。</p></div>
-        <div class="card"><h4>Pairwise</h4><p>応答 A と B を比較し、どちらが優れているかを選ぶ。</p></div>
-        <div class="card"><h4>合成選好データ</h4><p>Pairwise Judge の選択を、reward model や preference tuning 用ラベルとして利用できる。</p></div>
-      </div>
-
-      <div class="callout info">
-        <strong>二つの利点:</strong> 正解参照文や人手ラベルがなくても評価を開始できること、スコアと一緒に解釈可能な理由を得られること。ただし「人手不要」ではなく、後述する校正のために人手評価は依然重要である。
-      </div>
+      <p>Judgeの出力形式を固定したら、何を一回の判定単位にするかを選ぶ。単一応答の品質管理と、二つの応答から選好データを作る用途では、入力と得られるsignalが異なる。</p>
+      <table>
+        <thead><tr><th>判定方式</th><th>Judgeへの入力と出力</th><th>適した用途</th><th>設計上の注意</th></tr></thead>
+        <tbody>
+          <tr><td>Pointwise</td><td>一つのprompt・response・criteriaを渡し、合格/不合格などのscoreとrationaleを得る</td><td>各応答が最低品質を満たすかを判定し、回帰テストやエラー分析へつなげる</td><td>多段階scaleは境界が曖昧になりやすいため、講義はbinary scaleを優先する</td></tr>
+          <tr><td>Pairwise</td><td>同じpromptへのResponse A/Bを渡し、どちらを好むかと理由を得る</td><td>モデル版の比較や、二つの候補からより良い応答を選ぶ評価</td><td>提示順で結果が変わるposition biasがあるため、A/Bを入れ替えて再判定する</td></tr>
+          <tr><td>合成選好データ</td><td>Pairwise Judgeの選択をchosen/rejectedのlabelとして蓄積する</td><td>reward modelやpreference tuning向けのデータを、人手だけに依存せず作る</td><td>Judgeのbiasもlabelへ入るため、生成量を増やす前に人手評価との相関を確認する</td></tr>
+        </tbody>
+      </table>
+      <p>LLM-as-a-Judgeの利点は、正解参照文がなくても評価を開始でき、scoreをrationaleで解釈できることにある。ただし、これは人手評価が不要になるという意味ではない。次に見るbiasを抑え、最終的には人手との校正で代理指標としての妥当性を保つ必要がある。</p>
     </section>
 
     <section id="s5">
       <h2>5. Judge の3大バイアス</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=2327s" target="_blank" rel="noopener">動画 38:47</a>
+      <p>参照文への表層一致より柔軟なJudgeも、中立な測定器ではない。Pairwiseの提示順、応答の長さ、生成モデルとの同一性が判定へ混ざると、scoreは内容品質ではなく入力形式を反映してしまう。</p>
+      <p>講義が重点的に扱う三つのbiasについて、観測される症状と、評価pipelineへ組み込む緩和策を対応させる。</p>
       <table>
         <thead><tr><th>バイアス</th><th>症状</th><th>主な対策</th></tr></thead>
         <tbody>
-          <tr><td>位置バイアス</td><td>Pairwise 比較で先に置かれた A を選びやすい</td><td>A/B と B/A の両順序で評価し、結果の一致や多数決を見る</td></tr>
-          <tr><td>冗長性バイアス</td><td>正確さではなく、長く詳細な応答を好む</td><td>長さを評価しないと明記、few-shot で例示、必要なら長さペナルティ</td></tr>
-          <tr><td>自己強化バイアス</td><td>Judge と同じモデルが生成した応答を好む</td><td>生成モデルと Judge を分け、可能ならより高能力な Judge を使う</td></tr>
+          <tr><td>位置バイアス</td><td>同じResponse A/Bでも、先に提示された方を内容と無関係に選びやすい</td><td>A/BとB/Aの両順序で評価する。両方が同じ勝者なら採用し、反転するなら不安定な判定として再検討する</td></tr>
+          <tr><td>冗長性バイアス</td><td>短く正しい応答より、不要な詳細を含む長い応答へ高得点を付ける</td><td>長さ自体を評価しないとguidelineへ明記し、few-shotで短い良答を示す。必要ならpointwise scoreへ長さpenaltyを加える</td></tr>
+          <tr><td>自己強化バイアス</td><td>人手作成の良答より、Judge自身または同系統モデルが生成した文体を好む</td><td>生成モデルとJudgeを分け、可能ならより高能力で推論に強いJudgeを使う。ただし学習データの類似による残存riskは意識する</td></tr>
         </tbody>
       </table>
       <figure class="shot">
@@ -337,15 +332,16 @@ flowchart LR
     <section id="s6">
       <h2>6. LLM Judge のベストプラクティス</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=2842s" target="_blank" rel="noopener">動画 47:22</a>
+      <p>biasを完全になくすことはできないが、採点基準、出力形式、実行条件、校正方法を固定すれば、Judgeを再現可能な評価工程へ近づけられる。講義の推奨事項は、判定前・判定時・判定後の設計判断として整理できる。</p>
       <table>
-        <thead><tr><th>実践</th><th>理由</th></tr></thead>
+        <thead><tr><th>実践</th><th>具体的な処理</th><th>評価pipelineでの役割</th></tr></thead>
         <tbody>
-          <tr><td>評価基準を crisp にする</td><td>欲しいもの・避けたいものを明示し、主観的な解釈余地を減らす</td></tr>
-          <tr><td>二値スケールを優先</td><td>多段階採点より Judge と人間の双方が判断しやすく、余計なノイズを減らせる</td></tr>
-          <tr><td>理由を先に出す</td><td>判断材料を外化してからスコアを確定させる</td></tr>
-          <tr><td>既知のバイアスを検査・緩和</td><td>位置入れ替え、長さの明示、別モデル利用などを評価系に組み込む</td></tr>
-          <tr><td>人手評価と校正する</td><td>Judge は人間の選好の代理なので、相関分析でずれを確認しプロンプトを改善する</td></tr>
-          <tr><td>低温度を使う</td><td><code>temperature = 0.1〜0.2</code> 程度で再現性を高める</td></tr>
+          <tr><td>評価基準をcrispにする</td><td>満たす条件と失敗条件を具体的に書き、曖昧な「高品質」だけで判定させない</td><td>Judgeと人間が同じrubricを参照でき、評価者間・実行間の解釈差を減らす</td></tr>
+          <tr><td>二値scaleを優先</td><td>可能なら「pass / fail」の二択にし、多段階scoreは必要な場合だけ使う</td><td>境界の数を減らしてJudgeと人間の判断を揃え、label noiseを抑える</td></tr>
+          <tr><td>rationaleを先に出す</td><td>応答の良い点・悪い点を述べさせてからscoreを確定させる</td><td>判断材料を先に処理させ、scoreの根拠をエラー分析で読める形にする</td></tr>
+          <tr><td>既知のbiasを検査・緩和</td><td>順序入れ替え、長さを無視する指示、生成器と別のJudgeなどを組み合わせる</td><td>内容以外の要因でscoreが動くかを検査し、系統的な偏りを減らす</td></tr>
+          <tr><td>人手評価と校正する</td><td>同じ応答へ人手labelとJudge scoreを付け、相関を見ながらpromptを直す</td><td>Judgeを人間の選好のproxyとして維持し、proxyだけへの過剰最適化を防ぐ</td></tr>
+          <tr><td>低temperatureを使う</td><td><code>temperature = 0.1〜0.2</code>程度でsamplingの揺れを抑える</td><td>同じ評価を別の日に再実行してもscoreが大きく変わらない再現性を確保する</td></tr>
         </tbody>
       </table>
       <figure class="shot">
@@ -353,7 +349,7 @@ flowchart LR
         <figcaption>Crisp guidelines、binary scale、rationale先行、bias緩和、人手とのcalibration、低temperatureという6項目の総括。最後の図は低温度ほど次tokenの選択が集中し、評価を再現しやすいことを示す。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=3075s" target="_blank" rel="noopener">51:15</a></figcaption>
       </figure>
       <blockquote>Judge の点数を上げること自体が目的になると、人間の評価とはずれた代理指標へ最適化してしまう。Judge と人手の乖離を継続監視する必要がある。</blockquote>
-      <p>評価軸は大きく、<strong>タスク性能</strong>（有用性、事実性、関連性など）と、<strong>出力の整合性</strong>（トーン、スタイル、安全性など）に分けられる。何を測るかを先に定義し、異なる軸を一つの曖昧なスコアへ潰しすぎないことが重要である。</p>
+      <p>評価軸は大きく、<strong>タスク性能</strong>（有用性、事実性、関連性など）と、<strong>出力の整合性</strong>（トーン、スタイル、安全性など）に分けられる。異なる軸を一つの曖昧なscoreへ潰さず、特に部分的な誤りを含む事実性は、次のように判定単位そのものを細かくする。</p>
     </section>
 
     <section id="s7">
@@ -406,59 +402,62 @@ flowchart LR
   S -.次の行動が必要.-> P
       </div>
 
-      <div class="callout">
-        <strong>診断の原則:</strong> 失敗例を個別の珍事件として追うのではなく、共通する失敗モードへ分類し、同じ原因の群をまとめて直す。エージェント評価ではこの方法論が特に重要になる。
-      </div>
+      <p>失敗例は個別の珍事件として追うのではなく、共通する失敗モードへ分類し、同じ原因の群をまとめて直す。まずは最初の境界であるtool予測について、失敗がrouter、LLM、API設計、入力contextのどこから来たかを切り分ける。</p>
     </section>
 
     <section id="s9">
       <h2>9. ツール予測の4つの失敗</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=3739s" target="_blank" rel="noopener">動画 1:02:19</a>
+      <p>tool実行前に起きる失敗は、必要なtoolを候補へ入れられなかった場合と、候補はあるのにLLMが誤った名前・選択・引数を出した場合に分かれる。見た目が似た失敗でも修正すべきcomponentが違うため、症状から原因を逆引きする。</p>
+      <p>講義の「近くのテディベアを探す」例に沿って、四つの症状、主な原因、最初に試す改善策を対応させる。</p>
       <table>
         <thead><tr><th>失敗モード</th><th>考えられる原因</th><th>改善策</th></tr></thead>
         <tbody>
-          <tr><td>必要なツールを使わず punt する</td><td>tool router の recall 不足、または LLM が利用判断を学べていない</td><td>router の recall 改善、SFT 例の追加、プロンプト修正</td></tr>
-          <tr><td>存在しないツール名を生成</td><td>モデルが弱い、上位指示が曖昧、API 名・引数・説明が不自然</td><td>まず水平指示と API 設計を点検し、必要ならモデルを強化</td></tr>
-          <tr><td>存在するが不適切なツールを選択</td><td>ツール間のスコープが競合、router が候補を落としている</td><td>適用条件を明記し、API の責務を分離、router を調整</td></tr>
-          <tr><td>ツールは正しいが引数が誤る</td><td>位置情報など必要な文脈がない、引数の意味が不明瞭</td><td>先行ツールで情報取得、権限エラーを明示、API / SFT / prompt を改善</td></tr>
+          <tr><td>必要なtoolを使わずpuntする</td><td><code>find_teddy_bear</code>がrouter候補から漏れたrecall error、または候補にあってもLLMが利用判断を学べていない</td><td>routerのrecallを測って候補へ残す。候補済みならtool利用のSFT例やpromptを追加し、どの層で落ちたかを分けて直す</td></tr>
+          <tr><td>存在しないtool名を生成する</td><td>定義済みの<code>find_teddy_bear</code>ではなく<code>find_bear</code>を作る。モデル能力不足、水平指示の曖昧さ、API名・引数・説明の不自然さが候補</td><td>まず「利用可能な関数だけを呼ぶ」という上位指示とAPIの命名・docstringを点検し、それでも広く起きる場合にモデル強化を検討する</td></tr>
+          <tr><td>存在するが不適切なtoolを選ぶ</td><td>検索toolとmessage送信toolのように、複数APIの適用範囲が重なり、望む行動方針が伝わっていない</td><td>routerが望むtoolを候補へ含めるか確認し、各APIの「使う条件・使わない条件」を分けて責務の競合を減らす</td></tr>
+          <tr><td>toolは正しいが引数を誤る</td><td>現在地がcontextにないのに座標<code>(0, 0)</code>を補うなど、必要情報の欠落か引数schemaの説明不足がある</td><td>位置取得toolを先に呼び、権限がなければactionable errorを返す。引数説明、prompt、SFT例も実データの流れに合わせて直す</td></tr>
         </tbody>
       </table>
-      <figure class="shot">
-        <img src="../images/stanford-cme295-lecture8-llm-evaluation/13-agent-failure-summary.jpg" alt="tool prediction、backend実行、応答統合の各段階で起きる失敗を赤いバツ印でまとめたスライド" loading="lazy" />
-        <figcaption>7つの代表的失敗を3段階へ配置した総括。上段は未使用・hallucination・誤tool・誤argument、中段はbackendの誤応答・無応答、下段は正しいtool結果から誤った最終応答を作る失敗。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=4890s" target="_blank" rel="noopener">1:21:30</a></figcaption>
-      </figure>
       <p>tool router は、すべての API 定義を毎回コンテキストに入れないための候補絞り込みである。コンテキストを節約しつつ必要なツールを落とさない必要があるため、precision より<strong>recall を重視</strong>する。問題が router か LLM 本体かを分けて測らないと、誤った層を修正してしまう。</p>
     </section>
 
     <section id="s10">
       <h2>10. 実行と応答統合の3つの失敗</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=4452s" target="_blank" rel="noopener">動画 1:14:12</a>
+      <p>正しいtoolと引数を選べても、backendが意味のある結果を返し、LLMがその結果へgroundしなければタスクは完了しない。後半の三つの失敗は、通常のsoftware bug、toolとLLMのinterface、最終synthesisのどこを修正すべきかを示す。</p>
+      <p>処理段階ごとに、観測される失敗と、次のLLM callが解釈できる出力へ直す方針を整理する。</p>
       <table>
         <thead><tr><th>段階</th><th>失敗</th><th>実務的な対策</th></tr></thead>
         <tbody>
-          <tr><td>ツール実行</td><td>実装バグや不明瞭なエラーを返す</td><td>通常のソフトウェアとして修正。ユーザーが行動できる構造化結果へ変換する</td></tr>
-          <tr><td>ツール実行</td><td>応答を何も返さない</td><td>副作用の成功・失敗を必ず明示。該当なしでも <code>{}</code> など意味のある空結果を返す</td></tr>
-          <tr><td>応答統合</td><td>正しい結果を誤読・無視する</td><td>モデル強化、出力量の削減、意味のあるクラス名・属性・構造へ整形</td></tr>
+          <tr><td>tool実行</td><td>backendの実装bugで例外になる、または内部errorだけを返してユーザーが次に取る行動が分からない</td><td>まず通常のsoftwareとしてbugを直す。権限不足など想定内の失敗は、原因と次の行動を持つstructured resultとしてLLMへ返す</td></tr>
+          <tr><td>tool実行</td><td>温度変更など副作用を実行しても無応答で、LLMが成功を確認できない。検索結果なしも<code>None</code>だけでは意味が曖昧</td><td>成功・失敗と変更後の状態を必ず返す。該当なしなら<code>{}</code>など「検索は成功し、0件だった」と区別できる空結果を使う</td></tr>
+          <tr><td>応答統合</td><td>結果にTeddyがあるのに「見つからない」と答える。大量の不要情報に埋もれる、またはraw形式を解釈できない</td><td>tool出力を必要項目へtrimし、<code>TeddyBearInfo{name, distance}</code>のような意味のある構造にする。なお残るgrounding不足はモデル能力を見直す</td></tr>
         </tbody>
       </table>
       <p>特に副作用のあるツールが何も返さないと、モデルは成功したか判断できず、偽の成功確認を生成し得る。また、情報が多すぎる出力では重要情報が「海に沈む」。ツール出力は人間向けログの投げ込みではなく、次の LLM ステップが利用しやすい最小限の構造化データにする。</p>
-      <p>七つの失敗は、最終的にモデル能力、コンテキストの関連性、tool router / API の設計・学習、ツール実装の四領域へ整理できる。原因の層を特定してから対処することが、エージェントのデバッグを再現可能にする。</p>
+      <figure class="shot">
+        <img src="../images/stanford-cme295-lecture8-llm-evaluation/13-agent-failure-summary.jpg" alt="tool prediction、backend実行、応答統合の各段階で起きる失敗を赤いバツ印でまとめたスライド" loading="lazy" />
+        <figcaption>7つの代表的失敗を3段階へ配置した総括。上段は未使用・hallucination・誤tool・誤argument、中段はbackendの誤応答・無応答、下段は正しいtool結果から誤った最終応答を作る失敗。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=4890s" target="_blank" rel="noopener">1:21:30</a></figcaption>
+      </figure>
+      <p>七つの失敗は、最終的にモデル能力、contextの関連性、tool router / APIの設計・学習、tool実装の四領域へ整理できる。ここまでは一つのapplicationを改善する評価だったが、次はモデル間の能力を共通条件で比べるbenchmarkへ視点を広げる。</p>
     </section>
 
     <section id="s11">
       <h2>11. ベンチマークの設計原則</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5030s" target="_blank" rel="noopener">動画 1:23:50</a>
-      <p>モデル同士を比較する公開ベンチマークは、自由形式の回答をそのまま別の LLM に判定させるより、可能な限り<strong>答えを機械的に採点できる形式</strong>を選ぶ。Judge を挟むと、Judge 自身の誤差が新たな層として加わるためである。</p>
+      <p>モデル同士を比較する公開benchmarkは、自由形式の回答をそのまま別のLLMに判定させるより、可能な限り<strong>答えを機械的に採点できる形式</strong>を選ぶ。Judgeを挟むと、Judge自身の誤差が新たな層として加わるためである。</p>
 
+      <p>ただし、測る能力によって正解の表し方は変わる。選択肢や数値で固定できる知識・推論から、test実行、classifier、DB状態を使うcode・安全性・agentまで、代表例をpipeline上の採点方法と対応させる。</p>
       <table>
         <thead><tr><th>能力領域</th><th>代表例</th><th>出力 / 採点</th><th>主に見るもの</th></tr></thead>
         <tbody>
-          <tr><td>知識</td><td>MMLU</td><td>4択、正解文字の一致</td><td>広範な事前学習知識の保持</td></tr>
-          <tr><td>数学推論</td><td>AIME</td><td>3桁の数値</td><td>難しい問題を解く推論能力</td></tr>
-          <tr><td>常識推論</td><td>PIQA</td><td>2択</td><td>物理世界の日常的理解</td></tr>
-          <tr><td>ソフトウェア工学</td><td>SWE-bench</td><td>パッチ適用後のテスト</td><td>実リポジトリの issue 解決</td></tr>
-          <tr><td>安全性</td><td>HarmBench</td><td>専用 classifier</td><td>有害行動への応答</td></tr>
-          <tr><td>エージェント</td><td>τ-bench</td><td>DB状態・要求アクション</td><td>対話、ツール利用、ポリシー遵守、反復信頼性</td></tr>
+          <tr><td>知識</td><td>MMLU</td><td>57taskの4択からA/B/C/Dを出し、正解文字とhardcoded matchする</td><td>法律・医学など幅広いpretraining知識を、推論時に取り出せるか</td></tr>
+          <tr><td>数学推論</td><td>AIME</td><td>難しい数学問題へ3桁の数値を返し、固定正解と一致させる</td><td>短い問題文から途中のreasoningを組み立て、厳密な答えへ到達できるか</td></tr>
+          <tr><td>常識推論</td><td>PIQA</td><td>物理的な日常場面の二つの解法から一つを選び、hardcoded matchする</td><td>数学知識ではなく、物体や道具が現実世界でどう働くかを推論できるか</td></tr>
+          <tr><td>software engineering</td><td>SWE-bench</td><td>実repositoryのissueへpatchを生成し、PR前後のunit testsで成否を判定する</td><td>code生成だけでなく、codebaseを読み、実際のissueを解決できるか</td></tr>
+          <tr><td>安全性</td><td>HarmBench</td><td>自由形式の応答を専用classifierへ通し、Attack Success Rateを測る</td><td>能力不足で未遂でも、有害行動を試みたかをpolicyに沿って判定する</td></tr>
+          <tr><td>agent</td><td>τ-bench</td><td>複数turnのtool利用後にDB状態と要求actionをhardcoded matchし、rewardとpass<sup>k</sup>を測る</td><td>対話、policy遵守、tool利用を通じて、実タスクを一貫して完了できるか</td></tr>
         </tbody>
       </table>
     </section>
@@ -466,13 +465,14 @@ flowchart LR
     <section id="s12">
       <h2>12. 知識評価: MMLU</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5112s" target="_blank" rel="noopener">動画 1:25:12</a>
-      <p>MMLU（Massive Multitask Language Understanding）は約60の多様なタスクを含み、日常知識から法律、医学まで幅広い。問題と4つの選択肢を提示し、モデルに正解の文字を出させるため、採点を標準化できる。</p>
+      <p>六つの能力領域のうち、最初に見るのはpretrainingで得た知識のbreadthである。MMLU（Massive Multitask Language Understanding）は約60の多様なtaskを含み、日常知識から法律、医学まで幅広い。問題と4つの選択肢を提示し、モデルに正解の文字を出させるため、採点を標準化できる。</p>
       <p>純粋な論理だけでは解けず、各分野の事前知識を必要とする設問が多い。そのため、主として「大規模コーパスで事前学習した情報を、推論時にどれだけ取り出せるか」を測る。ただし、特定分野の専門能力を一つの平均値だけで表すものではない。</p>
     </section>
 
     <section id="s13">
       <h2>13. 推論評価: AIME と PIQA</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5374s" target="_blank" rel="noopener">動画 1:29:34</a>
+      <p>MMLUは知識を取り出せるかを測るが、正解まで複数の推論stepが必要な能力は別に見る必要がある。講義は、厳密な数学推論をAIME、物理世界に根ざした常識推論をPIQAで対比する。</p>
       <h3>AIME: 数学推論</h3>
       <p>AIME は数学オリンピックを目指す高校生向けの難しい試験で、問題文に対して3桁の整数を答える。回答形式が厳密なので採点は容易だが、答えに至るには途中の推論が必要であり、reasoning model の能力を測りやすい。</p>
       <h3>PIQA: 物理世界の常識推論</h3>
@@ -486,7 +486,7 @@ flowchart LR
     <section id="s14">
       <h2>14. コード評価: SWE-bench</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5637s" target="_blank" rel="noopener">動画 1:33:57</a>
-      <p>コーディング能力は、AI 支援開発そのものだけでなく、エージェントが Python 等で書かれたツールを読み、呼び出し、出力を解釈するためにも重要である。SWE-bench は、人気の Python リポジトリから、issue を解決しテストも追加した pull request を抽出する。</p>
+      <p>固定された選択肢や数値だけでは、codebaseを読み、変更し、実行結果で修正を確かめる能力は測れない。コーディング能力はAI支援開発だけでなく、agentがPython等で書かれたtoolを読み、呼び出し、出力を解釈するためにも重要である。SWE-benchは、人気のPython repositoryから、issueを解決しtestも追加したpull requestを抽出する。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture8-llm-evaluation/17-swe-bench.jpg" alt="SWE-benchでissueとcodebaseをモデルへ渡し、生成PRを適用してunit testsで採点する流れ" loading="lazy" />
         <figcaption>実際のGitHub issueとcodebaseからpatchを生成し、PR前後のunit testsで解決を判定するSWE-benchの流れ。文章としてもっともらしい修正ではなく、実行可能な成果で測る。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5760s" target="_blank" rel="noopener">1:36:00</a></figcaption>
@@ -502,19 +502,20 @@ flowchart LR
     <section id="s15">
       <h2>15. 安全性評価: HarmBench</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5775s" target="_blank" rel="noopener">動画 1:36:15</a>
-      <p>安全性は各プロバイダーのポリシーに依存し、全社が同じ目標を採用しているとは限らない。そのためモデルカードには安全性評価が載っても、単一スコアで横並び比較しにくい。ベンチマークを使う前に、その中身が自社ポリシーと合うかを確認する必要がある。</p>
+      <p>issueを解ける能力が高くても、許されない依頼へ従うなら実運用には適さない。安全性は各providerのpolicyに依存し、全社が同じ目標を採用しているとは限らないため、model cardに安全性評価が載っても単一scoreで横並び比較しにくい。benchmarkを使う前に、その中身が自社policyと合うかを確認する必要がある。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture8-llm-evaluation/18-harmbench.jpg" alt="HarmBenchの510種類の有害行動、4区分、classifierによるattack success rateをまとめたスライド" loading="lazy" />
         <figcaption>HarmBenchは510種類（text-based 400、multimodal 110）の有害行動をStandard・Copyright・Contextual・Multimodalへ分け、classifierでAttack Success Rateを判定する。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=5895s" target="_blank" rel="noopener">1:38:15</a></figcaption>
       </figure>
 
+      <p>HarmBenchの四区分は、入力modalitiesとpolicy上の論点が異なる。どの区分を採用するかで「安全」とみなす範囲が変わるため、内容を確認せず一つのscoreだけを比較してはいけない。</p>
       <table>
         <thead><tr><th>HarmBench の区分</th><th>対象</th></tr></thead>
         <tbody>
-          <tr><td>Standard</td><td>一般的な有害行動</td></tr>
-          <tr><td>Copyright</td><td>望ましくない著作物の生成</td></tr>
-          <tr><td>Contextual</td><td>テキスト文脈によって有害となる行動</td></tr>
-          <tr><td>Multimodal</td><td>テキスト以外のモダリティを含む文脈依存の有害行動</td></tr>
+          <tr><td>Standard</td><td>法律や広く共有される規範に反する、一般的な有害行動への応答を対象にする</td></tr>
+          <tr><td>Copyright</td><td>モデルが生成すべきでない著作物を出力できてしまうかを分けて評価する</td></tr>
+          <tr><td>Contextual</td><td>同じ表現でも周囲のtext contextによって有害となる依頼や応答を扱う</td></tr>
+          <tr><td>Multimodal</td><td>画像などtext以外のmodalityを含むcontextで起きる有害行動を対象にする</td></tr>
         </tbody>
       </table>
 
@@ -524,18 +525,19 @@ flowchart LR
     <section id="s16">
       <h2>16. エージェント評価: τ-bench</h2>
       <a class="chapter-link" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=6051s" target="_blank" rel="noopener">動画 1:40:51</a>
-      <p>τ-bench は航空と小売の二領域で、ツール群、守るべきポリシー、ユーザーのタスクを提供する。対話は前のターンに依存するため、別の大規模 LLM がユーザー役をシミュレートし、評価対象エージェントと複数ターン対話する。</p>
+      <p>ここまでのbenchmarkは主に一つの回答やpatchを採点するが、agentは対話、policy判断、tool実行を複数turnにわたって組み合わせる。τ-benchは航空と小売の二領域で、tool群、守るべきpolicy、user taskを提供する。対話は前のturnに依存するため、別の大規模LLMがuser役をsimulateし、評価対象agentと複数turn対話する。</p>
       <p>たとえばフライト変更では、最終的なデータベース状態や、キャンセルなど要求されたアクションが実現したかで reward を計算する。会話が自然だったかだけでなく、<strong>実世界の状態が正しく変わったか</strong>で判定する点が重要である。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture8-llm-evaluation/19-tau-bench.jpg" alt="tau-benchの航空と小売の2領域、データ規模、ツール数、評価基準をまとめたスライド" loading="lazy" />
         <figcaption>τ-bench（Tool-Agent-User Interaction Benchmark）の構成。航空と小売のDB schema・API・policy・taskを与え、状態変化をhardcoded matchし、rewardとpass<sup>k</sup>を測る。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=6105s" target="_blank" rel="noopener">1:41:45</a></figcaption>
       </figure>
 
+      <p>最終状態の成功だけでなく、同じtaskを繰り返しても成功するかを測るには、候補探索向けのpass@kと運用信頼性向けのpass<sup>k</sup>を区別する必要がある。</p>
       <table>
         <thead><tr><th>指標</th><th>意味</th><th>適した問い</th></tr></thead>
         <tbody>
-          <tr><td>pass@k</td><td>k回のうち少なくとも1回成功する確率</td><td>候補を複数試せる問題で、成功解を見つけられるか</td></tr>
-          <tr><td>pass<sup>k</sup></td><td>k回すべてが成功する確率</td><td>ユーザー対応を自動化できるほど一貫して信頼できるか</td></tr>
+          <tr><td>pass@k</td><td>k回生成した候補のうち、少なくとも1回成功する確率</td><td>codeや数学のように複数候補を生成して一つの成功解を選べる場面で、探索能力を判断する</td></tr>
+          <tr><td>pass<sup>k</sup></td><td>同じtaskをk回実行し、そのすべてが成功する確率</td><td>航空・小売のuser対応を自動化してもよいほど、agentが一貫してpolicyを守り完遂できるかを判断する</td></tr>
         </tbody>
       </table>
       <figure class="shot">
@@ -543,9 +545,7 @@ flowchart LR
         <figcaption>pass<sup>k</sup>を「k回の試行が<strong>すべて</strong>成功する確率」と定義するスライド。少なくとも一度の成功を見るpass@kとは反対に、反復運用の一貫性を厳しく測る。pass@kの詳細は<a href="stanford-cme295-lecture6-llm-reasoning-ja.html">Lecture 6</a>を参照。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=6235s" target="_blank" rel="noopener">1:43:55</a></figcaption>
       </figure>
 
-      <div class="callout">
-        <strong>エージェントで重要なのは反復信頼性:</strong> 一度だけ成功するデモではなく、同じタスクを何度実行しても成功することが運用投入の条件になる。そのため τ-bench は pass<sup>k</sup> を重視する。
-      </div>
+      <p>agentで重要なのは、一度だけ成功するdemoではなく、同じtaskを何度実行しても成功する反復信頼性である。そのためτ-benchはpass<sup>k</sup>を重視する。公開benchmarkで能力を測った後も、そのscoreを実際のモデル選定へどう結び付けるかが最後の論点として残る。</p>
     </section>
 
     <section id="s17">
@@ -557,11 +557,8 @@ flowchart LR
         <figcaption>縦軸をLLM Arena ELO rating、横軸を100万tokenあたり価格として各モデルを配置した例。赤い点線上は、その価格以下ではより高性能な選択肢がないPareto frontierを表す。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=6450s" target="_blank" rel="noopener">1:47:30</a></figcaption>
       </figure>
 
-      <div class="grid-cards">
-        <div class="card"><h4>データ汚染</h4><p>モデルが問題や正解を学習中に見ていれば、ベンチマークは能力を正しく測れない。hash、Web blocklist、新しい試験問題などで漏洩を抑える。</p></div>
-        <div class="card"><h4>Goodhart の法則</h4><p>「測定値が目標になると、良い測定値ではなくなる」。公開指標への過剰最適化を疑う。</p></div>
-        <div class="card"><h4>実体験との接続</h4><p>Chatbot Arena のような人間選好も参考にしつつ、最後は自分のデータとタスクで候補モデルを試す。</p></div>
-      </div>
+      <p>ただし、Pareto frontierに置く各score自体が信頼できることが前提になる。モデルが問題や正解を学習中に見た<strong>データ汚染</strong>は、hash、Web blocklist、公開後の新しい試験問題などで抑える。さらにGoodhartの法則が示すように、公開指標を目標化すると測定値としての意味が薄れるため、scoreだけを最適化してはならない。</p>
+      <p>Chatbot Arenaのような人間選好も実利用に近い補助線になるが、最終判断は自分のdataとtaskで候補モデルを試して行う。公開benchmarkは選定を代行する答えではなく、費用・安全性・context lengthを含む候補の絞り込みに使う。</p>
 
       <blockquote>公開ベンチマークの点数は「あなたの用途に最適か」を直接は答えない。評価対象、採点方法、データ汚染、運用コストを理解したうえで、実タスク評価と組み合わせる。</blockquote>
     </section>
