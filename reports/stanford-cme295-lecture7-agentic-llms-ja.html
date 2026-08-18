@@ -118,16 +118,6 @@
     background: var(--bg-elev); font-size: .92em;
   }
   .table-wrap { width: 100%; overflow-x: auto; margin: 17px 0; }
-  .table-purpose {
-    margin: 20px 0 10px; padding: 12px 15px; border-left: 3px solid var(--link);
-    border-radius: 0 9px 9px 0; background: color-mix(in srgb, var(--bg-elev) 94%, var(--link) 6%);
-  }
-  .table-purpose strong {
-    display: block; margin-bottom: 3px; color: var(--link);
-    font-size: 13px; letter-spacing: .03em;
-  }
-  .table-purpose p { margin: 0; color: var(--text-dim); font-size: 13.5px; line-height: 1.65; }
-  .table-purpose + .table-wrap { margin-top: 10px; }
   table {
     width: 100%; min-width: 680px; border-collapse: collapse;
     border: 1px solid var(--border); border-radius: var(--radius);
@@ -330,10 +320,7 @@
         <img src="../images/stanford-cme295-lecture7-agentic-llms/02-knowledge-cutoff.jpg" alt="GPT-5のモデル情報と知識カットオフを示すスライド" loading="lazy" />
         <figcaption>GPT-5のモデル情報を例に、LLMの知識が事前学習データと知識カットオフに制約されることを説明するスライド。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=485s" target="_blank" rel="noopener">08:05</a></figcaption>
       </figure>
-      <div class="table-purpose">
-        <strong>この表で確認すること</strong>
-        <p>素朴な解決策が、知識の更新・context容量・情報の見つけやすさ・費用のどこで破綻するかを切り分ける。4つの問題を同時に避けるため、RAGは「必要な情報だけを外部から選ぶ」。</p>
-      </div>
+      <p>再学習や全文投入といった素朴な方法は、知識の更新、context容量、情報の見つけやすさ、費用のそれぞれで異なる限界にぶつかる。RAGはこの4点を同時に避けるため、knowledge base全体ではなく必要な情報だけを外部から選ぶ。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>素朴な方法 / 制約</th><th>なぜ解決にならないか</th><th>RAG設計への含意</th></tr></thead>
@@ -384,10 +371,7 @@ flowchart LR
         <img src="../images/stanford-cme295-lecture7-agentic-llms/05-knowledge-base.jpg" alt="文書を収集し分割しembeddingするKnowledge Base構築図" loading="lazy" />
         <figcaption>文書を収集（Collect）し、分割（Divide）し、数値ベクトルへ変換（Embed）する事前処理。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=1257s" target="_blank" rel="noopener">20:57</a></figcaption>
       </figure>
-      <div class="table-purpose">
-        <strong>この表で確認すること</strong>
-        <p>knowledge base構築では、検索対象の「意味単位」と「数値表現」を決める。各値を大きくすればよいのではなく、検索精度、promptへ入る情報量、保存・計算コストが同時に変わるため、評価結果を見ながら組み合わせを選ぶ。</p>
-      </div>
+      <p>knowledge base構築では、検索対象の「意味単位」と「数値表現」を同時に決める。各値を大きくすればよいのではなく、検索精度、promptへ入る情報量、保存・計算コストが連動するため、実際のqueryで評価しながら組み合わせを選ぶ。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>設計項目</th><th>講義中の目安・選択肢</th><th>何が変わるか / どう決めるか</th></tr></thead>
@@ -442,10 +426,7 @@ flowchart LR
         <strong>Cuddly と Huggy の例</strong>
         <p>ユーザーが「Cuddly」という名前のテディベアを探しているとする。semantic searchは意味の近い「Huggy」を上位にする可能性があるが、BM25は文字列としてCuddlyを正確に拾える。実務ではdense retrievalとBM25を組み合わせる<strong>hybrid search</strong>がよく使われる。</p>
       </div>
-      <div class="table-purpose">
-        <strong>この表で確認すること</strong>
-        <p>3方式は優劣ではなく、何を「関連」とみなすかが異なる。自然言語の言い換えにはdense、固有名詞の一致にはBM25を使い、両方が現れる用途では候補集合を統合する。</p>
-      </div>
+      <p>3方式の違いは、何を「関連」とみなすかにある。自然言語の言い換えにはdense retrieval、固有名詞の一致にはBM25が強く、両方が現れる用途では候補集合を統合する。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>検索方式</th><th>関連度の作り方</th><th>得意なquery</th><th>失敗しやすい条件 / 使い方</th></tr></thead>
@@ -494,10 +475,7 @@ flowchart LR
         <img src="../images/stanford-cme295-lecture7-agentic-llms/11-cross-encoder.jpg" alt="QueryとChunkを同時に入力して関連度を出すCross-encoder図" loading="lazy" />
         <figcaption>QueryとChunkを一つの入力として処理し、より精密なrelevance scoreを出すcross-encoder。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=2748s" target="_blank" rel="noopener">45:48</a></figcaption>
       </figure>
-      <div class="table-purpose">
-        <strong>この表で確認すること</strong>
-        <p>bi-encoderとcross-encoderは競合する代替案ではなく、同じpipelineの前段と後段を分担する。前者で全knowledge baseから候補を安く集め、後者はその候補だけを精密に並べ直す。</p>
-      </div>
+      <p>bi-encoderとcross-encoderは競合する代替案ではなく、同じpipelineの前段と後段を分担する。前者でknowledge base全体から候補を安く集め、後者はその候補だけを精密に並べ直す。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>観点</th><th>Bi-encoder</th><th>Cross-encoder</th></tr></thead>
@@ -524,10 +502,7 @@ flowchart LR
         DCG@K = Σ<sub>i=1..K</sub> rel<sub>i</sub> / log<sub>2</sub>(i + 1)
         <small>NDCG@K = DCG@K / IDCG@K。IDCGは関連文書を理想順に並べたときのDCG。</small>
       </div>
-      <div class="table-purpose">
-        <strong>この表で確認すること</strong>
-        <p>同じTop-K結果でも、4指標は別の失敗を測る。候補を漏らしたか、最初の根拠が遅いか、複数の根拠を正しい順序へ並べたか、無関係chunkが多いかを分け、Stage 1とStage 2のどちらを改善すべきか判断する。</p>
-      </div>
+      <p>同じTop-K結果でも、4指標が捉える失敗は異なる。候補の漏れ、最初の根拠の遅さ、複数根拠の順序、無関係chunkの混入を分けて測ることで、Stage 1とStage 2のどちらを改善すべきか判断できる。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>指標</th><th>計算するもの</th><th>答える設計上の質問</th></tr></thead>
@@ -577,10 +552,7 @@ sequenceDiagram
       <p>データは「near me」「Parisで探す」、明示座標、複数tool、multi-turnなど、実ユーザー分布を反映して多様にする。2つ目のpairはJSONだけの言い換えではなく、tool resultがどのqueryとcallに対応するかを含む履歴全体を入力する。</p>
       <h3>SFTせず、tool説明を最適化する場合</h3>
       <p>近年のLLMはコードを大量に学習しており、tool schemaと説明だけでも呼び出せる場合がある。講義は、望ましいtool call pairを評価セットにし、現在の説明で成功・失敗を測り、その結果をreasoning modelへ渡して説明を書き直させる反復を提案する。これはofflineで行い、inference時には固定した説明をschemaとともに渡す。</p>
-      <div class="table-purpose">
-        <strong>この表で確認すること</strong>
-        <p>toolは「読む・計算する・現実へ作用する」の順に副作用が大きくなる。分類の目的は機能一覧を作ることではなく、LLMの予測をそのまま実行してよい範囲と、検証・承認が必要な範囲を分けることにある。</p>
-      </div>
+      <p>toolは「読む・計算する・現実へ作用する」の順に副作用が大きくなる。この違いを分けることで、LLMの予測をそのまま実行できる範囲と、検証や人の承認が必要な範囲を決められる。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Toolの種類</th><th>入力から実行結果まで</th><th>例</th><th>実装時の確認点</th></tr></thead>
@@ -614,10 +586,7 @@ sequenceDiagram
         <img src="../images/stanford-cme295-lecture7-agentic-llms/15-mcp-components.jpg" alt="MCP Host、Client、Server、Tools、Prompts、Resourcesの関係図" loading="lazy" />
         <figcaption>MCP Host内のClientがServerへ接続し、ServerがTools・Prompts・Resourcesを公開する構成。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=5400s" target="_blank" rel="noopener">1:30:00</a></figcaption>
       </figure>
-      <div class="table-purpose">
-        <strong>この表で確認すること</strong>
-        <p>MCPの用語は同じ階層の部品ではない。Host内のClientがServerへ接続し、ServerがTools・Prompts・Resourcesを公開する、という要求の流れに沿って役割を読む。右列は講義で使われた「詩好きのteddy bearへ書籍を推薦する」1つのシナリオで統一している。</p>
-      </div>
+      <p>MCPの用語は同じ階層の部品ではない。Host内のClientがServerへ接続し、ServerがTools・Prompts・Resourcesを公開する、という要求の流れで役割が分かれる。講義ではこの関係を、詩好きのteddy bearへ書籍を推薦する1つのシナリオで具体化している。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>構成要素</th><th>要求の流れでの役割</th><th>書籍推薦の例</th></tr></thead>
@@ -680,10 +649,7 @@ flowchart LR
         <img src="../images/stanford-cme295-lecture7-agentic-llms/17-agent-safety.jpg" alt="現実世界への害とdata exfiltrationを挙げるAgent Safetyスライド" loading="lazy" />
         <figcaption>Agentの安全リスクとして「現実世界への害」と「data exfiltration」を挙げるスライド。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=6190s" target="_blank" rel="noopener">1:43:10</a></figcaption>
       </figure>
-      <div class="table-purpose">
-        <strong>この表で確認すること</strong>
-        <p>Agent安全性は1つのfilterで完結しない。modelを学習する段階、実行直前、配備前の評価、実環境の権限制御を重ね、1層の見逃しがそのまま外部への副作用にならないようにする。</p>
-      </div>
+      <p>Agent安全性は1つのfilterでは完結しない。modelの学習、実行直前の判定、配備前の評価、実環境の権限制御を重ね、1層の見逃しがそのまま外部への副作用にならないようにする。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>対策層</th><th>具体的に何をするか</th><th>data exfiltration例にどう効くか</th></tr></thead>
