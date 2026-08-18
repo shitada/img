@@ -90,6 +90,39 @@
   section h3 { margin: 28px 0 9px; color: var(--accent); font-size: 18px; }
   section h4 { margin: 18px 0 6px; font-size: 15px; }
   .section-lead { margin: 0 0 22px; color: var(--text-dim); font-size: 15.5px; }
+  .reading-path {
+    margin: 32px 0 44px; padding: 20px 22px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev);
+  }
+  .reading-path h2 { margin: 0 0 8px; color: var(--accent); font-size: 18px; }
+  .reading-path > p { margin: 0 0 16px; color: var(--text-dim); }
+  .path-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 10px;
+  }
+  .path-step {
+    position: relative; padding: 14px 15px; border: 1px solid var(--border);
+    border-radius: 10px; background: var(--bg);
+  }
+  .path-step .phase {
+    display: block; margin-bottom: 4px; color: var(--accent);
+    font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  }
+  .path-step strong { display: block; margin-bottom: 4px; font-size: 14px; }
+  .path-step p { margin: 0; color: var(--text-dim); font-size: 12.5px; line-height: 1.6; }
+  .section-intent {
+    margin: 0 0 24px; padding: 15px 18px; border: 1px solid var(--border);
+    border-left: 4px solid var(--accent); border-radius: 0 var(--radius) var(--radius) 0;
+    background: color-mix(in srgb, var(--bg-elev) 94%, var(--accent) 6%);
+  }
+  .section-intent strong {
+    display: block; margin-bottom: 4px; color: var(--accent);
+    font-size: 13px; letter-spacing: .03em;
+  }
+  .section-intent p { margin: 0; color: var(--text); font-size: 14.5px; line-height: 1.7; }
+  .section-intent .connection {
+    margin-top: 7px; color: var(--text-dim); font-size: 13px;
+  }
   p { margin: 10px 0; }
   ul, ol { margin: 12px 0; padding-left: 23px; }
   li { margin: 6px 0; }
@@ -250,8 +283,40 @@
       </ul>
     </div>
 
+    <div class="reading-path" aria-label="レポート全体の論理構成">
+      <h2>このレポートの論理構成</h2>
+      <p>「LLMに何が足りないか」を起点に、知識を補う仕組み、行動を可能にする仕組み、自律性を高めたときの統制へ順番に進む。</p>
+      <div class="path-grid">
+        <div class="path-step">
+          <span class="phase">Phase 1 · Sections 1–2</span>
+          <strong>課題を定義する</strong>
+          <p>知識の鮮度と行動能力という、単体LLMの2つの不足を切り分ける。</p>
+        </div>
+        <div class="path-step">
+          <span class="phase">Phase 2 · Sections 3–11</span>
+          <strong>知識を補う</strong>
+          <p>RAGを、準備・候補検索・改善・再ランキング・評価の順に組み立てる。</p>
+        </div>
+        <div class="path-step">
+          <span class="phase">Phase 3 · Sections 12–14</span>
+          <strong>行動能力を与える</strong>
+          <p>Tool Callingから、tool選択、MCPによる接続標準化へ拡張する。</p>
+        </div>
+        <div class="path-step">
+          <span class="phase">Phase 4 · Sections 15–17</span>
+          <strong>自律性を広げ、統制する</strong>
+          <p>ReAct、Multi-Agentへ進み、最後に安全性と実装原則を整理する。</p>
+        </div>
+      </div>
+    </div>
+
     <section id="s01">
       <h2>1. 講義の射程：LLMを外部世界へ接続する</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>講義全体の目的、前回のreasoning modelとのつながり、今回扱うRAG・Tool Calling・Agentsの役割を最初に俯瞰する。</p>
+        <p class="connection">ここで全体像を定めた後、次節では最初の課題である「知識をどう最新化するか」を具体的に掘り下げる。</p>
+      </div>
       <p class="section-lead">講義の3本柱は <strong>RAG、Tool Calling、Agents</strong>。これまで単独で推論していたLLMを、更新され続ける知識と実行可能な機能へつなぐ。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/01-title-slide.jpg" alt="Stanford CME295 Lecture 7のタイトルスライド" loading="lazy" />
@@ -268,6 +333,11 @@
 
     <section id="s02">
       <h2>2. なぜRAGが必要なのか</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>知識カットオフ、context上限、長文中の注意散漫、入力コストを整理し、再学習や全文投入ではなぜ十分でないかを示す。</p>
+        <p class="connection">第1節で示した「知識の不足」を問題として定式化し、次節のRAGパイプラインが必要になる理由を作る。</p>
+      </div>
       <p class="section-lead">モデルの再学習や「全部プロンプトに入れる」方法は、更新性・精度・費用のいずれにも弱点がある。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/02-knowledge-cutoff.jpg" alt="GPT-5のモデル情報と知識カットオフを示すスライド" loading="lazy" />
@@ -293,6 +363,11 @@
 
     <section id="s03">
       <h2>3. RAGの基本パイプライン</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>文書の準備から候補取得、再ランキング、prompt拡張、回答生成まで、RAGを構成する処理を一枚の流れとして把握する。</p>
+        <p class="connection">前節で確認した制約への解答を先に全体図で示し、第4〜11節ではこの図を左から順に分解していく。</p>
+      </div>
       <p><strong>RAG = Retrieval-Augmented Generation</strong>。ユーザーの質問に関連する情報を取得し、その情報でpromptを拡張してから回答を生成する。検索に失敗すれば、生成段階で正しい答えを作る材料そのものが欠ける。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/04-rag-overview.jpg" alt="Retrieval-Augmented Generationの概要スライド" loading="lazy" />
@@ -318,6 +393,11 @@ flowchart LR
 
     <section id="s04">
       <h2>4. Knowledge Base：chunking・embedding・保存</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>RAGの事前準備として、文書をどの単位で分け、どの表現へ変換し、検索可能なknowledge baseとして保存するかを整理する。</p>
+        <p class="connection">第3節の全体図にあるoffline側を具体化する。検索対象が整ったところで、次節からonline側のretrieval設計へ進む。</p>
+      </div>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/05-knowledge-base.jpg" alt="文書を収集し分割しembeddingするKnowledge Base構築図" loading="lazy" />
         <figcaption>文書を収集（Collect）し、分割（Divide）し、数値ベクトルへ変換（Embed）する事前処理。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=1257s" target="_blank" rel="noopener">20:57</a></figcaption>
@@ -339,6 +419,11 @@ flowchart LR
 
     <section id="s05">
       <h2>5. Two-Stage Retrieval：まず広く、次に精密に</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>大規模なknowledge baseを、低コストな候補取得と高精度な再ランキングの2段階へ分ける理由を説明する。</p>
+        <p class="connection">第4節で用意したchunkをどう絞るかというonline検索の設計図であり、第6・7節でStage 1、第10節でStage 2を詳しく見る。</p>
+      </div>
       <p>検索・推薦システムと同様、RAGでも全chunkへ高価なモデルを適用するのではなく、候補取得とランキングを分ける。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/06-two-stage-retrieval.jpg" alt="Candidate RetrievalとRankingからなるTwo-Stage Retrieval図" loading="lazy" />
@@ -352,6 +437,11 @@ flowchart LR
 
     <section id="s06">
       <h2>6. Dense Retrieval：SBERTとBi-encoder</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>Stage 1の第1手法として、queryとchunkをembedding化し、意味的な近さで候補を高速取得する仕組みを説明する。</p>
+        <p class="connection">Two-Stage Retrievalの候補取得をsemantic searchで実装する。次節では、意味検索が苦手な完全一致をBM25で補う。</p>
+      </div>
       <p>queryと各chunkを別々にencoderへ通し、embedding間の<strong>cosine similarity</strong>を計算する。chunk側は事前計算できるため高速で、queryごとに全モデル推論を繰り返さずに済む。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/07-bi-encoder.jpg" alt="QueryとChunkを別々にencodeして類似度を計算するBi-encoder図" loading="lazy" />
@@ -367,6 +457,11 @@ flowchart LR
 
     <section id="s07">
       <h2>7. BM25とハイブリッド検索</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>Stage 1の第2手法として、語の一致を重視するBM25を取り上げ、dense retrievalと組み合わせる理由を示す。</p>
+        <p class="connection">第6節のsemantic searchだけでは固有名詞を外し得るためlexical searchを加える。次節では、候補検索の入力表現そのものを改善する。</p>
+      </div>
       <p>embedding検索は意味的な近さを捉えるが、固有名詞・型番・完全一致が重要な場面では外すことがある。BM25はqueryと文書の語の重なりを用いるlexicalなヒューリスティックで、この弱点を補う。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/08-bm25.jpg" alt="BM25によるキーワード検索を説明するスライド" loading="lazy" />
@@ -390,6 +485,11 @@ flowchart LR
 
     <section id="s08">
       <h2>8. HyDEとContextual Retrieval</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>問い合わせ時にqueryと文書の表現差を埋めるHyDEと、索引構築時にchunkが失った文脈を補うContextual Retrievalを区別して説明する。</p>
+        <p class="connection">第6・7節で検索方式をそろえた後、query側とchunk側の入力品質をそれぞれ高める。Contextual Retrievalは索引構築時の反復計算を増やすため、次節でPrompt Cachingを扱う。</p>
+      </div>
       <h3>HyDE：queryを仮想文書へ変換する</h3>
       <p>短い疑問文のqueryと、長い説明文のchunkは性質が異なる。同じencoderで比較しづらいなら、LLMにqueryへの<strong>仮想的な回答文書</strong>を生成させ、その文書をembeddingして本物の文書と比較する。これがHypothetical Document Embedding（HyDE）である。</p>
       <figure class="shot">
@@ -404,6 +504,11 @@ flowchart LR
 
     <section id="s09">
       <h2>9. Prompt Caching：共通prefixの計算を再利用する</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>同一prefixの内部計算を再利用し、Contextual Retrievalの索引構築で発生する大量の類似promptを低コストで処理する仕組みを説明する。</p>
+        <p class="connection">第8節でchunk品質の向上と引き換えに増えたoffline前処理の計算量を抑える。検索候補の準備と取得方法がそろったところで、次節はStage 2の精密な再ランキングへ進む。</p>
+      </div>
       <p>decoder-only LLMはleft-to-rightに計算するため、同じprefixなら各layerの内部状態も同じになる。共通prefixのactivationを一度保存し、次の呼び出しで再利用すれば、Contextual Retrievalのような反復処理を安くできる。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/10-prompt-caching.jpg" alt="Contextual RetrievalとGPT-5のcached input価格を示すスライド" loading="lazy" />
@@ -418,6 +523,11 @@ flowchart LR
 
     <section id="s10">
       <h2>10. Cross-encoderで候補を再ランキングする</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>Stage 1で集めた候補へqueryとの詳細な相互作用を計算し、LLMへ渡すTop-Kの順序を精密化する方法を説明する。</p>
+        <p class="connection">第5節で分けたStage 2をここで完成させる。検索pipelineがそろったため、次節では良し悪しを測る評価指標へ進む。</p>
+      </div>
       <p>bi-encoderはqueryとchunkを独立に表現するため高速だが、両者のtoken間の細かな相互作用は見ない。cross-encoderはqueryとchunkを同時に入力し、attentionを通じて関連度を直接推定する。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/11-cross-encoder.jpg" alt="QueryとChunkを同時に入力して関連度を出すCross-encoder図" loading="lazy" />
@@ -440,6 +550,11 @@ flowchart LR
 
     <section id="s11">
       <h2>11. Retrievalをどう評価するか</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>NDCG、MRR、Recall@K、Precision@Kを使い、候補の取りこぼしと上位順位の品質をどのように測るかを整理する。</p>
+        <p class="connection">第3〜10節で構築したRAGを評価可能なsystemとして閉じる。知識を補う議論を終え、次節から第2の課題である「行動能力」へ移る。</p>
+      </div>
       <p>「上位K件へ本当に関連chunkが入ったか」をground truth labelと比較する。講義は、論文で頻出するNDCG、MRR、Recall@K、Precision@Kの4指標を押さえるよう勧める。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/12-ndcg.jpg" alt="NDCGの定義とretrieval rankingを示すスライド" loading="lazy" />
@@ -465,6 +580,11 @@ flowchart LR
 
     <section id="s12">
       <h2>12. Tool Calling：構造化機能をLLMへ開く</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>LLMがtoolと引数を選び、外部実行結果から最終回答を作る3段階のloopと、それをSFTまたは説明最適化で成立させる方法を説明する。</p>
+        <p class="connection">RAGが「読む」能力を補ったのに対し、ここからは「実行する」能力を扱う。toolが増えたときの選択問題を次節へ引き継ぐ。</p>
+      </div>
       <p class="section-lead">RAGが非構造文書から情報を取り出すのに対し、Tool Callingは関数として表せる構造化データや行動を扱う。</p>
       <p>講義は「自律システムが外部resourceへ動的にaccessし、必要なら作用することで複雑なtaskを完遂する能力」という定義を採用する。重要なのは、LLM自身が関数の実装を行うのではなく、<strong>どの関数をどの引数で呼ぶかを予測する</strong>点である。</p>
       <figure class="shot">
@@ -512,6 +632,11 @@ sequenceDiagram
 
     <section id="s13">
       <h2>13. Tool Selection：大量のtoolから必要なものだけを渡す</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>すべてのAPI定義をpromptへ詰め込まず、routerで候補toolを先に絞る2段階方式を説明する。</p>
+        <p class="connection">第12節のTool Callingを多数toolへ拡張すると選択とcontextの問題が生じる。選んだtoolを共通形式で接続する方法が次節のMCPである。</p>
+      </div>
       <p>すべての完全なAPI定義をpromptへ並べると、tool版Needle in a Haystack、context window消費、latency増加が起きる。講義はGoogle DeepMindのTool Selectorを例に、2段階のrouter方式を紹介する。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/14-tool-selection.jpg" alt="Routerが関連toolを選ぶTool Selection図" loading="lazy" />
@@ -526,6 +651,11 @@ sequenceDiagram
 
     <section id="s14">
       <h2>14. MCP：tool公開を標準化する</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>MCP Host・Client・Server・Tools・Prompts・Resourcesの役割を分け、外部能力を発見・記述・接続する共通形式を説明する。</p>
+        <p class="connection">第13節で「どれを使うか」を決めた後、ここで「どう接続するか」をそろえる。tool基盤が整ったため、次節では複数回の実行を自律的につなぐAgentへ進む。</p>
+      </div>
       <p>toolごとに独自schema・接続方式を用意すると再利用できない。Anthropic発のModel Context Protocol（MCP）は、LLM hostと外部能力をつなぐ共通語彙と接続方法を定める。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/15-mcp-components.jpg" alt="MCP Host、Client、Server、Tools、Prompts、Resourcesの関係図" loading="lazy" />
@@ -549,6 +679,11 @@ sequenceDiagram
 
     <section id="s15">
       <h2>15. AgentとReAct：目標まで推論と行動を反復する</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>単発のTool CallingをObserve → Plan → Actの反復loopへ拡張し、途中結果に応じて次の行動を変えるReActの考え方を説明する。</p>
+        <p class="connection">第12〜14節で用意したtoolを、一つの目標へ向けて繰り返し使う段階である。次節ではこのloopを複数Agentの協調へ広げる。</p>
+      </div>
       <p>講義におけるAgentは、ユーザーに代わって自律的に目標を追い、taskを遂行するsystemである。単発のTool Callingとの違いは、結果を観察して次の行動を決める<strong>recursive loop</strong>にある。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/16-react-loop.jpg" alt="Observe、Plan、Actを反復するReActループ図" loading="lazy" />
@@ -577,6 +712,11 @@ flowchart LR
 
     <section id="s16">
       <h2>16. Multi-AgentとA2A</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>専門性の異なるAgentを分業させる構成と、skill公開・task状態・cancelを標準化するA2A Protocolの役割を説明する。</p>
+        <p class="connection">第15節の単一Agent loopを協調systemへ拡張する。構成要素と実行回数が増えるほど誤りと攻撃面も増えるため、次節で安全性と運用原則を扱う。</p>
+      </div>
       <p>室温管理を例にすると、thermostat、energy management、air qualityなどを独立Agentに分け、互いの出力を使って協調できる。各Agentは固有のcontextと推論loopを持ち、他Agentとはinput/outputを介して通信する。</p>
       <div class="grid-cards">
         <div class="card"><h4>分業</h4><p>異なるtool・policy・専門知識を持つAgentへ責務を分ける。</p></div>
@@ -588,6 +728,11 @@ flowchart LR
 
     <section id="s17">
       <h2>17. 安全性、誤りの累積、実践上の助言</h2>
+      <div class="section-intent">
+        <strong>このセクションで説明すること</strong>
+        <p>Agentが現実世界へ作用することで生じるdata exfiltration、stepごとの誤りの累積、training・inference・evaluation・operationsの対策を整理する。</p>
+        <p class="connection">知識取得、tool接続、自律loop、複数Agentへと能力を増やしてきた流れを、最後に「安全に構築・評価・改善するには何が必要か」という実装原則へ着地させる。</p>
+      </div>
       <p>外部世界へ作用できる能力は、文章生成だけのモデルにはなかった被害を生む。講義の代表例は、公開可能なメールtoolを使ってpasswordを外部へ送らせる<strong>data exfiltration</strong>である。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/17-agent-safety.jpg" alt="現実世界への害とdata exfiltrationを挙げるAgent Safetyスライド" loading="lazy" />
