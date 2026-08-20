@@ -402,17 +402,27 @@ flowchart LR
 
     <section id="s06">
       <h2>6. Dense Retrieval：SBERTとBi-encoder</h2>
-      <p class="section-lead">候補取得の第1手法は、queryとchunkを別々にembedding化し、<strong>cosine similarity</strong>で意味の近いものを探すdense retrievalである。chunk側を事前計算できるため大規模検索に向く一方、固有名詞の完全一致は保証しない。この弱点が、次のBM25を併用する理由になる。</p>
+      <p class="section-lead">候補取得には、queryとchunkを「意味が比較できる数値ベクトル」へ変換するencoderが必要になる。講義ではこの役割を担う代表例として<strong>Sentence-BERT（SBERT）</strong>を紹介し、queryとchunkを別々に処理するbi-encoder構成でdense retrievalを組み立てる。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/07-bi-encoder.jpg" alt="QueryとChunkを別々にencodeして類似度を計算するBi-encoder図" loading="lazy" />
         <figcaption>QueryとChunkを独立にencodeし、ベクトル間の類似度を計算するbi-encoder。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=1860s" target="_blank" rel="noopener">31:00</a></figcaption>
       </figure>
-      <h3>SBERTの役割</h3>
-      <p>Sentence-BERTはBERTを文・シーケンスレベルのembedding生成へ適応する。関連ペアのcosine similarityを高くし、非関連ペアを低くするよう学習する。講義ではSBERT論文とドキュメントの一読を強く勧める。</p>
-      <ul>
-        <li>knowledge baseが巨大なら線形な全件比較は重い。FAISSなどの<strong>Approximate Nearest Neighbor</strong>手法で探索を近似・高速化する。</li>
-        <li>Q&amp;Aでは、既定の距離としてcosine similarityが一般的と説明。embeddingをunit normへ正規化すればL2距離と密接に対応する。</li>
-      </ul>
+      <h3>SBERTはbi-encoderの「Encoder」に当たる</h3>
+      <p>上図の2つのEncoderに同じSBERTを使う。通常のBERTはtokenごとの表現を作ることに長けているが、文や段落全体を1本のベクトルとして比較する用途にそのまま最適化されているわけではない。SBERTはBERTを土台に、文全体を固定長ベクトルへまとめ、<strong>意味が近い文ほどベクトルも近くなる</strong>ように学習したmodelである。</p>
+      <p>学習時には、質問と正しい根拠のような関連pairを近づけ、無関係なpairを遠ざける。たとえば「Where is Cuddly?」と「Cuddly is on the sofa.」は表現が完全一致しなくても近くなり、天気を説明するchunkは遠くなる。この幾何的な近さを、検索時の関連度として利用する。</p>
+      <p>bi-encoderでの検索は次の順序になる。</p>
+      <ol>
+        <li><strong>索引構築：</strong>knowledge baseの各chunkをSBERTへ通し、embeddingを事前計算して保存する。</li>
+        <li><strong>問い合わせ：</strong>user queryも同じSBERTでembeddingへ変換する。</li>
+        <li><strong>候補取得：</strong>query embeddingに近いchunk embeddingを探し、上位のTop-Kを返す。</li>
+      </ol>
+
+      <h3>巨大なknowledge baseではANNで探索範囲を絞る</h3>
+      <p>chunkが少なければ、queryと全chunkの類似度を計算してもよい。しかし件数が増えると、queryのたびに全ベクトルを比較する線形探索が重くなる。<strong>Approximate Nearest Neighbor（ANN）</strong>はベクトル空間を索引化し、近そうな領域だけを探索することで高速化する。厳密な最近傍をまれに逃す可能性と引き換えに、検索時間を大きく減らす方法であり、FAISSはこの種のvector searchを実装する代表的なlibraryとして紹介される。</p>
+
+      <h3>Cosine similarityとL2距離の違い</h3>
+      <p>cosine similarityはベクトルの<strong>向き</strong>がどれだけ近いかを測り、値が大きいほど意味が近いとみなす。L2距離は2点間の直線距離で、値が小さいほど近い。embeddingの長さを1へ正規化すると <code>||a - b||² = 2 - 2 cos(a, b)</code> となるため、cosine similarityの高い順とL2距離の小さい順は同じになる。講義中の質疑応答で両者が密接に関係すると説明されたのはこのためである。</p>
+      <p>SBERTとANNを組み合わせれば、文面が違っても意味の近いchunkを高速に集められる。ただし「Cuddly」と「Huggy」のように意味は近いが名前は別という場合もあるため、次のBM25で文字列一致を補う。</p>
     </section>
 
     <section id="s07">
@@ -456,7 +466,7 @@ flowchart LR
 
     <section id="s09">
       <h2>9. Prompt Caching：共通prefixの計算を再利用する</h2>
-      <p class="section-lead">Contextual Retrievalでは、同じ文書全体をprefixにして異なるchunkを何度も処理する。decoder-only LLMは同じprefixなら内部計算も共通になるため、そのactivationを保存・再利用すればoffline前処理を安くできる。これで候補の準備と取得が実用的になり、次は候補の順序を精密化できる。</p>
+      <p class="section-lead">Contextual Retrievalでは、1つの文書から切り出した各chunkへ短い背景説明を付けるため、同じ文書全体を何度もLLMへ入力する。毎回先頭から計算し直す無駄を減らす仕組みがPrompt Cachingである。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/10-prompt-caching.jpg" alt="Contextual RetrievalとGPT-5のcached input価格を示すスライド" loading="lazy" />
         <figcaption>Contextual Retrievalの共通prefixと、GPT-5の通常input $1.25 / 100万tokenに対してcached input $0.125を示す価格例。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=2630s" target="_blank" rel="noopener">43:50</a></figcaption>
@@ -465,17 +475,55 @@ flowchart LR
         <div class="stat-card"><div class="num">1/10</div><div class="label">講義スライドのGPT-5例におけるcached inputの通常input比</div></div>
         <div class="stat-card"><div class="num">Prefix</div><div class="label">繰り返す指示・文書・定義はprompt先頭へ集約する</div></div>
       </div>
-      <p>Q&amp;Aではactivationを「各layerの出力」と説明する。プロバイダのcache機構を使う場合も、変化しない部分を前へ、queryごとに変わる部分を後ろへ置くprompt設計が重要になる。</p>
+      <p>decoder-only LLMでは、先頭のtokenは後ろへ追加されるtokenを参照しない。そのため同じ文書全体をprefixにすれば、文書tokenから各layerが計算したKey・Valueを後続requestでも再利用できる。最初のchunkでは文書全体を計算し、2件目以降はcacheを読み戻して、異なるchunkと生成outputだけを追加計算する。</p>
+
+      <div class="mermaid">
+flowchart LR
+  subgraph OFF["索引構築時（文書ごとに一度）"]
+    direction TB
+    D[文書全体] --> C[Chunking]
+    D --> K["共通prefixを1回prefill<br/>文書tokenのKey・Valueをcache"]
+    C --> S["可変suffix<br/>対象chunk + 背景説明を求める指示"]
+    K --> L[Contextualization用LLM]
+    S --> L
+    L --> E["短い文脈説明をchunk先頭へ付加"]
+    E --> I["Embedding / BM25 indexへ保存"]
+  end
+
+  subgraph ON["問い合わせ時（user queryごと）"]
+    direction TB
+    Q[User query] --> R[関連chunkを候補取得]
+    I --> R
+    R --> RR[Cross-encoderでrerank]
+    RR --> P["最終promptを作成<br/>query + 上位chunk"]
+    P --> A[回答用LLM]
+  end
+      </div>
+
+      <p><strong>Contextual Retrievalは最終回答を作るたびに行う処理ではない。</strong> 文書をknowledge baseへ登録する索引構築時に、各chunkへ背景説明を付け、その結果をembedding・BM25 indexへ保存する。user queryが来た後は、すでに文脈付きになったchunkを検索・再ランキングし、選ばれた上位chunkだけを最終promptへ入れる。</p>
+      <p>つまりPrompt Cachingが減らすのは、索引構築時に文書全体をchunk数だけ読み直す計算である。cacheの自動利用、最低prefix長、保持時間はproviderによって異なるが、共通部分を同じtoken列で先頭へ置くという原則は共通する。</p>
     </section>
 
     <section id="s10">
       <h2>10. Cross-encoderで候補を再ランキングする</h2>
-      <p class="section-lead">Stage 1で候補を集めた後は、LLMへ渡すTop-Kの順序を決める。bi-encoderは高速だがqueryとchunkの細かな対応を見ないため、候補だけをcross-encoderへ渡し、両者のtoken間attentionから関連度を再計算する。これでRAGの検索pipelineが一通り完成する。</p>
+      <p class="section-lead">Stage 1は「関連しそうな候補を落とさず集める」処理であり、Stage 2は「候補のどれがqueryへ直接答えるかを精密に判定する」処理である。この2つの問いに、bi-encoderとcross-encoderがそれぞれ異なる計算方法で答える。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture7-agentic-llms/11-cross-encoder.jpg" alt="QueryとChunkを同時に入力して関連度を出すCross-encoder図" loading="lazy" />
         <figcaption>QueryとChunkを一つの入力として処理し、より精密なrelevance scoreを出すcross-encoder。<a class="ts" href="https://www.youtube.com/watch?v=h-7S6HNq0Vg&t=2748s" target="_blank" rel="noopener">45:48</a></figcaption>
       </figure>
-      <p>bi-encoderとcross-encoderは競合する代替案ではなく、同じpipelineの前段と後段を分担する。前者でknowledge base全体から候補を安く集め、後者はその候補だけを精密に並べ直す。</p>
+
+      <h3>Bi-encoderは別々に読み、再利用できるembeddingを作る</h3>
+      <p>前述のbi-encoderは、queryとchunkを互いに見せず別々のembeddingへ変換し、ベクトル間の距離だけで関連度を求める。chunk embeddingを事前保存して大規模なvector searchに再利用できる一方、「queryのどの語がchunkのどの記述へ対応するか」は直接見ていない。</p>
+
+      <h3>Cross-encoderはqueryと候補を一緒に読み、1つのscoreを返す</h3>
+      <p>cross-encoderは独立したembeddingを作らない。1つの入力へqueryと1件の候補chunkを連結し、Transformerに同時に読ませる。するとqueryとchunkのtokenがmodel内部で直接参照し合えるため、「queryのこの語が、chunkのどの記述へ対応するか」まで考慮し、最後にそのpairのrelevance scoreを1つ返せる。</p>
+      <p>たとえばqueryが「Berlinの人口は何人か」で、候補に「Berlinの人口を数値で述べる文」と「Berlinには多くの博物館があるという文」があるとする。どちらもBerlinというtopicには近いが、cross-encoderは「人口」「何人」と具体的な数値記述の対応を見て、前者を高く評価できる。一方、この計算はqueryと候補のpairごとに必要なので、knowledge base全体へ直接適用すると遅い。そこでbi-encoderやBM25が絞ったTop 100程度の候補だけを再評価する。</p>
+
+      <h3>現在のRAGでもrerankerとして使われる</h3>
+      <p>講義外の現在情報を補足すると、cross-encoderは現在のRAGでも検索品質を上げる一般的な選択肢である。<a href="https://sbert.net/docs/cross_encoder/usage/usage.html" target="_blank" rel="noopener">Sentence Transformers公式ドキュメント</a>は、cross-encoderをbi-encoderより高精度だがpairごとの計算で遅いmodelと説明し、Top-Kのrerankingを代表用途としている。<a href="https://docs.cohere.com/docs/reranking-with-cohere" target="_blank" rel="noopener">Cohereの公式ガイド</a>も、vector searchまたはkeyword searchの結果をRAGの第2段階でrerankする構成を示している。</p>
+      <p>したがって典型的な流れは、<strong>vector search / BM25で候補取得 → cross-encoder系rerankerで並べ替え → 上位だけをLLMへ渡す</strong>となる。ただし必須ではなく、latencyと費用を優先するsystemではrerankingを省き、品質を重視するsystemでは追加する。</p>
+
+      <p>この分担を踏まえると、両者は競合する代替案ではなく、同じpipelineの前段と後段を担当していることが分かる。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>観点</th><th>Bi-encoder</th><th>Cross-encoder</th></tr></thead>
@@ -488,7 +536,7 @@ flowchart LR
           </tbody>
         </table>
       </div>
-      <p>rerankerには事前学習済みモデルも、用途別に学習したモデルも使える。候補全体ではなくStage 1で絞った集合だけへ適用することで、精度と費用のバランスを取る。</p>
+      <p>rerankerには事前学習済みmodelやAPIを使う方法と、domain固有の関連pairで学習する方法がある。どちらを選んでも、次節のNDCGやMRRで追加コストに見合う順位改善が得られたかを確認する。</p>
     </section>
 
     <section id="s11">
@@ -502,6 +550,19 @@ flowchart LR
         DCG@K = Σ<sub>i=1..K</sub> rel<sub>i</sub> / log<sub>2</sub>(i + 1)
         <small>NDCG@K = DCG@K / IDCG@K。IDCGは関連文書を理想順に並べたときのDCG。</small>
       </div>
+      <h3>式を言葉に置き換える</h3>
+      <p><strong>DCG@Kは「上位K件に入った関連chunkへ、順位に応じた点数を与えて合計する」指標</strong>である。関連chunkが上位にあるほど大きく加点し、下位へ行くほど点数を小さくする。</p>
+      <ul>
+        <li><code>K</code> は評価する検索結果の件数。<code>DCG@5</code> なら上位5件だけを見る。</li>
+        <li><code>rel<sub>i</sub></code> はi位のchunkが正解に関連する度合い。講義の単純な例では、関連ありを1、なしを0とする。</li>
+        <li><code>log<sub>2</sub>(i + 1)</code> は順位の割引である。1位では1で割るため満点、3位では2で割るため同じ関連chunkでも半分の点になる。</li>
+      </ul>
+      <p>ただしDCGだけでは、queryごとに関連chunkの総数が違うとscoreを比較しにくい。そこで、関連chunkを可能な限り上位へ並べた<strong>理想順位のDCG（IDCG）</strong>を計算し、実際のDCGをIDCGで割る。言葉にすれば、<strong>NDCG@K = 実際の並び順で得た点数 ÷ そのqueryで取り得る理想点</strong>であり、理想どおりなら1、関連chunkが下位へ落ちるほど0へ近づく。</p>
+
+      <h3>3件の検索結果で計算する例</h3>
+      <p>上位3件のrelevanceが順に <code>[1, 0, 1]</code> だったとする。1位の関連chunkは <code>1 / log₂(2) = 1</code> 点、2位は非関連なので0点、3位の関連chunkは <code>1 / log₂(4) = 0.5</code> 点となり、<code>DCG@3 = 1.5</code> である。</p>
+      <p>理想順位は関連chunkを1位と2位へ並べた <code>[1, 1, 0]</code> なので、<code>IDCG@3 = 1 + 1 / log₂(3) ≈ 1.63</code>。したがって <code>NDCG@3 = 1.5 / 1.63 ≈ 0.92</code> となる。必要なchunkは取得できているが、1件が2位ではなく3位へ下がった分だけ、理想値1.0から減点されたと読める。</p>
+
       <p>同じTop-K結果でも、4指標が捉える失敗は異なる。候補の漏れ、最初の根拠の遅さ、複数根拠の順序、無関係chunkの混入を分けて測ることで、Stage 1とStage 2のどちらを改善すべきか判断できる。</p>
       <div class="table-wrap">
         <table>
