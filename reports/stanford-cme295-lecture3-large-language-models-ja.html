@@ -175,6 +175,47 @@
   }
   .card h4 { margin: 0 0 6px; color: var(--accent); font-size: 14px; }
   .card p { margin: 0; color: var(--text-dim); font-size: 13.5px; }
+  .prompt-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(210px, 1fr));
+    gap: 12px;
+    margin: 16px 0 22px;
+    overflow-x: auto;
+  }
+  .prompt-card {
+    min-width: 0;
+    padding: 15px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-elev);
+  }
+  .prompt-card h4 { margin: 0 0 6px; color: var(--accent); font-size: 15px; }
+  .prompt-card > p { margin: 0 0 10px; color: var(--text-dim); font-size: 13px; }
+  .prompt-card details {
+    border-top: 1px solid var(--border);
+    padding-top: 9px;
+  }
+  .prompt-card summary {
+    color: var(--link);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .prompt-card pre {
+    margin: 10px 0 0;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .prompt-card pre code { padding: 0; border: 0; background: transparent; }
+  @media (max-width: 640px) {
+    .prompt-grid { grid-template-columns: 1fr; overflow-x: visible; }
+  }
   .stat-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -674,19 +715,86 @@ flowchart TD
       <p>Pretrained modelは、大量のdataであらかじめ学習されたmodelである。ここでいう<strong>frozen（固定済み）</strong>とは、そのmodelが入力から出力を計算するときに使う数値であるparameter（weight）を変えないという意味だ。trainingやfine-tuningでは、正解との誤差をもとにこの数値を更新し、変更後のmodelを次の入力にも使う。対してICLは、promptにある指示や例を手掛かりに<strong>inference（推論）時</strong>の出力を変えるだけで、推論が終わってもweightへ新しい知識は書き込まれない。</p>
       <p>したがって、ICLの「learning」はmodelの再学習ではない。modelはprompt内の例から、入力と出力の対応関係、使用できるlabelの語彙、回答形式、文体などを推定し、続く入力をそのpatternに合わせて補完する。この違いにより、modelを再配布せずにtaskをすぐ切り替えられる一方、例はrequestごとにcontextへ入れる必要がある。</p>
       <h3>一つの感情分類taskを段階的に教える</h3>
-      <p>商品reviewを肯定的なら<code>POS</code>、否定的なら<code>NEG</code>と返すtaskを考える。違うのは、正解例をpromptへ何件置くかだけである。</p>
+      <p>商品reviewを肯定的なら<code>POS</code>、否定的なら<code>NEG</code>と返すtaskを考える。<strong>shot</strong>は、正解付きの見本をpromptへ何件入れるかを表す。Zero-shotは0件、One-shotは1件、Few-shotは少数件である。どの方式でもmodelのweightは更新せず、毎回のprompt内だけでtaskを伝える。</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>方式</th><th>具体的なprompt</th><th>modelが利用する手掛かり</th></tr></thead>
+          <thead><tr><th>方式</th><th>例とmodelが読み取る情報</th><th>メリット</th><th>デメリット・注意点</th></tr></thead>
           <tbody>
-            <tr><td>Zero-shot</td><td>「reviewを<code>POS</code>か<code>NEG</code>で分類し、labelだけを答えてください。review: 操作が簡単で満足です。」</td><td>正解例はなく、自然言語の指示からtask、label、出力形式を解釈する。</td></tr>
-            <tr><td>One-shot</td><td>「review: 電池がすぐ切れました。→ <code>NEG</code><br />review: 操作が簡単で満足です。→」</td><td>一つの対応例から、reviewの後に大文字のlabelだけを置くpatternを具体化する。</td></tr>
-            <tr><td>Few-shot</td><td>「重くて持ちにくい。→ <code>NEG</code><br />音がきれいです。→ <code>POS</code><br />電池がすぐ切れました。→ <code>NEG</code><br />操作が簡単で満足です。→」</td><td>肯定・否定の対応、許されるlabelの語彙、改行形式を複数例から推定する。</td></tr>
+            <tr>
+              <td><strong>Zero-shot</strong></td>
+              <td><strong>0例。</strong> 指示からtask、<code>POS/NEG</code>の意味、labelだけ返す形式を解釈する。</td>
+              <td>最短・最安。例の準備なしですぐ試せる。</td>
+              <td>独自labelや複雑な形式は、指示だけでは誤解されやすい。</td>
+            </tr>
+            <tr>
+              <td><strong>One-shot</strong></td>
+              <td><strong>1例。</strong> 入出力の対応、大文字label、回答を1語にする形式を見本から読む。</td>
+              <td>少ない追加tokenで、独自形式を実演できる。</td>
+              <td>1例の特徴やlabelを一般規則と誤認しやすい。</td>
+            </tr>
+            <tr>
+              <td><strong>Few-shot</strong></td>
+              <td><strong>複数例。</strong> labelの対応、判断境界、複数の表現、回答formatを共通patternから読む。</td>
+              <td>独自taskや細かな基準を最も具体的に示せる。</td>
+              <td>context・料金・待ち時間が増え、誤例・偏り・例の順番にも影響される。</td>
+            </tr>
           </tbody>
         </table>
       </div>
-      <p>Zero-shotは例を準備せず短いpromptで始められる。One-shotは少ない追加tokenで形式を実演でき、few-shotは判断境界や文体まで具体的に示しやすい。ただし、例が多ければ常に良いわけではない。例の順番や品質が出力を左右し、誤った例や偏った例へ引かれることがある。例と本番入力の性質が違うdistribution mismatch、つまり「例は短い明確なreviewだが、本番は皮肉を含む長文」といったずれにも弱い。また、提示した少数例の表面的なpatternへ合わせすぎる過適合が起こり得る。</p>
-      <p>さらに、各例は利用可能なcontextを消費し、入力token数に応じて計算量、料金、待ち時間を増やす。そのため、代表的で正確な例を少数選び、順番を変えて結果が安定するか、例を外したzero-shotと比べて本当に改善するかを確かめる必要がある。良い自然言語instructionだけでfew-shotと同等以上になるmodelやtaskもあり、ICLはfine-tuningを不要にする万能な代替ではない。</p>
+
+      <h3>Prompt例（必要なものだけ開く）</h3>
+      <div class="prompt-grid">
+        <article class="prompt-card">
+          <h4>Zero-shot</h4>
+          <p>指示と今回の問題だけを渡す。</p>
+          <details>
+            <summary>Promptを表示</summary>
+            <pre><code>商品reviewをPOSかNEGへ分類し、
+labelだけを答えてください。
+
+review: 操作が簡単で満足です。
+label:</code></pre>
+          </details>
+        </article>
+        <article class="prompt-card">
+          <h4>One-shot</h4>
+          <p>完成した入出力例を1件追加する。</p>
+          <details>
+            <summary>Promptを表示</summary>
+            <pre><code>商品reviewをPOSかNEGへ分類し、
+labelだけを答えてください。
+
+例: 電池がすぐ切れました。→ NEG
+問題: 操作が簡単で満足です。→</code></pre>
+          </details>
+        </article>
+        <article class="prompt-card">
+          <h4>Few-shot</h4>
+          <p>種類の異なる正解例を複数追加する。</p>
+          <details>
+            <summary>Promptを表示</summary>
+            <pre><code>商品reviewをPOSかNEGへ分類し、
+labelだけを答えてください。
+
+重くて持ちにくい。→ NEG
+音がきれいです。→ POS
+電池がすぐ切れました。→ NEG
+問題: 操作が簡単で満足です。→</code></pre>
+          </details>
+        </article>
+      </div>
+
+      <h3>どの方式を選ぶか</h3>
+      <ol>
+        <li><strong>まずZero-shotで基準を作る</strong>：明確な指示だけで十分な精度と形式が得られるなら、最も短く安価な方式を使う。</li>
+        <li><strong>形式だけ不安定ならOne-shotを試す</strong>：modelが説明を余計に書く、独自labelを間違える、JSON構造を理解しない場合は、正しい完成例を1件示す。</li>
+        <li><strong>判断基準まで曖昧ならFew-shotを使う</strong>：肯定・否定の境界、例外、文体などを、異なる種類の正例・負例で示す。</li>
+        <li><strong>検証用dataで比較する</strong>：例を増やす前後で正答率、形式違反、token数、料金、latencyが本当に改善したかを測る。</li>
+      </ol>
+
+      <p>Few-shot用の例は、数よりも<strong>正確さ・多様さ・本番入力との近さ</strong>が重要である。例えば、例がすべて短く明確なreviewなのに、本番では「最高の商品です。二度と買いません」のような皮肉を含む長文が来ると、例と本番の性質が異なる。このずれを<strong>distribution mismatch（分布の不一致）</strong>と呼び、modelは例から学んだ単純なpatternを適用して誤る可能性がある。</p>
+
+      <p>また、同じ例でも並べる順番で結果が変わることがある。最後の例や多数派labelへ引かれていないかを確かめるため、例の順番を入れ替える、POS/NEGの件数を釣り合わせる、難しい境界例を含める、といった確認が必要である。例を増やすほど利用可能なcontextを消費し、入力token数に応じて計算量・料金・待ち時間も増える。したがってFew-shotは常にZero-shotより優れるわけではなく、ICLも永続的に能力を追加するfine-tuningの完全な代替ではない。</p>
       <h3>一度に解きにくいtaskは、先に手順へ分ける</h3>
       <p>分類のように一段で答えられるtaskと異なり、複数の条件を追う問題では、modelが必要な計算を飛ばしたり、途中の条件を落としたりする。この場合は、単に例を増やすだけでなく、「まず何を解くかを分け、次に各段階を実行する」とpromptで作業順を与える方法がある。</p>
       <div class="callout info">
@@ -719,17 +827,42 @@ flowchart TD
         <figcaption>Self-consistencyの集約図。同じLLMから3本のreasoning pathをsampleし、2本が5、1本が4を出したため最終回答5へ集約している。<a class="ts" href="https://www.youtube.com/watch?v=Q5baLehv5So&t=4950s" target="_blank" rel="noopener">1:22:30</a></figcaption>
       </figure>
       <p><strong>画像の読み解き：</strong>同一pathを長くするのではなく、独立した複数pathの最終回答をvoteする点が要点である。各pathは並列生成できるため、十分なhardwareがあれば利用者が待つ時間を短くできるが、計算自体は消えない。3本なら生成computeと料金も概ね3本分となり、sample数を増やすほどtotal costは増える。</p>
+      <h3>三つの方法は何が違うのか</h3>
+      <p>三つは別々のmodelではなく、<strong>同じmodelにどのような出力を何本作らせるか</strong>の違いである。Direct answerは最終回答を1本、CoTは途中の解法を含む回答を1本、Self-Consistencyは異なるCoTを複数本作って最終回答を集約する。後者ほど一つの誤りへ依存しにくくなる可能性がある一方、生成token数と計算費用は増える。</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>方法</th><th>生成するもの</th><th>狙い</th><th>主な限界</th></tr></thead>
+          <thead><tr><th>方法</th><th>処理と具体例</th><th>有効な場面</th><th>改善できないこと・代償</th></tr></thead>
           <tbody>
-            <tr><td>Direct answer</td><td>最終回答を1本</td><td>短く、低costで答える</td><td>途中の取り落としを見つけにくい</td></tr>
-            <tr><td>CoT</td><td>途中のstepと最終回答を1本</td><td>多段問題を順に処理する</td><td>一つの誤ったpathに依存し、説明も必ずしも忠実ではない</td></tr>
-            <tr><td>Self-Consistency</td><td>複数のCoTと投票結果</td><td>一つのpathへの依存を減らす</td><td>多数派も誤り得るうえ、抽出処理と複数本分のcostが必要</td></tr>
+            <tr>
+              <td><strong>Direct answer</strong><br />直接回答</td>
+              <td>途中の説明を求めず、最終回答を1回だけ生成する。<br /><code>答え: 11歳</code></td>
+              <td>単純な質問、短い分類、速度・料金を優先する場面。</td>
+              <td>必要な計算を飛ばしても発見しにくい。誤答しても、どの段階で間違えたか分からない。</td>
+            </tr>
+            <tr>
+              <td><strong>CoT</strong><br />思考の連鎖</td>
+              <td>途中の計算を含む回答を1回生成する。<br /><code>12−3=9、9+2=11。答え: 11歳</code></td>
+              <td>算数、論理、複数条件など、段階を順に処理する必要がある問題。</td>
+              <td>最初の解釈や途中計算が誤ると、その1本全体が誤った方向へ進む。書かれた説明がmodel内部の真の因果を示す保証もない。Direct answerよりtoken数が増える。</td>
+            </tr>
+            <tr>
+              <td><strong>Self-Consistency</strong><br />複数経路の多数決</td>
+              <td>temperatureを上げて独立したCoTを複数生成し、各最終回答を抽出して投票する。<br /><code>11歳 / 11歳 / 10歳 → 11歳</code></td>
+              <td>同じ問題でも複数の解き方があり、1本の偶発的な計算ミスを減らしたい場面。</td>
+              <td>全経路が同じ誤解をすれば多数決でも誤る。回答抽出・同票処理が必要で、<code>n</code>本生成すれば総計算量と料金も概ね<code>n</code>本分になる。</td>
+            </tr>
           </tbody>
         </table>
       </div>
-      <p>改善を評価するときは、問題ごとにground truth（採点基準となる正解）が付いたbenchmark（共通の問題集合）で、direct answer、CoT、Self-Consistencyの正答率とcostを同じ条件で比べる。元論文は算術・数学reasoning taskなどで評価しているが、あるbenchmarkでの改善は、その問題分布と採点方法での結果であり、別のtaskでの正しさや一般能力を保証しない。</p>
+      <h3>「改善した」と判断するには何を比べるか</h3>
+      <p>数問だけを見て判断すると、問題の偶然やsamplingのばらつきを性能差と誤認する。そこで、各問題に<strong>ground truth（採点基準となる正解）</strong>がある<strong>benchmark（共通の評価問題集）</strong>を使い、同じmodel・同じ問題集合で三方式を比較する。</p>
+      <ul>
+        <li><strong>正答率</strong>：最終回答がground truthと一致した問題の割合。まず本当に正解が増えたかを見る。</li>
+        <li><strong>平均生成token数</strong>：Direct answerよりCoTが何token増え、Self-Consistencyで何本生成したかを測る。料金と計算量の基礎になる。</li>
+        <li><strong>Latencyと総compute</strong>：複数pathを並列化すると利用者の待ち時間は短縮できても、総計算量は減らないため両方を分けて報告する。</li>
+        <li><strong>安定性</strong>：sampling seedや例の順番を変えても改善が続くかを確認し、1回だけの好結果を避ける。</li>
+      </ul>
+      <p>元論文は算術・数学reasoningのbenchmarkでSelf-Consistencyを評価した。したがって、その結果が直接示すのは「そのmodel・prompt・生成本数・問題集合で正答率が改善した」という範囲であり、文章生成や事実質問など別taskの正しさ、modelの一般能力、安全性まで保証するものではない。採用判断では、得られた正答率の増加が、追加token・料金・待ち時間に見合うかを確認する必要がある。</p>
     </section>
 
     <section id="inference-map">
@@ -746,20 +879,31 @@ flowchart TD
   D -->|"EOS"| E["Response"]
       </div>
       <p class="diagram-hint">図をクリックすると拡大・移動できる。</p>
+
+      <h3>高速化は「元modelの出力を保つか」で分けられる</h3>
+      <p>推論を速くする方法を比較するときは、速度だけでなく<strong>高速化前と同じmodelの出力確率を保つ必要があるか</strong>を確認する。例えば、あるmodelが次tokenへ <code>猫: 60%、犬: 30%、鳥: 10%</code> を与えるとする。計算方法やmemory配置を変えても、この60/30/10という分布が変わらないなら、modelの判断内容を保ったまま実装だけを効率化したと考えられる。</p>
+
+      <p>本レポートでは、このように<strong>基準となるmodelの出力確率分布を理論上保つ最適化</strong>を<strong>exact（分布保存型）</strong>と呼ぶ。Exactは「毎回まったく同じ文章になる」という意味ではない。Samplingを使えば、同じ60/30/10からでも実行ごとに猫・犬・鳥のどれかが選ばれる。保たれるのは個々の出力token列ではなく、繰り返し生成したときに各候補が選ばれる確率である。</p>
+
+      <p>一方、K/V headの共有方法や内部表現、学習目標を変えて新しくmodelを学習する手法は、元modelと同じ確率分布を再現すること自体を目的にしていない。これらは<strong>architecture・training変更型</strong>であり、memoryや速度を改善しながら高いqualityを保てるかを、学習後のbenchmarkや実タスクで確認する。</p>
+
       <div class="table-wrap">
         <table>
-          <thead><tr><th>手法</th><th>主に狙うbottleneck</th><th>結果分布との関係</th></tr></thead>
+          <thead><tr><th>手法</th><th>主に狙うbottleneck</th><th>分類と元modelへの影響</th></tr></thead>
           <tbody>
-            <tr><td>KV cache</td><td>decodeで過去のK/Vを再計算する演算とlatency</td><td>同じmodelの計算結果を再利用する実装最適化。理想的には分布を変えない。</td></tr>
-            <tr><td>GQA</td><td>KV cacheのcapacityと読み出しbandwidth</td><td>K/V headを共有するarchitecture変更。MHA modelへ後付けして同一分布を保証する手法ではない。</td></tr>
-            <tr><td>PagedAttention</td><td>可変長requestによるmemory断片化とcapacity利用率</td><td>KVの配置を変えるsystem最適化。attentionの数学は変えない。</td></tr>
-            <tr><td>MLA</td><td>KV表現のcapacityと読み出しbandwidth</td><td>低rank表現を学習するarchitecture変更であり、元のMHA modelと同一分布を保証しない。</td></tr>
-            <tr><td>Speculative decoding</td><td>memory-bandwidth-boundな逐次decodeのlatency</td><td>modified rejection samplingを正しく使えば、target modelの出力分布を保存する。</td></tr>
-            <tr><td>MTP</td><td>training signalと、推論利用時の逐次step数</td><td>training objective・architectureを変える。推論時の分布保存はvalidation方法次第。</td></tr>
+            <tr><td>KV cache</td><td>decodeで過去のK/Vを再計算する演算とlatency</td><td><strong>Exactな実装最適化。</strong> 同じmodelで既に計算した値を保存・再利用し、理論上は次token分布を変えない。</td></tr>
+            <tr><td>PagedAttention</td><td>可変長requestによるmemory断片化とcapacity利用率</td><td><strong>Exactなsystem最適化。</strong> K/Vを置くmemory位置だけを変え、attentionの式とmodel weightは変えない。</td></tr>
+            <tr><td>Speculative decoding</td><td>memory-bandwidth-boundな逐次decodeのlatency</td><td><strong>補正によりexactにできる生成手順。</strong> Modified rejection samplingを正しく使うとtarget modelの分布を保てる。</td></tr>
+            <tr><td>GQA</td><td>KV cacheのcapacityと読み出しbandwidth</td><td><strong>Architecture変更。</strong> K/V headを共有する構造でmodelを学習するため、既存MHA modelと同一分布になる保証はない。</td></tr>
+            <tr><td>MLA</td><td>KV表現のcapacityと読み出しbandwidth</td><td><strong>Architecture変更。</strong> 低rankの圧縮表現を使うmodelとして学習し、元のMHA modelとは内部計算が異なる。</td></tr>
+            <tr><td>MTP</td><td>training signalと、推論利用時の逐次step数</td><td><strong>Training objective・architecture変更。</strong> 推論時に元のnext-token分布を保つかは、候補の検証方法に依存する。</td></tr>
           </tbody>
         </table>
       </div>
-      <p>したがって「exact」は同じ乱数なら必ず同じtoken列という意味ではなく、sampleされる<strong>確率分布</strong>を保つという意味で使う。KV cacheやPagedAttentionは実装上の再利用・配置変更、speculative decodingは補正付きsamplingによってこれを目指す。対してGQA、MLA、MTPはmodelの学習済みarchitectureまたはobjective自体を変えるため、単なる無損失な後処理ではない。ただしarchitecture変更を一律に「低品質な近似」とみなすのも誤りで、qualityは学習と評価によって確かめる必要がある。</p>
+      <div class="callout info">
+        <strong>Exactでないことは、低品質という意味ではない</strong>
+        <p>GQA、MLA、MTPは元modelの計算をそのまま再現する後処理ではないが、効率を考慮したmodelとして最初から学習すれば、必要なqualityを保ちながら大きなmemory・速度改善を得られる可能性がある。重要なのは「元modelと同一か」ではなく、目的のタスクでquality、latency、throughput、memoryを測り、改善と代償を評価することである。</p>
+      </div>
     </section>
 
     <section id="kv-cache">
@@ -788,22 +932,45 @@ flowchart TD
       </div>
       <h3>PagedAttentionで予約領域を細分化する</h3>
       <p>requestごとに出力長は異なり、end-of-sequence（EOS）tokenがいつ出るかは生成前には分からない。naiveなserverが各requestへ最大長ぶんの連続領域を先に予約すると、短く終わるrequestは大半を使わず、長いrequestを安全に置ける大きな連続領域も見つけにくくなる。</p>
-      <p>固定数のtokenが入る箱を並べる倉庫で考える。最後の箱が半分空いたまま割り当て済みになるのが<strong>internal fragmentation</strong>（割当領域の内部の余り）。空き箱は合計で足りるのに棚の各所へ分散し、連続した大きな置き場として使えないのが<strong>external fragmentation</strong>（割当領域の間の隙間）である。</p>
-      <p>PagedAttentionはKV cacheを固定sizeのblockへ分ける。requestから見えるtoken順の<strong>logical block</strong>と、GPU memory上の実際の置き場である<strong>physical block</strong>を分離し、<strong>block table</strong>に「logical block 0はphysical block 7」のような対応を記録する。physical blockは連続していなくてよく、生成が伸びた時だけ追加するため、予約と断片化を抑えて同じcapacityへより多くのrequestを収容できる。</p>
+      <p>具体例として、serverが1 requestにつき最大128 tokenの出力を許す一方、実際の回答は30 tokenで終了したとする。naiveな方式で最初から128 token分を確保すると、使った30 token以外の98 token分は他requestが使えない。この<strong>「将来使うかもしれない」という理由だけで先に確保した未使用領域</strong>がreservationによる無駄である。</p>
+
+      <h3>Memoryの無駄は三種類に分けて考える</h3>
+      <p>PagedAttentionはKV cacheを、例えば16 tokenずつ入る固定sizeの<strong>block</strong>へ分ける。requestから見える「先頭から何番目のblockか」を<strong>logical block</strong>、GPU memory上の実際の置き場を<strong>physical block</strong>と呼び、両者の対応を<strong>block table</strong>へ記録する。</p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture3-large-language-models/08-paged-attention.jpg" alt="PagedAttentionスライドに、複数requestの予約memory、internal fragmentation、external fragmentationを色分けした横長の配置図が示されている" loading="lazy" />
         <figcaption>naiveなKV cache管理の断片化。複数requestのtoken領域、未使用予約領域、internal fragmentation、領域間のexternal fragmentationが横棒で色分けされている。<a class="ts" href="https://www.youtube.com/watch?v=Q5baLehv5So&t=5700s" target="_blank" rel="noopener">1:35:00</a></figcaption>
       </figure>
-      <p><strong>画像の読み解き：</strong>sequenceがいつEOSへ達するか不明なため、連続領域を大きく予約すると「block内の余り」と「block間の隙間」が同時に生じる。PagedAttentionはlogical blockとphysical blockを分離し、この図の空白を小さなblock単位で再利用する。</p>
+      <p><strong>画像の読み解き：</strong>sequenceがいつEOSへ達するか不明なため、連続領域を大きく予約すると、まだ使っていない予約領域、割当単位の内側の余り、領域間に散らばる空きが同時に生じる。次の表では、30 tokenをblock size 16で保存する例を使って違いを整理する。</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>無駄</th><th>意味</th><th>PagedAttentionの対応</th></tr></thead>
+          <thead><tr><th>無駄の種類</th><th>具体例</th><th>なぜ問題か</th><th>PagedAttentionの対応</th></tr></thead>
           <tbody>
-            <tr><td>Reservation</td><td>最大lengthを見越して確保する未使用領域。</td><td>必要になった分だけ小blockを追加。</td></tr>
-            <tr><td>Internal fragmentation</td><td>割当block内部の未使用部分。</td><td>最後のblock程度へ限定。</td></tr>
-            <tr><td>External fragmentation</td><td>連続領域を要求するため生じる隙間。</td><td>KV blockを非連続配置し、block tableで対応付け。</td></tr>
+            <tr>
+              <td><strong>Reservation</strong><br />先行予約の無駄</td>
+              <td>最大128 token分を確保したが、30 tokenで終了し、98 token分を一度も使わない。</td>
+              <td>終了するまで予約領域を他requestへ渡せず、同時処理できるrequest数が減る。</td>
+              <td>最大長を一括確保せず、生成が16 token進むごとに必要なphysical blockを追加する。30 tokenなら2 blockだけを使う。</td>
+            </tr>
+            <tr>
+              <td><strong>Internal fragmentation</strong><br />block内部の余り</td>
+              <td>30 tokenには16 token blockが2個必要で、容量32のうち最後の2 slotが余る。</td>
+              <td>割当済みblockの内部なので、その2 slotだけを別requestへ貸すことはできない。</td>
+              <td>完全には消えないが、未使用部分を各requestの<strong>最後のblock未満</strong>に抑える。block size 16なら最大15 token分の余りで済む。</td>
+            </tr>
+            <tr>
+              <td><strong>External fragmentation</strong><br />空き領域の分散</td>
+              <td>空きblockがphysical block 2、7、11へ散らばり、合計3 blockあるが連続していない。</td>
+              <td>連続した3 blockを要求する方式では、合計容量が足りても新requestを置けない。</td>
+              <td>logical block 0→physical 7、1→2、2→11のように非連続blockをblock tableでつなぐ。空きblockが連続している必要をなくす。</td>
+            </tr>
           </tbody>
         </table>
+      </div>
+      <p>この仕組みにより、request側にはKV cacheがtoken順に連続して見える一方、GPU memory上では空いているphysical blockをどこからでも利用できる。新しいtokenを生成して現在のblockが満杯になったときだけ次のblockを確保し、requestが終了すれば使ったblockを個別に返却して別requestへ再利用する。</p>
+
+      <div class="callout warning">
+        <strong>PagedAttentionが解決しないこと</strong>
+        <p>PagedAttentionはmemory配置の無駄を減らす手法であり、Attentionの計算式そのものや、1 token当たりに保存するK/Vの量は減らさない。Block tableの管理にも小さなoverheadがあり、最後のblock内のinternal fragmentationは残る。K/Vそのものを小さくするにはGQA、量子化、MLAなど別の手法が必要である。</p>
       </div>
       <div class="callout info">
         <strong>一次資料による補足：論文での効果</strong>
