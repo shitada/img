@@ -324,16 +324,30 @@ flowchart TB
         <figcaption>Judgeの <code>rationale</code> と <code>score</code> を確実にparseするため、guided decodingでJSON schemaを強制する。画面は<a href="stanford-cme295-lecture3-large-language-models-ja.html">Lecture 3</a>のstructured output説明を再掲している。<a class="ts" href="https://www.youtube.com/watch?v=8fNP4N46RRo&amp;t=2050s" target="_blank" rel="noopener">34:10</a></figcaption>
       </figure>
 
-      <p>Judgeの出力形式を固定したら、何を一回の判定単位にするかを選ぶ。単一応答の品質管理と、二つの応答から選好データを作る用途では、入力と得られるsignalが異なる。</p>
+      <p>Judgeへの問い方は、<strong>一つの応答が基準を満たすか</strong>を判定するPointwiseと、<strong>二つの応答のどちらがより基準を満たすか</strong>を選ぶPairwiseの二つに分かれる。前者は絶対評価、後者は相対評価であり、判定結果が意味する範囲も異なる。</p>
       <table>
-        <thead><tr><th>判定方式</th><th>Judgeへの入力と出力</th><th>適した用途</th><th>設計上の注意</th></tr></thead>
+        <thead><tr><th>判定方式</th><th>Judgeに尋ねる問い</th><th>判定結果が意味すること</th><th>主な使い方</th></tr></thead>
         <tbody>
-          <tr><td>Pointwise</td><td>一つのprompt・response・criteriaを渡し、合格/不合格などのscoreとrationaleを得る</td><td>各応答が最低品質を満たすかを判定し、回帰テストやエラー分析へつなげる</td><td>多段階scaleは境界が曖昧になりやすいため、講義はbinary scaleを優先する</td></tr>
-          <tr><td>Pairwise</td><td>同じpromptへのResponse A/Bを渡し、どちらを好むかと理由を得る</td><td>モデル版の比較や、二つの候補からより良い応答を選ぶ評価</td><td>提示順で結果が変わるposition biasがあるため、A/Bを入れ替えて再判定する</td></tr>
-          <tr><td>合成選好データ</td><td>Pairwise Judgeの選択をchosen/rejectedのlabelとして蓄積する</td><td>reward modelやpreference tuning向けのデータを、人手だけに依存せず作る</td><td>Judgeのbiasもlabelへ入るため、生成量を増やす前に人手評価との相関を確認する</td></tr>
+          <tr>
+            <td>Pointwise<br><small>一つずつ判定</small></td>
+            <td>「この応答は、指定した品質基準を満たしているか？」<br>元のprompt、一つのresponse、評価criteriaを渡す</td>
+            <td>Passなら、その応答が設定した最低基準を満たす。Failなら、rationaleから不足した条件を特定できる</td>
+            <td>本番投入前のquality gate、モデル更新後の回帰テスト、失敗理由の分類</td>
+          </tr>
+          <tr>
+            <td>Pairwise<br><small>二つを比較</small></td>
+            <td>「同じpromptへのResponse AとBでは、どちらが評価基準をより満たしているか？」</td>
+            <td>AまたはBの<strong>相対的な勝者</strong>が分かる。ただし、勝者が最低品質を満たすとは限らず、両方が悪い場合もある</td>
+            <td>モデルversion A/Bの比較、複数候補からの選択、選好labelの作成</td>
+          </tr>
         </tbody>
       </table>
-      <p>LLM-as-a-Judgeの利点は、正解参照文がなくても評価を開始でき、scoreをrationaleで解釈できることにある。ただし、これは人手評価が不要になるという意味ではない。次に見るbiasを抑え、最終的には人手との校正で代理指標としての妥当性を保つ必要がある。</p>
+      <p>Pointwiseは「基準を超えたか」を見るため、講義は境界が曖昧になりにくいPass / Failの二値判定を勧める。Pairwiseは差が小さい候補でも優劣を付けやすいが、提示順によるposition biasがあるため、A/Bを入れ替えて結果が変わらないか確認する。</p>
+
+      <h3>合成選好データはPairwise判定の利用先</h3>
+      <p>合成選好データは三つ目の判定方式ではない。Pairwiseで選ばれた応答を<code>chosen</code>、もう一方を<code>rejected</code>として蓄積し、reward modelやpreference tuningの学習データへ再利用する方法である。Judgeのbiasもlabelへ引き継がれるため、大量生成の前に一部を人手評価と比較し、選好が揃っているかを確認する。</p>
+
+      <p>LLM-as-a-Judgeの利点は、正解参照文がなくても評価を開始でき、判定をrationaleで解釈できることにある。ただし人手評価を置き換えるのではなく、次に見るbiasを抑え、人手との校正でproxyとしての妥当性を保つ必要がある。</p>
     </section>
 
     <section id="s5">
