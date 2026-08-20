@@ -351,17 +351,17 @@
 
     <div class="sequence" aria-label="講義全体の因果関係">
       <div class="step"><span class="step-no">1 · GENERATE</span><p>モデルに問題を与え、最終回答だけでなく、そこへ至る CoT（途中の推論）も token 列として生成させる。temperature を持つ sampling で同じ問題から複数の経路を作れば、最初の発想が外れても別の解法を探索でき、後段で比較できる候補群になる。</p></div>
-      <div class="step"><span class="step-no">2 · EVALUATE</span><p>各候補を「もっともらしい文章か」ではなく、答えの一致やコードのテスト通過など、機械的に確認できる verifier で採点する。途中の各手順を PRM で評価する方法もあるが、本講義の R1 系は主に format reward と accuracy reward を使い、最終結果を規則で検証する。</p></div>
+      <div class="step"><span class="step-no">2 · EVALUATE</span><p>各候補を verifier（正しさ・品質を判定する仕組み）で採点する。verifier には品質を予測する学習済み reward model と、答えの一致やテスト通過を調べる固定規則がある。途中の各手順を採点する PRM（Process Reward Model）も使えるが、本講義の R1 系は主に、指定形式を守ったかを見る format reward と最終解の正しさを見る accuracy reward で結果を検証する。</p></div>
       <div class="step"><span class="step-no">3 · SELECT / LEARN</span><p>推論時は複数候補の多数決（self-consistency）や verifier 得点による Best-of-N で、実際に返す回答を選ぶ。この場合、モデルの重みは変わらない。一方、学習時は GRPO が同じ問題への回答を群内比較し、PPO は critic の予測も使って advantage を求め、良い推論を今後生成しやすいよう出力確率を更新する。</p></div>
       <div class="step"><span class="step-no">4 · CURATE / DISTILL</span><p>検証を通った高品質な推論だけを rejection sampling で選別し、次の SFT 用データへ変換する。さらに、大型 reasoning model の推論例を教師データとして小型モデルへ distillation すれば、探索に使った能力を、低コストで提供しやすいモデルへ移せる。</p></div>
     </div>
 
     <section id="s01">
       <h2>1. この講義の位置づけ ― Lecture 4・5 の積み上げの上に立つ</h2>
-      <p class="section-lead">
-        まず、言語を覚える事前学習、指示への答え方を覚える教師あり調整、人の好みに寄せる選好調整という
-        3 段階を復習する。後半の GRPO は突然現れる別技術ではなく、前回の PPO と同じ強化学習の目的を、
-        より少ないモデルで実現する方法だからである。
+      <p>
+        本節では、言語を覚える pretraining、指示への答え方を覚える SFT、人の好みに寄せる preference tuning の 3 段階と、
+        RL と LLM の用語対応、advantage と逸脱抑制からなる損失、PPO-Clip / PPO-KL の違いを復習する。
+        後半の GRPO は別の目的を持つ技術ではなく、PPO と同じ方策改善をより少ないモデルで実現する方法だからである。
       </p>
 
       <h3>3 段階パイプラインの再確認</h3>
@@ -458,10 +458,10 @@
 
     <section id="s02">
       <h2>2. vanilla LLM の強みと 4 つの弱点 ― 今日はそのうち 1 つを潰す</h2>
-      <p class="section-lead">
+      <p>
         通常の LLM は文章やコードのもっともらしい続きを作るのが得意だが、それだけで難しい問題を最後まで正しく解けるとは限らない。
-        この講義が直接改善するのは 4 つの弱点のうち「推論能力が限定的」という 1 点であり、最新情報の取得、外部での行動、
-        自由な文章の評価まで同時に解決するわけではない。
+        本節では、推論、知識の鮮度、外部での行動、自由形式評価という 4 つの弱点を整理し、
+        Lecture 6 がそのうち <strong>limited reasoning</strong> だけを直接改善する回だと位置づける。
       </p>
 
       <figure class="shot">
@@ -501,10 +501,10 @@
 
     <section id="s03">
       <h2>3. reasoning とは何か ― 合意された定義は存在しない</h2>
-      <p class="section-lead">
-        「推論している」と何をもって言うかには合意がない。そこで講義は心の中を推測せず、
-        reasoning を「問題を複数の手順に分け、解へ到達する能力」と暫定的に扱う。
-        本レポートでいう reasoning model も、まずは答えの前に中間列を生成するという機能上の呼び名である。
+      <p>
+        「推論している」と何をもって言うかには合意がないため、本節では reasoning を厳密な認知過程ではなく
+        「問題を複数の手順に分け、解へ到達する能力」と暫定定義する。単なる知識検索との違いと、
+        reasoning model を答えの前に中間列を生成するモデルとして機能的に捉える理由・限界を説明する。
       </p>
 
       <figure class="shot">
@@ -548,9 +548,11 @@
     </section>
     <section id="s04">
       <h2>4. コアアイデアは Chain of Thought ―「ただし、はるかに大規模に」</h2>
-      <p class="section-lead">
-        Chain-of-Thought（CoT、思考の連鎖）とは、答えだけを一度に出さず、中間手順も token として順に書かせる方法である。
-        短い指示や見本で CoT を引き出す prompting から出発し、reasoning model では、その振る舞いを学習で大規模に定着させる。
+      <p>
+        本節では、<strong>Chain-of-Thought（CoT、思考の連鎖）</strong>を「答えだけでなく中間手順も token として順に生成する手法」と定義し、
+        なぜ問題分解と推論時計算の増加に効くのか、従来のプロンプト技法から reasoning model の学習へどう発展したのかを説明する。
+        <strong>zero-shot CoT</strong> は「段階的に考えて」のような指示だけで手順を引き出し、<strong>few-shot CoT</strong> は解き方付きの例を数件示して模倣させる。
+        講義の図は後者だが、reasoning model の狙いは、毎回例示するのではなく、学習によって長い CoT を自発的に生成できるようにすることである。
       </p>
 
       <div class="table-wrap">
@@ -630,10 +632,11 @@
 
     <section id="s05">
       <h2>5. reasoning model のタイムライン ― すべては 2024 年秋以降</h2>
-      <p class="section-lead">
-        2024 年9月の o1-preview 以降、各社は「答える前に考える」製品を相次いで公開した。
-        中でも DeepSeek-R1 は高い性能だけでなく、検証可能な報酬と GRPO を使う学習手順を論文で示したため、
-        手法を理解する転機になった。ここでの年表は代表例であり、網羅的な市場史ではない。
+      <p>
+        本節では、OpenAI o1-preview から各社の thinking model、手法を公開した <strong>DeepSeek-R1</strong> までの登場順をたどり、
+        推論時に長い CoT を生成するモデルが短期間で主要系統になった背景を整理する。DeepSeek-R1 は、後半で詳述する
+        <strong>検証可能な正誤報酬と GRPO</strong>を軸に推論能力を強化し、再現可能な学習レシピを示した点で転機となった。
+        Afshine は <em>「今日見るものはほぼすべて 2024 年か 2025 年のものだ」</em> と前置きしており、年表は代表例であって網羅的な市場史ではない。
       </p>
 
       <figure class="shot">
@@ -660,10 +663,10 @@
 
     <section id="s06">
       <h2>6. 使っているモデルが reasoning model かどうかの見分け方</h2>
-      <p class="section-lead">
-        画面に <strong>Thinking</strong> や「考えた秒数」が出れば、推論用の処理が走った手掛かりになる。
-        ただし利用者が読む文章は、多くの場合、生の長い推論列ではなく短い要約である。
-        「表示されない」と「生成されていない」は同じではない。
+      <p>
+        本節では、UI の <strong>Thinking</strong> 表示から reasoning model を識別する手掛かりと、
+        実際の長い CoT（hidden CoT）ではなく要約だけが表示される理由を説明する。
+        生の推論列を隠しても、モデル内部では答えの前に生成され、その生成計算と token は消えない点が重要である。
       </p>
 
       <figure class="shot">
@@ -699,10 +702,10 @@
 
     <section id="s07">
       <h2>7. 課金の話 ― 推論 token にもお金がかかる</h2>
-      <p class="section-lead">
-        reasoning token は、利用者に見せる最終回答の前に生成される推論用 token である。
-        画面に全文が出なくても計算と context window を使い、講義で確認した各社の当時の仕様では出力側の料金対象になる。
-        だから精度だけでなく「何 token でその精度へ達したか」も実用上の性能になる。
+      <p>
+        本節では、<strong>reasoning token</strong>（最終回答の前にモデルが生成する内部の思考列を構成する token）が
+        UI や API で非表示でも context window と計算資源を消費し、output token として課金される仕組みを説明する。
+        これが、少ない思考量で高い精度を得る必要性と、後半の thinking budget・length bias の動機になる。
       </p>
 
       <figure class="shot">
@@ -732,9 +735,9 @@
     </section>
     <section id="s08">
       <h2>8. reasoning ベンチマーク ― coding と math</h2>
-      <p class="section-lead">
-        推論の文章を人が一行ずつ読まなくても、コードならテスト、数学なら最終解で正誤を判定できる。
-        この「候補を機械的に検査できる」性質が、ベンチマークの採点器にも、後で学習に使う報酬にもなる。
+      <p>
+        本節では、コードをテストで判定する HumanEval・CodeForces・SWE-bench と、最終解を照合する AIME・GSM8K を比べる。
+        両者の<strong>正誤を機械的に検証できる性質</strong>が、評価だけでなく後の RLVR の報酬にもなることを示す。
       </p>
 
       <p><strong>Verifier（検証器）</strong>とは、生成された候補が条件を満たすか判定する仕組みの総称である。
@@ -804,10 +807,10 @@
 
     <section id="s09">
       <h2>9. Pass@k ― 「k 回試して 1 回でも当たる確率」</h2>
-      <p class="section-lead">
-        1 回目が外れても、別の解き方を何回か試せば正解が混ざるかもしれない。
-        Pass@k は「k 個の候補のどこかに少なくとも 1 個の正解がある確率」を測る指標であり、
-        正解候補を実際に選び出す方法とは分けて考える。
+      <p>
+        本節では、k 個の候補に少なくとも 1 正解が含まれる能力を測る <strong>Pass@k</strong>を定義し、
+        複数生成が有用な場面、Best-of-N との違い、k 個だけを直接数えず n 個から不偏推定する理由を説明する。
+        Pass@k は正解候補を実際に選び出す方法ではなく、候補集合に正解が含まれる能力を測る指標である。
       </p>
 
       <div class="formula">
@@ -827,7 +830,7 @@
       <h3>Best-of-N との違い</h3>
       <p>
         Afshine は Lecture 5 の <strong>Best-of-N</strong> と対比させた。Best-of-N は同じ入力から N 個の候補を生成し、
-        講義の例では<strong>学習済み reward model を verifier</strong>として使い、最高得点の 1 個を選ぶ推論時探索である。
+        <strong>verifier（候補の正しさ・品質を判定する仕組み）</strong>として学習済みの reward model を使い、最高得点の 1 個を選ぶ推論時探索である。
         1 回の生成より成功率を上げられる一方、採点器の誤りや追加計算を伴う。Pass@k は選抜手法ではなく、
         テストや答え一致という決定的 verifier が使える場面で「k 個中に正解が含まれる能力」を測る評価指標、という違いがある。
       </p>
@@ -879,10 +882,9 @@ flowchart TD
 
     <section id="s10">
       <h2>10. Pass@k の黒板導出 ― 「余事象」と「非復元抽出」だけでできている</h2>
-      <p class="section-lead">
-        実験では各問題につき n 個の回答を作り、そのうち c 個が正解だったと数える。
-        そこから k 個を選ぶときに正解が混ざる確率は、「全部外れる確率」を 1 から引けば求められる。
-        記号を先に決めてから式を導く。
+      <p>
+        本節では、「少なくとも 1 正解」を「1 − 全部不正解」に変え、n 個から k 個を非復元抽出する確率を階乗と二項係数へ整理して、
+        <code>Pass@k = 1 − C(n−c,k)/C(n,k)</code> を導く。極端な場合の検算と、数値的に安定な実装も補う。
       </p>
 
       <figure class="shot">
@@ -963,10 +965,10 @@ flowchart TD
 
     <section id="s11">
       <h2>11. Pass@1、temperature、そして cons@k</h2>
-      <p class="section-lead">
-        候補を 1 個だけ使うなら Pass@1、k 個のどこかに正解があればよいなら Pass@k、
-        k 個の最頻回答を 1 個返すなら Cons@k と目的が変わる。候補を多様にする temperature と、
-        多数決でまとめる self-consistency を一続きの処理として理解する。
+      <p>
+        本節では、単発成功率の Pass@1、サンプルの多様性を調整する temperature、k 個の最頻解を採る
+        <strong>Consensus@k（Cons@k）</strong>を使い分ける。Cons@k は、異なる推論経路を複数生成して答えを多数決する
+        <strong>self-consistency（自己整合性）</strong>の評価版であり、外部 verifier がなくても一致した結論を信頼するために現れる。
       </p>
 
       <h3>Pass@1 は「1 回の生成が成功する確率」</h3>
@@ -1043,10 +1045,10 @@ flowchart TD
     </section>
     <section id="s12">
       <h2>12. なぜ SFT ではなく RL なのか ― 3 つの理由</h2>
-      <p class="section-lead">
-        長い模範推論を人が大量に書くのは難しいが、数学やコードなら最終結果の正誤は安く測れる。
-        そこで、まずモデル自身に候補を作らせ、正解した候補を強化する RL が使える。
-        ただし途中手順を採点する別の設計もあるため、結果監督と過程監督をここで分ける。
+      <p>
+        本節では、長い CoT を人手で書く難しさ、人間の思考様式に限定する危険、数学・コードに自然な検証報酬があることの 3 点から、
+        ゼロから推論を引き出す段階で SFT より RL が適する理由を説明する。あわせて RLVR と、完成した応答を採点する ORM、
+        各推論手順を採点する PRM、その手順ラベルを教師信号にする process supervision（過程監督）の違いを整理する。
       </p>
 
       <figure class="shot">
@@ -1145,9 +1147,10 @@ flowchart TD
 
     <section id="s13">
       <h2>13. 2 つの verifiable reward ― フォーマットと正解</h2>
-      <p class="section-lead">
-        R1-Zero の報酬は、決められた場所に推論と答えを書いたか、最終解が正しいかという 2 つの規則からなる。
-        形式を守ることと内容が正しいことは別なので、format reward と accuracy reward を組み合わせる。
+      <p>
+        本節では、RLVR の報酬を <strong>format reward</strong>（<code>&lt;think&gt;</code> 区切りがあるか）と
+        <strong>accuracy reward</strong>（最終解が正しいか）に分け、モデルを要さない規則で計算する仕組みを説明する。
+        前者は推論欄の存在と機械可読性を促すだけで内容の正しさは保証しないため、後者との併用が必要になる。
       </p>
 
       <h3>Reward 1：推論チェーンが存在するか（フォーマット報酬）</h3>
@@ -1199,9 +1202,9 @@ flowchart TD
 
     <section id="s14">
       <h2>14. 実際に効く ― R1-Zero の学習曲線</h2>
-      <p class="section-lead">
-        DeepSeek-R1-Zero は、事前学習済み V3-Base に reasoning 用 SFT を行わず、規則報酬の RL を直接かけた実験である。
-        学習曲線から、単発精度と多数決精度が RL step とともに上がることを確認する。
+      <p>
+        本節では、SFT なしの DeepSeek-R1-Zero が format・accuracy の 2 報酬だけで精度を伸ばした学習曲線を読み、
+        RLVR が単なる設計案ではなく、Pass@1 と多数決性能を実際に改善した証拠を確認する。
       </p>
       <figure class="shot">
         <img src="../images/stanford-cme295-lecture6-llm-reasoning/16-run-rl-verifiable-rewards.jpg" alt="スライド「Run RL on &quot;verifiable&quot; rewards」。左に Rewards = formatting + accuracy の構成図、右に DeepSeek-R1-Zero AIME accuracy during training のグラフ（横軸 Steps 0-8000、縦軸 Accuracy 0.2-0.9）" loading="lazy" />
@@ -1227,10 +1230,10 @@ flowchart TD
 
     <section id="s15">
       <h2>15. 推論時に「どれだけ考えるか」を制御する</h2>
-      <p class="section-lead">
-        問題ごとに必要な思考量は違う。簡単な問いへ長い推論を使う overthinking を避け、
-        難問へは十分な inference-time compute を配るため、予算を選ぶ・残量を意識する・生成を延長または終了する・
-        言語 token 以外で考える、という 4 方向を比べる。
+      <p>
+        本節では、簡単な問いにも不要な推論 token を費やしてしまう <strong>overthinking（考えすぎ）</strong>を抑えつつ、
+        難問には十分な inference-time compute（test-time compute、推論時計算）を配る方法を扱う。
+        動的予算、残り context の認識、budget forcing、言語 token を介さない連続思考という 4 方向を比較する。
       </p>
 
       <figure class="shot">
@@ -1300,10 +1303,11 @@ flowchart TD
     </section>
     <section id="s16">
       <h2>16. GRPO ― Group Relative Policy Optimization</h2>
-      <p class="section-lead">
-        Group Relative Policy Optimization（GRPO、群相対方策最適化）は、同じ問題へ複数回答を作り、
-        群の中で良かった回答を増やす RL 手法である。PPO が必要とする critic の代わりに群平均を基準にするため、
-        大きなモデルを 1 個減らせる。もとは 2024 年の DeepSeekMath で提案され、後に DeepSeek-R1 で使われた。
+      <p>
+        本節では、<strong>Group Relative Policy Optimization（GRPO、群相対方策最適化）</strong>が、
+        同じ問題への複数回答を群内比較して advantage を作り、PPO の高価な critic を不要にする仕組みを導入する。
+        GRPO は数学特化モデル <strong>DeepSeekMath</strong> の学習効率を上げるため 2024 年に提案され、
+        のちに DeepSeek-R1 の RLVR を支える実用上の中核となったため、この講義に登場する。
       </p>
 
       <figure class="shot">
@@ -1355,10 +1359,9 @@ flowchart TD
 
     <section id="s17">
       <h2>17. GRPO の核心 ― 「群」の平均をベースラインにする</h2>
-      <p class="section-lead">
-        GRPO は 1 問につき G 個の完成応答を採点し、「自分の報酬 − 群の平均」を基準に各応答の良し悪しを決める。
-        元の定義ではさらに群の標準偏差で割る。これが group-relative advantage であり、
-        学習済み critic を使わずに「期待より良いか」を近似する。
+      <p>
+        本節では、同じプロンプトから G 個の completion を生成し、各報酬から群平均を引いて標準偏差で割る
+        <strong>group-relative advantage</strong>を導入する。問題難易度を相対比較で吸収し、critic を省ける理由と、標準偏差除算の弱点も説明する。
       </p>
 
       <figure class="shot">
@@ -1423,10 +1426,10 @@ flowchart TD
 
     <section id="s18">
       <h2>18. GRPO と PPO を図で並べる</h2>
-      <p class="section-lead">
-        PPO と GRPO は、候補を採点し、良い出力を増やし、元のモデルから急に離れないよう制限する点では同じである。
-        違いは期待値の作り方で、PPO は value model、GRPO は同じ問題への回答群を使う。
-        図に登場する 4 種類のモデルを、学習対象・固定・不要に分けて読む。
+      <p>
+        本節では、GRPO と PPO の生成・採点・advantage 計算・KL 抑制の流れを図で並べ、
+        policy / value / reference / reward の各モデルを訓練するのか凍結するのか、RLVR ではどれを省けるのかを明確にする。
+        両者は良い出力を増やしつつ元のモデルからの急な逸脱を抑える点で共通し、期待値を PPO は value model、GRPO は回答群から作る。
       </p>
 
       <h3>GRPO の流れ</h3>
@@ -1513,10 +1516,10 @@ flowchart LR
 
     <section id="s19">
       <h2>19. 損失関数を並べて読む ― 講義最難関パート</h2>
-      <p class="section-lead">
-        損失関数は「モデルのどの出力確率を、どちらへ、どれだけ動かすか」を決める採点表である。
-        まず数式を使わず、GRPO と PPO が 1 回の更新で行う処理を日本語のブロックに分ける。
-        その後で、共通部分と異なる部分を対応させ、最後に元の数式を詳細確認用として読む。
+      <p>
+        損失関数は、モデルのどの出力確率を、どちらへ、どれだけ動かすかを決める採点表である。
+        本節では、GRPO と PPO の目的関数を ratio・clipping・advantage・KL penalty に分解し、
+        共通する更新制限と、KL の置き場所・advantage 推定法の違いを記号ごとに読み解く。
       </p>
 
       <figure class="shot">
@@ -1668,9 +1671,9 @@ J_GRPO(θ) = E[ q ~ P(Q), {o_i}_{i=1..G} ~ pi_θ_old(O|q) ]<br>
     </section>
     <section id="s20">
       <h2>20. 出力長が伸び続ける現象 ― 何が起きているか</h2>
-      <p class="section-lead">
-        R1-Zero の学習初期には、長く考えるほど精度も上がった。しかし精度が頭打ちになった後も、
-        平均応答長は約 1,000 から 10,000 token 超へ伸び続けた。
+      <p>
+        本節では、R1-Zero の RL 学習で精度が頭打ちになった後も応答長だけが約 1,000 から 10,000 token 超へ伸びる現象を確認し、
+        課金・レイテンシ・計算効率の面から、長さと性能を切り離して最適化する必要性を示す。
         有用な検算と無駄な長文化を分けなければ、性能が同じまま料金と待ち時間だけが増える。
       </p>
 
@@ -1703,10 +1706,10 @@ J_GRPO(θ) = E[ q ~ P(Q), {o_i}_{i=1..G} ~ pi_θ_old(O|q) ]<br>
 
     <section id="s21">
       <h2>21. 犯人は <code>1/|o_i|</code> ― 「長い間違いのほうが得」という悪い設計</h2>
-      <p class="section-lead">
-        素の GRPO は各回答の token 損失を、その回答の長さ <code>|o_i|</code> で割って平均する。
-        すると同じ負の advantage でも、長い誤答に含まれる各 token は弱くしか罰されない。
-        数式の並べ替えから、この length bias が生じる向きを確かめる。
+      <p>
+        本節では、GRPO の応答長正規化 <code>1/|o_i|</code> を token ごとの重みとして読み直し、
+        短い誤答ほど強く罰し、長い誤答ほど軽く済ませる length bias がどう生じるかを 3 段階で導く。
+        これは報酬の意図ではなく目的関数の抜け道であり、広い意味での reward hacking を招く設計上の問題である。
       </p>
 
       <h3>ステップ 1：目的関数を「日本語」で読む</h3>
@@ -1811,10 +1814,10 @@ J_GRPO(θ) = E[ q ~ P(Q), {o_i}_{i=1..G} ~ pi_θ_old(O|q) ]<br>
 
     <section id="s22">
       <h2>22. 修正案 ― DAPO と Dr. GRPO</h2>
-      <p class="section-lead">
-        length bias を消すには、回答ごとに <code>1/|o_i|</code> を掛けるのをやめればよい。
-        DAPO は群全体の token 数で一度だけ正規化し、Dr. GRPO は長さに依存しない定数へ置き換える。
-        どちらも各 token の寄与を、所属する回答の長さから切り離す。
+      <p>
+        length bias を消すには、回答ごとの <code>1/|o_i|</code> をやめ、各 token の寄与を所属する回答の長さから切り離せばよい。
+        本節では、DAPO が正規化を群全体の token 数で 1 回だけ行い、Dr. GRPO が長さ係数を除去することで、
+        正解の推論長を保ちながら冗長な誤答だけを短くする仕組みと実測効果を比較する。
       </p>
       <div class="callout warning">
         <p><strong>時系列の注意。</strong> Afshine はこれらを <em>「GRPO の研究に対して、この数か月で人々が行った拡張」</em> と紹介している。
@@ -1882,9 +1885,9 @@ J_GRPO(θ) = E[ q ~ P(Q), {o_i}_{i=1..G} ~ pi_θ_old(O|q) ]<br>
 
     <section id="s23">
       <h2>23. その他の調整 ― 難易度バイアスと非対称クリップ</h2>
-      <p class="section-lead">
-        GRPO には長さ以外にも 2 つの調整点がある。報酬を群の標準偏差で割ると、
-        難易度の違う問題を不自然に同じ尺度へそろえることがある。対称 clip は低確率 token を育てにくい。
+      <p>
+        本節では、群報酬の標準偏差で割ることで極端な難問・易問を過大評価する difficulty bias と、
+        低確率 token の成長側だけを緩めて探索を保つ非対称クリップ <strong>Clip-Higher</strong>の狙いを説明する。
         Dr. GRPO は前者を、DAPO の Clip-Higher は後者を修正する。
       </p>
 
@@ -1943,7 +1946,7 @@ J_GRPO(θ) = E[ q ~ P(Q), {o_i}_{i=1..G} ~ pi_θ_old(O|q) ]<br>
     </section>
     <section id="s24">
       <h2>24. ここからは Shervine ― DeepSeek のレシピで全部つなげる</h2>
-      <p class="section-lead">
+      <p>
         本節では、共通の V3-Base から通常の V3、純粋 RL の概念実証 R1-Zero、SFT と GRPO を重ねる完成版 R1 がどう分岐するかを図示し、
         前半で学んだ検証報酬と方策最適化を実際のモデル系譜へ接続する。
       </p>
@@ -1981,7 +1984,7 @@ flowchart LR
 
     <section id="s25">
       <h2>25. R1-Zero のレシピ ― SFT を一切やらない</h2>
-      <p class="section-lead">
+      <p>
         本節では、DeepSeek-V3-Base に SFT を挟まず GRPO と検証可能報酬を直接適用して R1-Zero を作る 3 ステップを追い、
         推論能力が創発する利点と、言語混在・可読性という純粋 RL の限界を説明する。
       </p>
@@ -2057,7 +2060,7 @@ flowchart LR
 
     <section id="s26">
       <h2>26. R1 のレシピ ― 5 段階のフルパイプライン</h2>
-      <p class="section-lead">
+      <p>
         本節では、V3-Base の pretraining、cold-start SFT、reasoning 向け GRPO、rejection sampling による大規模 SFT、
         reasoning / general データを混ぜた最終 RL という DeepSeek-R1 の 5 段階を追い、R1-Zero の可読性と汎用性の弱点をどう補ったかを説明する。
       </p>
@@ -2167,7 +2170,7 @@ flowchart TD
 
     <section id="s27">
       <h2>27. R1 の結果 ― 2 つのクラスタと、closed-source との比較</h2>
-      <p class="section-lead">
+      <p>
         本節では、DeepSeek-R1 のベンチマーク表を reasoning / non-reasoning モデルの 2 群として読み、
         公開された学習レシピで closed-source の推論モデルに競合できたことの技術的・実務的な意味を確認する。
       </p>
@@ -2187,7 +2190,7 @@ flowchart TD
 
     <section id="s28">
       <h2>28. distillation ― 大きなモデルの推論能力を小さなモデルへ</h2>
-      <p class="section-lead">
+      <p>
         本節では、巨大な R1 が生成した thinking token 込みの応答系列を小型 Qwen / Llama に SFT する
         <strong>応答系列による distillation</strong>を、次 token 分布を合わせる古典的蒸留と比較する。
         小型モデルへ直接 RL をかけるより能力移植の計算効率と性能が高かった理由も実測値で確認する。
@@ -2243,7 +2246,7 @@ flowchart TD
     </section>
     <section id="s29">
       <h2>29. 難所チートシート ― 詰まりやすい 10 点だけを 1 枚に</h2>
-      <p class="section-lead">
+      <p>
         本節では、Pass@k、advantage、GRPO / PPO、KL、length / difficulty bias、DAPO / Dr. GRPO、Clip-Higher の
         読み違えやすい 10 点を正しい理解と対にして要約し、最後に RLVR 学習の全体フローを 1 枚図へ統合する。
       </p>
@@ -2285,7 +2288,7 @@ flowchart TD
 
     <section id="s30">
       <h2>30. 講義内のやりとり ― 受講生の質問と回答</h2>
-      <p class="section-lead">
+      <p>
         本節では、CoT の意味、日付などの文脈、hidden CoT、temperature、GRPO の群相対評価について、
         講義中の質問と回答を時系列で再掲し、本文の説明と対応づける。
       </p>
@@ -2307,7 +2310,7 @@ flowchart TD
 
     <section id="s31">
       <h2>31. 用語集</h2>
-      <p class="section-lead">
+      <p>
         本節では、本文で導入した推論時計算、評価指標、報酬設計、方策最適化、DeepSeek の学習工程を、
         略語の展開・短い定義・講義内で必要になった理由の 3 列で引き直す。
       </p>
@@ -2360,7 +2363,7 @@ flowchart TD
 
     <section id="s32">
       <h2>32. 関連レポート</h2>
-      <p class="section-lead">
+      <p>
         本節では、本講義の前提となる Lecture 1〜5 と、GRPO・蒸留・オープンモデル運用を実装面から補う既存レポートを、
         どの節の理解に役立つかとともに案内する。
       </p>
@@ -2380,7 +2383,7 @@ flowchart TD
 
     <section id="s33">
       <h2>33. 出典・一次資料</h2>
-      <p class="section-lead">
+      <p>
         本節では、講義動画・公式スライドを直接資料として示し、CoT、Pass@k、GRPO、DeepSeek-R1、DAPO、Dr. GRPO の主張と
         料金・実装上の補足を検証した原論文・公式ドキュメントを用途別に列挙する。
       </p>
