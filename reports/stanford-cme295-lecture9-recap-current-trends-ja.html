@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<link rel="stylesheet" href="../assets/stash-theme.css" />
+<script src="../assets/stash-theme.js"></script>
+<title>Stanford CME295 Lecture 9「Recap &amp; Current Trends」日本語要約</title>
+<meta name="description" content="Stanford CME295 Transformers &amp; LLMs 最終回を公式英語字幕から日本語で再構成。講義1〜8の総復習、Vision Transformer、拡散型LLM、モデル・データ・ハードウェアの最新動向、未解決課題と学び続ける方法を網羅。" />
+<style>
+  :root {
+    --sidebar-w: 280px; --content-max: 920px;
+    --radius: 14px; --shadow: 0 6px 24px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--text); scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.85;
+  }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .layout { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+  aside.sidebar {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    border-right: 1px solid var(--border); background: var(--bg-elev); padding: 24px 18px;
+  }
+  aside.sidebar details > summary {
+    list-style: none; color: var(--text-dim); font-size: 12px;
+    letter-spacing: .12em; text-transform: uppercase; font-weight: 700;
+  }
+  aside.sidebar details > summary::-webkit-details-marker { display: none; }
+  aside.sidebar ol { list-style: none; padding: 10px 0 0; margin: 0; }
+  aside.sidebar li { margin: 2px 0; }
+  aside.sidebar a {
+    display: block; padding: 6px 10px; border-left: 2px solid transparent;
+    color: var(--text-dim); font-size: 13px; line-height: 1.45;
+    border-radius: 0 6px 6px 0;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  aside.sidebar a:hover { color: var(--text); background: rgba(127,127,127,.06); text-decoration: none; }
+  aside.sidebar a.active {
+    color: var(--accent); border-left-color: var(--accent);
+    background: rgba(127,127,127,.08); font-weight: 600;
+  }
+  @media (min-width: 901px) {
+    aside.sidebar details > summary { pointer-events: none; }
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    aside.sidebar {
+      position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border);
+      padding: 14px 18px;
+    }
+    aside.sidebar details > summary { cursor: pointer; }
+  }
+  main { max-width: var(--content-max); margin: 0 auto; padding: 48px 24px 96px; min-width: 0; }
+  header.page { border-bottom: 1px solid var(--border); padding-bottom: 24px; margin-bottom: 24px; }
+  header.page .eyebrow { color: var(--accent); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; }
+  header.page h1 { margin: 8px 0 12px; font-size: clamp(24px, 3.4vw, 34px); line-height: 1.35; }
+  header.page .lead { color: var(--text-dim); margin: 0; }
+  .meta-card {
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 20px; margin: 20px 0 32px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px 24px; font-size: 14px;
+  }
+  .meta-card dt { color: var(--text-dim); font-size: 12px; letter-spacing: .04em; }
+  .meta-card dd { margin: 0 0 6px; color: var(--text); }
+  .meta-card .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    background: var(--bg); border: 1px solid var(--border);
+    font-size: 12px; color: var(--text-dim);
+  }
+  .tldr, .callout {
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 22px; margin: 24px 0;
+  }
+  .tldr h2 { margin: 0 0 10px; font-size: 16px; color: var(--accent); letter-spacing: .04em; }
+  .callout { border-left: 3px solid var(--accent); }
+  .callout strong { color: var(--accent); }
+  section { margin: 46px 0; scroll-margin-top: 24px; }
+  section h2 { font-size: 22px; margin: 0 0 14px; padding-bottom: 8px; border-bottom: 2px solid var(--accent); display: inline-block; }
+  section h3 { font-size: 17px; margin: 26px 0 8px; color: var(--accent); }
+  .chapter-link { font-size: 12px; margin-left: 8px; white-space: nowrap; font-weight: 400; }
+  ul, ol { margin: 12px 0; padding-left: 22px; }
+  li { margin: 6px 0; }
+  blockquote {
+    border-left: 3px solid var(--accent); margin: 16px 0; padding: 8px 16px;
+    color: var(--text-dim); background: var(--bg-elev); border-radius: 0 var(--radius) var(--radius) 0;
+  }
+  code { background: var(--bg-elev); border: 1px solid var(--border); padding: 1px 6px; border-radius: 6px; font-size: .92em; }
+  table {
+    width: 100%; border-collapse: collapse; margin: 16px 0;
+    background: var(--bg-elev); border-radius: var(--radius); overflow: hidden;
+  }
+  th, td { padding: 10px 14px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; font-size: 14px; }
+  thead th { background: rgba(127,127,127,.06); color: var(--text-dim); font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; }
+  tbody tr:last-child td { border-bottom: none; }
+  .table-wrap { overflow-x: auto; border-radius: var(--radius); }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 18px 0; }
+  .stat-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .stat-card .num { font-size: 26px; font-weight: 700; color: var(--accent); line-height: 1.2; }
+  .stat-card .label { color: var(--text-dim); font-size: 12.5px; margin-top: 4px; }
+  .mermaid {
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; margin: 18px 0;
+    text-align: center; overflow-x: auto; cursor: zoom-in;
+  }
+  .mermaid:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .mermaid svg { max-width: 100%; height: auto; }
+  .modal {
+    position: fixed; inset: 0; display: none;
+    background: rgba(9,20,38,.76); z-index: 50; padding: 22px;
+  }
+  .modal.is-open { display: grid; grid-template-rows: auto 1fr; gap: 12px; }
+  .modal-toolbar { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  .modal-button {
+    appearance: none; border: 1px solid var(--border); background: var(--bg-elev);
+    color: var(--text); border-radius: 999px; padding: 8px 12px;
+    font-weight: 700; cursor: pointer;
+  }
+  .modal-button:hover { border-color: var(--accent); color: var(--accent); }
+  .modal-body {
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+    display: grid; place-items: center; min-height: 0;
+  }
+  .modal-body svg { width: 100%; height: 100%; min-height: 70vh; }
+  @media (max-width: 720px) {
+    .modal { padding: 12px; }
+    .modal-toolbar { justify-content: center; }
+    .modal-button { padding: 7px 10px; }
+  }
+  footer.page {
+    margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--border);
+    color: var(--text-dim); font-size: 13px;
+  }
+  footer.page .disclaimer { font-size: 12.5px; opacity: .9; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" aria-label="目次">
+    <details open>
+      <summary>目次</summary>
+      <ol id="toc"></ol>
+    </details>
+  </aside>
+
+  <main>
+    <header class="page">
+      <div class="eyebrow">Stanford CME295 Transformers &amp; LLMs / Autumn 2025</div>
+      <h1>Lecture 9: Recap &amp; Current Trends</h1>
+      <p class="lead">Transformerの基礎からLLMの学習・推論・エージェント・評価までを一本につなぎ、Vision Transformer、拡散型LLM、データとハードウェアの変化、未解決課題を展望する最終講義。</p>
+    </header>
+
+    <dl class="meta-card" aria-label="出典メタデータ">
+      <div><dt>出典</dt><dd><a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss" target="_blank" rel="noopener">YouTube — Stanford Online</a></dd></div>
+      <div><dt>登壇者</dt><dd>Afshine Amidi / Shervine Amidi</dd></div>
+      <div><dt>講義日 / 公開日</dt><dd>2025年12月5日 / 2025年12月9日</dd></div>
+      <div><dt>媒体</dt><dd>Stanford CME295（Autumn 2025）Lecture 9</dd></div>
+      <div><dt>所要時間</dt><dd>1時間51分31秒</dd></div>
+      <div><dt>取得手段</dt><dd>yt-dlp（公式英語字幕）</dd></div>
+      <div><dt>精読量</dt><dd>1,786 cues・整形後3,096行 / 13,759語</dd></div>
+      <div><dt>ライセンス</dt><dd>動画上の明示なし</dd></div>
+      <div style="grid-column: 1 / -1;">
+        <dt>タグ</dt>
+        <dd class="badges">
+          <span class="badge">Transformer</span>
+          <span class="badge">Vision Transformer</span>
+          <span class="badge">Diffusion LLM</span>
+          <span class="badge">LLM Training</span>
+          <span class="badge">Agentic LLM</span>
+          <span class="badge">AI Trends</span>
+        </dd>
+      </div>
+    </dl>
+
+    <div class="tldr">
+      <h2>3行サマリ</h2>
+      <ul>
+        <li>LLMの発展は、self-attentionという共通核に、位置表現・GQA・MoE・FlashAttention・学習後調整・推論・RAG・tool calling・評価を積み上げた歴史として理解できる。</li>
+        <li>Transformerはテキスト専用ではない。画像をpatch tokenにするVision Transformerと、maskを反復的に外す拡散型LLMは、入力表現と生成過程を変えて同じ基盤を別領域へ広げる。</li>
+        <li>今後の焦点はbenchmarkの最高点だけではなく、データ品質、推論コスト、専用ハードウェア、安全性、継続学習、解釈可能性を含む<strong>Pareto最適</strong>と、変化を追い続ける習慣にある。</li>
+      </ul>
+    </div>
+
+    <section id="s1">
+      <h2>1. 最終回の構成と講義1〜8の地図</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=0s" target="_blank" rel="noopener">動画 00:00</a>
+      <p>最終回は、これまでの内容をつなぐ総復習、2025年時点の注目トピック、今後の学び方と総括の三部構成で進む。前半は新しい知識を足すよりも、token・attention・学習・推論・agent・評価が一つのシステムとしてどう接続するかを確認する。</p>
+
+      <div class="stat-grid">
+        <div class="stat-card"><div class="num">1〜8</div><div class="label">前半で接続し直す既習講義</div></div>
+        <div class="stat-card"><div class="num">5〜8</div><div class="label">最終試験の対象範囲</div></div>
+        <div class="stat-card"><div class="num">2テーマ</div><div class="label">新規解説: ViTと拡散型LLM</div></div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>講義</th><th>中心テーマ</th><th>この回での接続点</th><th>最終試験</th></tr></thead>
+          <tbody>
+            <tr><td><a href="stanford-cme295-lecture1-transformer-ja.html">Lecture 1</a></td><td>Transformer</td><td>token、RNN、self-attention、encoder-decoder</td><td>対象外</td></tr>
+            <tr><td><a href="stanford-cme295-lecture2-transformer-models-tricks-ja.html">Lecture 2</a></td><td>モデル派生とtricks</td><td>RoPE、GQA、正規化、BERT・GPT・T5</td><td>対象外</td></tr>
+            <tr><td><a href="stanford-cme295-lecture3-large-language-models-ja.html">Lecture 3</a></td><td>LLM</td><td>decoder-only、MoE、sampling、temperature</td><td>対象外</td></tr>
+            <tr><td><a href="stanford-cme295-lecture4-llm-training-ja.html">Lecture 4</a></td><td>LLM Training</td><td>scaling、FlashAttention、並列化、三段階学習</td><td>対象外</td></tr>
+            <tr><td><a href="stanford-cme295-lecture5-llm-tuning-ja.html">Lecture 5</a></td><td>LLM Tuning</td><td>Bradley–Terry、reward model、RLHF</td><td>対象</td></tr>
+            <tr><td><a href="stanford-cme295-lecture6-llm-reasoning-ja.html">Lecture 6</a></td><td>LLM Reasoning</td><td>reasoning chain、PPO、GRPO、検証可能報酬</td><td>対象</td></tr>
+            <tr><td><a href="stanford-cme295-lecture7-agentic-llms-ja.html">Lecture 7</a></td><td>Agentic LLMs</td><td>RAG、reranking、tool calling</td><td>対象</td></tr>
+            <tr><td><a href="stanford-cme295-lecture8-llm-evaluation-ja.html">Lecture 8</a></td><td>LLM Evaluation</td><td>LLM-as-a-Judge、bias、benchmarks</td><td>対象</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout"><strong>試験告知:</strong> 最終試験はLectures 5〜8が対象で、中間試験のLectures 1〜4と同程度の分量。後半のViT・拡散型LLM・トレンド部分は出題範囲外と説明された。</div>
+    </section>
+
+    <section id="s2">
+      <h2>2. Transformerの出発点: tokenからattentionへ</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=72s" target="_blank" rel="noopener">動画 01:12</a>
+      <p>テキストはまずtokenへ分割される。subword tokenizerは、単語を丸ごと暗記するのではなく語根や接辞を再利用できる。word2vecは中心語と文脈語を予測する代理課題から埋め込みを学ぶが、同じ単語は文脈が変わっても同一表現になる。</p>
+      <p>RNNはtokenを順番に読み、内部状態へ過去を畳み込むため、並列化しにくく長距離依存も失いやすい。self-attentionは各tokenが全tokenを直接参照し、QueryとKeyのscaled dot productをsoftmaxで重みに変え、Valueを加重平均する。</p>
+      <blockquote><code>Attention(Q, K, V) = softmax(QKᵀ / √dₖ)V</code></blockquote>
+      <p>この行列演算は現代のハードウェアで効率よく実行できる。元のTransformerはencoderで入力全体を理解し、decoderがcausal maskとcross-attentionを使って翻訳を一tokenずつ生成した。</p>
+    </section>
+
+    <section id="s3">
+      <h2>3. 位置表現・GQA・モデル派生</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=395s" target="_blank" rel="noopener">動画 06:35</a>
+      <p>self-attention自体には語順がないため位置情報が必要になる。近年広く使われるRoPEはQueryとKeyを位置に応じて回転し、その内積が相対距離を反映するようにする。GQAは複数のQuery headでKey/Valueを共有し、品質とKV cacheコストの折り合いを付ける。</p>
+      <p>安定した深層学習のための正規化も、post-normからpre-normへ、LayerNormからより簡素なRMSNormへ移ってきた。構成に応じて用途も分かれる。</p>
+      <table>
+        <thead><tr><th>構成</th><th>代表例</th><th>得意なこと</th><th>制約</th></tr></thead>
+        <tbody>
+          <tr><td>Encoder-only</td><td>BERT</td><td>文全体の表現、分類、埋め込み</td><td>自己回帰生成を直接は行わない</td></tr>
+          <tr><td>Decoder-only</td><td>GPT</td><td>次token予測による生成</td><td>生成は基本的に逐次的</td></tr>
+          <tr><td>Encoder-decoder</td><td>T5</td><td>入力を理解して別のtextを生成</td><td>二つのstackを持つ</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="s4">
+      <h2>4. LLM: MoEと確率的decoding</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=677s" target="_blank" rel="noopener">動画 11:17</a>
+      <p>LLMは主にdecoder-onlyのtext-to-text Transformerである。規模を増やしつつ毎tokenで全parameterを使うコストを避けるため、MoEはFFNを複数expertへ分け、gating networkがtokenごとに一部のexpertだけを選ぶ。expertを別GPUへ分散できるため、総parameter数を増やしてもactive parameterを抑えられる。</p>
+      <p>生成時に常に最大確率tokenを選ぶgreedy decodingは決定的だが、多様性が乏しい。分布からsamplingし、temperatureを下げれば分布は鋭くなり、高くすれば低確率候補も選ばれやすくなる。用途に応じ、再現性と創造性を調整する。</p>
+    </section>
+
+    <section id="s5">
+      <h2>5. Scaling・FlashAttention・三段階学習</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=905s" target="_blank" rel="noopener">動画 15:05</a>
+      <p>初期のscaling lawは、計算量・データ・parameterを増やすとtest performanceが予測可能に改善することを示した。ただし固定計算予算では、巨大なモデルを少ないデータで学習するより、モデルとデータを均衡させる必要がある。講義では目安としてparameter数の約20倍のtoken、例として100B parametersなら少なくとも2T tokensを挙げる。</p>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="num">20×</div><div class="label">parameter数に対する学習tokenの目安</div></div>
+        <div class="stat-card"><div class="num">100B → 2T</div><div class="label">講義で示したparameterとtokenの例</div></div>
+        <div class="stat-card"><div class="num">Exact</div><div class="label">FlashAttentionは近似attentionではない</div></div>
+      </div>
+      <p>FlashAttentionは大容量だが遅いHBMと、小容量だが速いSRAMの間のデータ移動を減らす。attentionをblock単位で計算し、中間値を大量保存する代わりに必要時に再計算する。演算が増えてもmemory trafficを減らす方が全体は速くなるという、hardware-awareな設計である。</p>
+      <p>学習はdata parallelismとmodel parallelismで複数GPUへ広げる。得たい能力も一度には作らず、三段階に分ける。</p>
+      <div class="mermaid">
+flowchart LR
+  A["Pre-training<br/>大量tokenで次token予測"] --> B["SFT<br/>望ましい入出力を模倣"]
+  B --> C["Preference tuning<br/>選好・安全性・toneへ整列"]
+  A -.-> A1["言語・知識・code構造"]
+  B -.-> B1["指示追従・応答形式"]
+  C -.-> C1["helpfulness・safety"]
+      </div>
+      <table>
+        <thead><tr><th>段階</th><th>主なデータ</th><th>目的</th><th>獲得するもの</th></tr></thead>
+        <tbody>
+          <tr><td>Pre-training</td><td>数兆〜数十兆tokenの言語・code</td><td>次token予測</td><td>世界知識、文法、autocomplete能力</td></tr>
+          <tr><td>SFT</td><td>promptと望ましいresponseの対</td><td>教師応答の模倣</td><td>指示追従、有用な振る舞い</td></tr>
+          <tr><td>Preference tuning</td><td>出力間の人間選好など</td><td>好ましい出力を高得点化</td><td>安全性、親切さ、tone、避けるべき振る舞い</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="s6">
+      <h2>6. Preference tuningからreasoningへ</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=1449s" target="_blank" rel="noopener">動画 24:09</a>
+      <p>RLとして見ると、LLMがpolicy、これまでのtoken列がstate、次tokenがaction、completion全体がrolloutに対応する。Bradley–Terryモデルは二つの応答のscore差から選好確率を作る。reward modelはpairwise比較で学習されても、実行時には一つのcompletionへscalar scoreを返せる。</p>
+      <p>policyは高報酬へ更新されるが、rewardの穴だけを突くreward hackingを防ぐため、SFT modelから離れすぎないKL制約や、一回の更新幅を制限する仕組みが必要になる。</p>
+      <p>reasoning modelは最終回答の前に推論chainを生成し、数学やcodeのような複雑な問題の精度を高める。PPOとGRPOは、どのtoken列を強化するかを決める基準の作り方が異なる。</p>
+      <table>
+        <thead><tr><th>方式</th><th>基準</th><th>追加モデル</th><th>向く状況</th></tr></thead>
+        <tbody>
+          <tr><td>PPO</td><td>value modelとGAEでadvantageを推定</td><td>policy・reference・reward・value</td><td>一般的なRLHF</td></tr>
+          <tr><td>GRPO</td><td>同一promptの複数completionを群内で相対比較</td><td>value modelを省略可能</td><td>数学・codeなど正否を検証しやすい課題</td></tr>
+        </tbody>
+      </table>
+      <p>元のGRPOには長さ方向のbiasがあり、短い誤答を強く罰して長い誤答を相対的に残す可能性がある。講義はGRPO Done RightやDAPOを、正規化やclippingを見直す改良として紹介する。</p>
+    </section>
+
+    <section id="s7">
+      <h2>7. Agentic LLMsと評価</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=2317s" target="_blank" rel="noopener">動画 38:37</a>
+      <p>RAGはknowledge cutoff後や学習外の情報をpromptへ持ち込み、tool callingは検索・予約・更新など外部世界への作用を可能にする。現代のagentは両者を組み合わせ、複数stepを経て応答または行動を返す。</p>
+      <div class="mermaid">
+flowchart TB
+  Q[User query] --> R[Bi-encoderで候補取得]
+  R --> RR[Cross-encoderでrerank]
+  RR --> C[Top-k文書をcontextへ追加]
+  C --> L[LLM]
+  L --> D{外部操作が必要?}
+  D -- No --> O[Final response]
+  D -- Yes --> T[Tool/APIと引数を選択]
+  T --> X[仲介層が実行]
+  X --> L
+      </div>
+      <table>
+        <thead><tr><th>機構</th><th>主目的</th><th>代表的な流れ</th><th>主な失敗点</th></tr></thead>
+        <tbody>
+          <tr><td>RAG</td><td>外部知識を読む</td><td>retrieve → rerank → augment → generate</td><td>検索漏れ、誤順位、contextの誤利用</td></tr>
+          <tr><td>Tool calling</td><td>外部世界へ作用する</td><td>tool選択 → 引数生成 → 実行 → 結果統合</td><td>tool・引数・実行順・最終統合の誤り</td></tr>
+        </tbody>
+      </table>
+      <p>BLEU・ROUGE・METEORのような文字列中心の指標は、意味が正しくても表現が違う応答を低く評価し得る。LLM-as-a-Judgeはprompt、response、評価基準を与え、理由とscoreまたはpass/failを返す。ただしposition bias、verbosity bias、self-enhancement biasがあるため、明確なrubricと人手による校正が欠かせない。</p>
+    </section>
+
+    <section id="s8">
+      <h2>8. Vision Transformer: 画像をtoken列として読む</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=2937s" target="_blank" rel="noopener">動画 48:57</a>
+      <p>Transformerの核はtextではなく、vector列の間で関係を学ぶself-attentionにある。Vision Transformer（ViT）は画像を固定サイズのpatchへ分割し、各patchのRGB値をflattenして線形射影し、patch embedding列へ変換する。CLS tokenと位置埋め込みを加えてencoderへ通し、最後のCLS表現を分類headへ渡す。講義の例では画像を「Teddy bear」に分類する。</p>
+      <div class="mermaid">
+flowchart LR
+  I[RGB Image] --> P[固定サイズpatchへ分割]
+  P --> F[flatten + linear projection]
+  F --> E[CLSと位置埋め込みを追加]
+  E --> V[Transformer Encoder]
+  V --> H[CLS embedding]
+  H --> Y[Classification head]
+      </div>
+      <table>
+        <thead><tr><th>観点</th><th>CNN</th><th>ViT</th></tr></thead>
+        <tbody>
+          <tr><td>局所性</td><td>小さなfilterを動かす強いinductive bias</td><td>全patch間attentionで局所性をデータから学ぶ</td></tr>
+          <tr><td>長距離関係</td><td>層を重ねて受容野を広げる</td><td>一層でも離れたpatchを直接関連付ける</td></tr>
+          <tr><td>データ依存</td><td>比較的少ないデータでもbiasが助ける</td><td>大規模データで性能を伸ばしやすい</td></tr>
+        </tbody>
+      </table>
+      <p>ViTは十分な画像データで学習すると従来CNNを上回り得ることを示した。一方、設計上あらかじめ局所性を仮定しない低いinductive biasのため、その強みを引き出すには大規模学習が重要になる。</p>
+    </section>
+
+    <section id="s9">
+      <h2>9. VLMとTransformerのマルチモーダル展開</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=3540s" target="_blank" rel="noopener">動画 59:00</a>
+      <p>Vision-Language Modelの一般的な構成は、vision encoderが作ったimage tokensをtext tokensと同じ列へ連結し、decoder-only LLMに入力する方式である。LLaVAが代表例として紹介される。別案として、画像表現とtext表現をcross-attentionで接続する設計もあり、講義はLlama 3の論文を例に挙げる。</p>
+      <p>同じ発想は画像理解に留まらない。Transformerは画像生成のDiffusion Transformer、推薦、音声などへ広がる。RoPEも2次元位置へ拡張できる。重要なのは「text用の部品をそのまま使う」ことではなく、各modalityをtokenまたはvector列へ写像し、attention可能な表現にすることである。</p>
+    </section>
+
+    <section id="s10">
+      <h2>10. 拡散型LLM: 左から右へ生成しない選択肢</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=3842s" target="_blank" rel="noopener">動画 1:04:02</a>
+      <p>autoregressive model（ARM）は次tokenを一つずつ決めるため、trainingはcausal maskで並列化できても、inferenceの生成は本質的に逐次的である。2025年の注目トレンドとして、講義は画像生成で成功したdiffusionをtextへ移す研究を取り上げる。</p>
+      <p>画像diffusionはclean imageへ段階的にGaussian noiseを加えるforward processと、noiseを推定して除くreverse processを学ぶ。講義はMichelangeloの「大理石から余分な部分を削り、像を取り出す」という比喩を使う。</p>
+      <p>text tokenは離散値なのでGaussian noiseを直接加えにくい。masked diffusion model（MDM）では、forward processでtokenを徐々にmaskし、reverse processで全maskの回答領域からtokenを反復的に復元する。文章を左から右に一発で書くより、草稿を置き、構成を調整し、細部を磨く感覚に近い。</p>
+      <div class="mermaid">
+flowchart LR
+  subgraph ARM["Autoregressive LLM"]
+    A1["token 1"] --> A2["token 2"] --> A3["token 3"] --> A4["..."]
+  end
+  subgraph DLLM["Diffusion-based LLM"]
+    D1["[MASK] [MASK] [MASK]"] --> D2["一部を復元"] --> D3["全体を再評価"] --> D4["完成文"]
+  end
+      </div>
+      <table>
+        <thead><tr><th>観点</th><th>自己回帰LLM</th><th>拡散型LLM</th></tr></thead>
+        <tbody>
+          <tr><td>生成単位</td><td>左から右へ1 tokenずつ</td><td>mask領域を反復的に更新</td></tr>
+          <tr><td>並列性</td><td>推論時は低い</td><td>複数位置を同時更新できる余地</td></tr>
+          <tr><td>文脈</td><td>生成済みの左側を中心に使う</td><td>前後を見て全体を修正しやすい</td></tr>
+          <tr><td>期待される強み</td><td>成熟した品質・reasoning技術</td><td>長文速度、fill-in-the-middle</td></tr>
+          <tr><td>課題</td><td>長い出力ほど逐次passが増える</td><td>step数と品質のtrade-off、frontier品質、reasoning移植</td></tr>
+        </tbody>
+      </table>
+      <p>LLaDAなどの研究では、長いcode生成で最大約10倍高速というbenchmark結果や、前後を同時に見られるためfill-in-the-middleへ向く可能性が示された。ただし講師は、当時まだ最上位の自己回帰モデルと常に同等ではなく、速度・品質・step数の均衡は研究途上だと位置付ける。Google I/Oの実験的モデルやInceptionも、当時の動向例として挙げられた。</p>
+    </section>
+
+    <section id="s11">
+      <h2>11. モデル・データ・ハードウェアの現在地</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=5018s" target="_blank" rel="noopener">動画 1:23:38</a>
+      <p>最終部は、技術の進歩を単一のmodel architectureだけで説明しない。modality間の技術移転、optimizerとblock設計、学習データの品質、推論経済性、hardwareを相互依存する層として捉える。</p>
+      <table>
+        <thead><tr><th>層</th><th>講義で挙げた動向</th><th>問い</th></tr></thead>
+        <tbody>
+          <tr><td>Modality</td><td>画像diffusionをtextへ、Transformerを画像生成へ、2D RoPE、DeepSeek OCR</td><td>少数のvision tokenにどれだけ情報を圧縮できるか</td></tr>
+          <tr><td>Architecture</td><td>pre-norm、RMSNorm、GQA、MoE、activation・head・FFN幅の再検討</td><td>現在の構成は本当に最終形か</td></tr>
+          <tr><td>Optimizer</td><td>Kimi K2のMuon、MuonClip</td><td>Adam系以外でscaleを安定化できるか</td></tr>
+          <tr><td>Data</td><td>無選別scrapingからcurationへ、mid-training、synthetic data</td><td>量を保ちながら品質と多様性を上げられるか</td></tr>
+          <tr><td>Economics</td><td>SLM、推論cost、quality-cost Pareto frontier</td><td>高品質を赤字なしで提供できるか</td></tr>
+          <tr><td>Hardware</td><td>memory movement最適化、analog signal・物理法則の利用</td><td>行列積以外のbottleneckをどう外すか</td></tr>
+        </tbody>
+      </table>
+      <p>WebにはLLM生成文が増え、無選別に再学習すると多様性が失われるmodel collapseが懸念される。そのためpre-trainingとfine-tuningの間に、大規模だが高品質なcorpusを使うmid-trainingを置く流れがある。講義中の「検索結果の80%がLLM生成かもしれない」という数字は、厳密な統計というより問題規模を示す例として語られた。</p>
+      <p>benchmarkの最高点を追うだけでは、利用者が払えるcostに収まらない。SLMや効率的推論を含め、同じ品質なら安く、同じcostなら高品質なPareto frontierへ競争軸が移る。hardwareでも、FlashAttentionのように再計算を許してmemory movementを減らす発想や、analog信号・物理法則を演算へ使うproof of conceptが紹介された。ただし後者はsimulation上のlatency・energy改善として慎重に扱われている。</p>
+    </section>
+
+    <section id="s12">
+      <h2>12. 実務への広がり、安全性、未解決課題</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=5640s" target="_blank" rel="noopener">動画 1:34:00</a>
+      <p>利用例はnatural-language-to-code、text-to-query、可視化、汎用assistant、web browsing、marketingなどの初稿作成へ広がった。講師自身も授業準備中にChatGPTを概念のbrainstormingへ使う。次の段階では、agentic workflowの構築そのものが自然言語化され、非技術者にも広がると予想する。</p>
+      <p>一方、stepが増えるほど個々の小さな失敗確率が積み上がる。AI customer serviceが単に流暢なだけでなく、事実にgroundedで、共感的で、実際に問題を解決できるかは進歩の試金石になる。ChatGPT AtlasはAI browsingの製品例として挙げられるが、prompt injectionや情報流出の危険もあり、将来は安全性を示す「証明書」のような仕組みが必要かもしれないと述べる。</p>
+      <div class="callout"><strong>未解決の中心課題:</strong> 固定された重みをどう継続更新するか、hallucinationをどう抑えるか、個人化とprivacyをどう両立するか、内部判断をどう解釈するか、安全性をどう保証するか。hallucinationは単なる実装bugではなく、事実検索ではなく次token予測を目的にした設計から生じる側面がある。</div>
+    </section>
+
+    <section id="s13">
+      <h2>13. 変化を追い続ける方法とクロージング</h2>
+      <a class="chapter-link" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=6200s" target="_blank" rel="noopener">動画 1:43:20</a>
+      <p>分野を追う情報源として、arXiv、NeurIPS、論文付属codebase、Hugging Face Trending Papers、X/Twitter、企業blog、YouTubeのYannic KilcherとAndrej Karpathyが挙げられる。headlineだけでなく、論文と実装を往復し、再現可能な範囲を確かめる姿勢が重要になる。</p>
+      <p>講義のstudy guideは少なくとも年次更新を目指し、世界の専門家との協力による他言語化も進める予定だという。締めくくりでは、金曜夜に出席した学生、質問で授業を双方向にした学生、オンライン視聴者へ感謝を伝えた。Shervineは8年前には自宅で講義を見る側だったと振り返り、Teddy bearの画像を再登場させ、finalsの成功を祈って終える。</p>
+      <blockquote>アーキテクチャ、学習法、データ、ハードウェアはいずれも完成していない。個別の流行語を追うだけでなく、何がbottleneckで、どのtrade-offを動かした技術なのかを見続ける。</blockquote>
+    </section>
+
+    <footer class="page">
+      <p class="disclaimer">本レポートは、上記の出典元コンテンツを参照し、内容を省略せず日本語で要約・再構成した非公式まとめです。記述に誤りがある場合は出典元の表現が正となります。</p>
+      <p>出典: <a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss" target="_blank" rel="noopener">https://www.youtube.com/watch?v=Q86qzJ1K1Ss</a> ／ 取得手段: yt-dlp（公式英語字幕） ／ 生成日: 2026年8月27日</p>
+    </footer>
+  </main>
+</div>
+
+<div id="diagramModal" class="modal" role="dialog" aria-modal="true" aria-label="Mermaid図ビューア">
+  <div class="modal-toolbar">
+    <button class="modal-button" type="button" onclick="zoomCmd('in')">拡大</button>
+    <button class="modal-button" type="button" onclick="zoomCmd('out')">縮小</button>
+    <button class="modal-button" type="button" onclick="zoomCmd('reset')">リセット</button>
+    <button class="modal-button" type="button" onclick="closeModal()">閉じる</button>
+  </div>
+  <div id="modalBody" class="modal-body"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+<script>
+  const themeAttr = document.documentElement.getAttribute('data-theme');
+  const isDark = themeAttr ? themeAttr === 'dark'
+    : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: true, theme: isDark ? 'dark' : 'default', securityLevel: 'loose' });
+
+  const toc = document.getElementById('toc');
+  const headings = [...document.querySelectorAll('main section[id] > h2, main section[id] > h3')];
+  if (toc && headings.length) {
+    headings.forEach((heading, index) => {
+      const section = heading.closest('section');
+      if (!heading.id) heading.id = section ? section.id + '-h' + index : 'heading-' + index;
+      const li = document.createElement('li');
+      li.className = heading.tagName === 'H3' ? 'lvl-3' : 'lvl-2';
+      const anchor = document.createElement('a');
+      anchor.href = '#' + heading.id;
+      anchor.textContent = heading.textContent.trim();
+      li.appendChild(anchor);
+      toc.appendChild(li);
+    });
+    const links = [...toc.querySelectorAll('a')];
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter(entry => entry.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (!visible) return;
+      links.forEach(link => link.classList.toggle('active', link.getAttribute('href') === '#' + visible.target.id));
+    }, { rootMargin: '-20% 0px -65% 0px', threshold: [0, 1] });
+    headings.forEach(heading => observer.observe(heading));
+  }
+
+  let panZoomInstance = null;
+
+  function tightenViewBox(svg) {
+    if (!svg || !svg.getBBox) return;
+    try {
+      const bbox = svg.getBBox();
+      if (!Number.isFinite(bbox.width) || !Number.isFinite(bbox.height) || bbox.width === 0 || bbox.height === 0) return;
+      const padding = 20;
+      svg.setAttribute('viewBox', [
+        bbox.x - padding,
+        bbox.y - padding,
+        bbox.width + padding * 2,
+        bbox.height + padding * 2
+      ].join(' '));
+    } catch (error) {
+      console.warn('Unable to tighten Mermaid viewBox', error);
+    }
+  }
+
+  function openDiagramFromElement(diagram) {
+    const sourceSvg = diagram ? diagram.querySelector('svg') : null;
+    if (!sourceSvg) return;
+    const modal = document.getElementById('diagramModal');
+    const modalBody = document.getElementById('modalBody');
+    modalBody.innerHTML = '';
+    const clonedSvg = sourceSvg.cloneNode(true);
+    clonedSvg.removeAttribute('style');
+    clonedSvg.setAttribute('width', '100%');
+    clonedSvg.setAttribute('height', '100%');
+    modalBody.appendChild(clonedSvg);
+    tightenViewBox(clonedSvg);
+    modal.classList.add('is-open');
+    if (panZoomInstance) panZoomInstance.destroy();
+    panZoomInstance = svgPanZoom(clonedSvg, {
+      zoomEnabled: true,
+      controlIconsEnabled: false,
+      fit: true,
+      center: true,
+      minZoom: .4,
+      maxZoom: 8
+    });
+    panZoomInstance.resize();
+    panZoomInstance.fit();
+    panZoomInstance.center();
+  }
+
+  function closeModal() {
+    const modal = document.getElementById('diagramModal');
+    const modalBody = document.getElementById('modalBody');
+    if (panZoomInstance) {
+      panZoomInstance.destroy();
+      panZoomInstance = null;
+    }
+    modal.classList.remove('is-open');
+    modalBody.innerHTML = '';
+  }
+
+  function zoomCmd(command) {
+    if (!panZoomInstance) return;
+    if (command === 'in') panZoomInstance.zoomIn();
+    if (command === 'out') panZoomInstance.zoomOut();
+    if (command === 'reset') {
+      panZoomInstance.resetZoom();
+      panZoomInstance.fit();
+      panZoomInstance.center();
+    }
+  }
+
+  window.closeModal = closeModal;
+  window.zoomCmd = zoomCmd;
+
+  document.querySelectorAll('.mermaid').forEach((diagram) => {
+    diagram.setAttribute('role', 'button');
+    diagram.setAttribute('aria-label', 'Mermaid図を拡大表示');
+    diagram.setAttribute('title', 'クリックで拡大表示');
+    diagram.tabIndex = 0;
+    diagram.addEventListener('click', () => openDiagramFromElement(diagram));
+    diagram.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openDiagramFromElement(diagram);
+      }
+    });
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeModal();
+  });
+  document.getElementById('diagramModal').addEventListener('click', (event) => {
+    if (event.target.id === 'diagramModal') closeModal();
+  });
+</script>
+</body>
+</html>
