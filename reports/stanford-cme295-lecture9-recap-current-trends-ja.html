@@ -206,7 +206,7 @@
 <aside class="sidebar" aria-label="目次"><details class="toc-panel" open><summary>目次を開く / 閉じる</summary><p class="toc-title">Contents</p><ol id="toc"></ol></details></aside>
 <main>
 <header class="page"><div class="eyebrow">Stanford CME295 · Transformers &amp; Large Language Models · Autumn 2025 · Lecture 9</div><h1>Lecture 9「Recap &amp; Current Trends」日本語学習ガイド【講義スライド24枚付き】</h1><p class="lead">Transformerの最初の一式から、学習・推論・agent・評価を復習し、Vision Transformer、VLM、拡散型LLM、データ・コスト・hardware・安全性までを一つの因果の流れとして読む、Stanford CME295最終回の学習ガイド。</p></header>
-<dl class="meta-card"><div><dt>出典</dt><dd><a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss" target="_blank" rel="noopener">Stanford Online — Lecture 9</a></dd></div><div><dt>登壇者</dt><dd>Afshine Amidi / Shervine Amidi</dd></div><div><dt>講義 / 公開</dt><dd>2025年12月5日 / 12月9日</dd></div><div><dt>所要時間</dt><dd>1時間51分31秒（6,691秒）</dd></div><div><dt>一次資料</dt><dd><a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture9.pdf" target="_blank" rel="noopener">公式スライドPDF（128ページ）</a></dd></div><div><dt>作成方法</dt><dd>公式英語字幕1,786 cues・13,759語、公式PDF、映像キャプチャ24枚を照合</dd></div><div style="grid-column:1/-1"><dt>タグ</dt><dd class="badges"><span class="badge">Transformer</span><span class="badge">Vision Transformer</span><span class="badge">VLM</span><span class="badge">Diffusion LLM</span><span class="badge">Agentic LLM</span><span class="badge">AI Trends</span></dd></div></dl>
+<dl class="meta-card"><div><dt>出典</dt><dd><a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss" target="_blank" rel="noopener">Stanford Online — Lecture 9</a></dd></div><div><dt>登壇者</dt><dd>Afshine Amidi / Shervine Amidi</dd></div><div><dt>講義 / 公開</dt><dd>2025年12月5日 / 12月9日</dd></div><div><dt>所要時間</dt><dd>1時間51分31秒（6,691秒）</dd></div><div><dt>一次資料</dt><dd><a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture9.pdf" target="_blank" rel="noopener">公式スライドPDF（128ページ）</a></dd></div><div><dt>作成方法</dt><dd>公式英語字幕1,786 cues・13,759語、公式PDF、映像23枚＋高解像度公式スライド1枚を照合</dd></div><div style="grid-column:1/-1"><dt>タグ</dt><dd class="badges"><span class="badge">Transformer</span><span class="badge">Vision Transformer</span><span class="badge">VLM</span><span class="badge">Diffusion LLM</span><span class="badge">Agentic LLM</span><span class="badge">AI Trends</span></dd></div></dl>
 <div class="source-note"><strong>本文の読み方。</strong>「講義の要点」は、動画で登壇者が説明した内容を読みやすい順に並べ直したものです。破線枠の<strong>補足</strong>、数式の読み方、身近な例は、初学者の理解を助けるために<strong>本レポートが追加した説明</strong>であり、登壇者の発言そのものではありません。数値、製品発表、研究性能は、いずれも講義時点（2025年12月）に紹介された情報として読んでください。</div>
 <div class="tldr"><h2>3行サマリ</h2><ul><li><strong>この講義は、文章を数の列として読み、学習し、外部資料や道具へつなぎ、評価するまでを一つの流れとして復習する。</strong>後半の画像・拡散型 LLM・agent は、その土台の別用途または別の生成順である。</li><li><strong>新しい技術は一つの万能解ではない。</strong>MoE は計算する部分、RAG は知識の置き場所、ViT は入力の切り方、拡散は生成順を変え、それぞれ速度・品質・費用・安全性の交換を持つ。</li><li><strong>実運用では、性能 score だけでは足りない。</strong>データの質、評価の偏り、待ち時間、hardware、権限、安全性を、用途ごとに確かめて選ぶ必要がある。</li></ul></div>
 <div class="sequence" aria-label="この学習ガイドの道順"><div class="step"><span class="step-no">1 · 文章の土台</span><p>§2–3。文章を token に分け、ベクトルへ変え、語順と過去の文脈を使って読む。画像を読む前にも必要な共通部品。</p></div><div class="step"><span class="step-no">2 · 大きく、速く、望ましく</span><p>§4–9。必要な expert だけを動かし、モデル・データ・計算を釣り合わせ、基礎学習から選好・reasoning の学習へ進む。</p></div><div class="step"><span class="step-no">3 · 外の世界と画像</span><p>§10–20。RAG と tool で外部を読み・使い、評価の基準を整える。続いて画像を token 列として扱い、拡散という別の生成順を比べる。</p></div><div class="step"><span class="step-no">4 · 現実の選択</span><p>§21–28。設計、データ、費用、hardware、日常用途、agent の安全、学習方法を結び、必要な節へ戻れる索引で終える。</p></div></div>
@@ -279,16 +279,44 @@
 </section>
 
 <section id="s6">
-<h2>6. 同じ attention を速く動かすには、何を減らすのか</h2>
-<p>規模の配分を見た後に確かめるのは、「§5 で釣り合わせた大規模学習を、なぜ演算回数だけ見ても速くできないのか」である。attention は多くの数を掛け合わせるが、GPU では数を計算器へ運ぶ時間も支配的になりうる。そこで計算の答えを変えずに、メモリとの往復を減らす<strong>FlashAttention</strong>と、複数 GPU へ仕事を分ける方法を学ぶ。</p>
-<p><strong>HBM（High Bandwidth Memory）</strong>は GPU の外側に近い大容量メモリ、<strong>SRAM（Static Random-Access Memory）</strong>はチップ内部にある小容量だが高速なメモリである。机の横の小さな引き出しと、部屋の向こうの大きな書庫を想像するとよい。<strong>FlashAttention</strong>は、巨大な attention 行列を HBM に何度も書き戻す代わりに、小さな<strong>ブロック（block）</strong>を SRAM に載せて処理し、必要な中間値は工夫して再計算する実装方法だ。これは attention を近似する技術ではなく、同じ結果をより少ない入出力で得ることを狙う。</p>
-<p>次の図では、HBM が「大きいが遠い」、SRAM が「小さいが近い」と描かれている関係を見てほしい。重要なのは、演算器の速さより、二つの記憶領域を何回往復するかという矢印である。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/06-flash-attention-memory.jpg" alt="大きく遅いHBMと小さく速いSRAMを対比するFlashAttentionのメモリ階層図" loading="lazy"><figcaption>FlashAttentionのmemory hierarchy。HBMとSRAMの間を何度も往復しないようblock単位で計算する、I/O-awareな設計を示す。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=1210s">20:10</a></figcaption></figure>
-<p>図から読み取る要点は、少し再計算が増えても HBM への読み書きが大きく減れば全体が速くなる場合があることだ。このようにデータ移動を意識する設計を<strong>I/O-aware</strong>と呼ぶ。<strong>FLOP</strong>は浮動小数点演算の回数、<strong>ボトルネック（bottleneck）</strong>は全体の速度を最も遅い部分として制限する箇所である。FLOP が少ないことと、実時間が短いことは同義ではない。</p>
-<h3>複数 GPU には、何を分けるのか</h3>
-<p><strong>データ並列（data parallelism）</strong>は、異なる学習例を複数 GPU へ配り、各 GPU が同じモデルの複製で計算して最後に更新量を合わせる方法である。<strong>モデル並列（model parallelism）</strong>は、一つのモデル自体を複数 GPU に分割して、一つの入力を協力して通す方法である。前者は生徒をクラスごとに分けて同じ教材を解く形、後者は一冊の大きすぎる本を章ごとに分けて読む形に近い。どちらも通信が必要で、GPU を増やせば無条件に速くなるわけではない。</p>
-<div class="callout"><p><strong>講義の要点。</strong> FlashAttention、KV cache、GQA、MoE はすべて「モデルの理論上の能力を保ちながら、どこでメモリ・通信・演算を使うか」を動かす技術である。速さを議論するときは、token 数、バッチサイズ、文脈長、GPU 間通信を固定せずに数字だけ比べないことが重要になる。</p></div>
-<p>計算を回せるようになっても、何を学ばせるかは別問題である。次節は、基礎知識、指示への応答、好ましい振る舞いを一つのデータで混ぜず、三段階に分ける理由を説明する。</p>
+<h2>6. FlashAttentionは、なぜ計算をやり直しても速くなるのか</h2>
+<p>§5ではmodel・data・計算予算の配分を見た。次の問いは、「同じattention式を計算するのに、なぜ実装方法だけで速度とmemory使用量が変わるのか」である。FlashAttentionの中心は計算式の変更ではなく、GPU内でdataを<strong>どこに置き、何回運ぶか</strong>の変更にある。この節では、まず通常attentionが何を保存するか、次にFlashAttentionがそれをどうblock処理するか、最後に再計算がなぜ合理的かを順に説明する。</p>
+
+<h3>1. GPUには「大きな書庫」と「小さな作業机」がある</h3>
+<p><strong>HBM（High Bandwidth Memory）</strong>は、modelの重みや大きな中間dataを置ける大容量memoryである。<strong>SRAM（Static Random-Access Memory）</strong>は、GPUの演算器のすぐ近くにある非常に高速だが小容量のmemoryである。たとえるなら、HBMは大量の本を保管できる部屋の書庫、SRAMは今使う数冊だけを置ける机の引き出しだ。書庫と机の間を何度も往復すると、計算器が速くても待ち時間が増える。</p>
+<p>次の表は、原論文が例に使ったA100 GPUのmemory hierarchyを、役割と制約で読み直したものだ。数値は2022年論文中のhardware例であり、すべてのGPUに共通する仕様ではない。</p>
+<div class="table-wrap"><table><thead><tr><th>Memory</th><th>原論文のA100例</th><th>得意なこと</th><th>制約</th></tr></thead><tbody><tr><td><strong>HBM</strong></td><td>40〜80GB、約1.5〜2.0TB/s</td><td>model・入力・大きな中間値を保存する</td><td>容量は大きいが、SRAMより転送が遅い</td></tr><tr><td><strong>SRAM</strong></td><td>各streaming multiprocessor当たり192KB、推定約19TB/s</td><td>今計算する小さなblockを高速に処理する</td><td>非常に小さく、attention全体は置けない</td></tr></tbody></table></div>
+<p>表の要点は、HBMも名前どおり高速だが、chip内のSRAMはさらに桁違いに速い一方で極端に小さいことだ。FlashAttentionは「すべてをSRAMへ置く」のではなく、SRAMに収まる分だけ順番に運ぶ。</p>
+
+<p>従来の動画フレームでは文字が小さかったため、次の画像は<strong>Stanford公式スライドPDFの21ページを高解像度で書き出したもの</strong>へ差し替えた。左下のHBMから右上のSRAMへ向かう矢印と、「Big and slow」「Small and fast」の対比を見てほしい。</p>
+<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/06-flash-attention-memory.jpg" alt="Stanford公式スライドPDF 21ページ。大容量だが相対的に遅いHBMと、小容量だが高速なSRAMを対比したGPU memory hierarchy" loading="lazy"><figcaption>Stanford公式スライドPDF p.21の高解像度画像。大容量のHBMと、小容量だが高速なSRAMの間のdata移動がFlashAttentionの焦点である。<a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture9.pdf#page=21" target="_blank" rel="noopener">公式PDF p.21</a><a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=1210s">動画 20:10</a></figcaption></figure>
+
+<h3>2. 通常attentionは、大きな中間行列を何度もHBMへ出し入れする</h3>
+<p>§2のattentionを実装上の三段階に分けると、① <code>S = QKᵀ / √d</code> でtoken同士の関連scoreを作る、② <code>P = softmax(S)</code> で各行を合計1の重みにする、③ <code>O = PV</code> でValueを重み付き合計する、となる。token数をNとすると、SとPはどちらもN×Nの行列になる。</p>
+<p>たとえばN=4,096なら、Sだけで約1,678万個の値を持つ。各値を16bit（2byte）で置く単純計算では、1 attention head当たり約32MBである。実際のmodelには複数head・複数layerがあり、学習時にはgradient計算用の中間値も必要になる。通常実装でSやPをHBMへ書き、次の処理で再び読むと、演算そのものよりdata移動が支配的になり得る。</p>
+<div class="callout"><p><strong>「Memory-bound」とは。</strong>処理時間が掛け算の回数ではなく、memoryからdataが届くのを待つ時間でほぼ決まる状態を<strong>memory-bound</strong>という。反対に、演算器が計算し続けているため計算回数が速度を決める状態を<strong>compute-bound</strong>という。FlashAttentionが狙うのは前者である。</p></div>
+
+<h3>3. FlashAttentionはQ・K・Vを小さなblockに分ける</h3>
+<p>FlashAttentionは、Q・K・V全体を一度にSRAMへ置こうとしない。SRAMに収まる小さな<strong>tile / block</strong>へ分け、HBMから必要なblockだけを運んで、その場でmatrix multiplication・softmax・Valueの集約を進める。原論文が<strong>I/O-aware</strong>（memory間のread/write回数を設計に含める）と呼ぶ理由はここにある。</p>
+<div class="sequence" aria-label="FlashAttentionのblock処理">
+  <div class="step"><span class="step-no">1 · LOAD</span><p>Qの一部と、K/Vの一部をHBMから高速なSRAMへ読み込む。</p></div>
+  <div class="step"><span class="step-no">2 · SCORE</span><p>SRAM上でそのblockの<code>QKᵀ</code>を計算し、関連scoreを得る。</p></div>
+  <div class="step"><span class="step-no">3 · NORMALIZE</span><p>running maxと合計値を更新するonline softmaxで、全列を一度に保存せず正規化する。</p></div>
+  <div class="step"><span class="step-no">4 · ACCUMULATE</span><p>Vの重み付き和を部分的に更新し、完成した出力だけをHBMへ書き戻す。</p></div>
+</div>
+<p>難所はsoftmaxである。softmaxは本来、同じQueryから全Keyへ付けたscoreをまとめて見て、最大値と合計を計算する必要がある。そこで<strong>online softmax</strong>は、各行について「これまで見た最大score」と「正規化用の合計」を保持する。新しいblockにもっと大きなscoreが現れたら、それまでの部分結果を新しい最大値に合わせて縮尺変更し、新blockの結果と合成する。これにより、全N×N行列を保存しなくても、最後には通常softmaxと同じ数学的結果を得られる。</p>
+
+<h3>4. 「Exact」は、attentionの意味を近似しないということ</h3>
+<p>FlashAttention原論文の題名にある<strong>exact attention</strong>は、近いtokenだけを見るsparse attentionや、scoreを近似する方式へ変えず、通常のscaled dot-product attentionと同じ式を計算するという意味である。速さの源は「計算を省略して答えを近似すること」ではなく、「同じ答えへ至る計算順とmemory配置を変えること」にある。</p>
+<p>学習の<strong>backward pass</strong>（出力誤差からparameter更新量を逆向きに計算する処理）では、通常ならSとPを保存して再利用したくなる。FlashAttentionは代わりに、forward passの出力Oとsoftmaxの正規化情報だけを保存し、backward時に必要なS/PのblockをSRAM上で再計算する。これは、小さな計算をやり直す代わりに、巨大な中間表をHBMへ保存して再読込する費用を避ける選択である。</p>
+<div class="callout"><p><strong>なぜ「演算を増やしても速い」のか。</strong>再計算でFLOPは増えるが、memory-boundな処理ではHBMとの往復削減の効果が上回る場合がある。つまり「計算回数が少ない実装」と「実時間が短い実装」は必ずしも同じではない。ただし速度向上率はGPU、sequence length、head dimension、data型、実装versionによって変わるため、一つの倍率を普遍的な値として扱ってはいけない。</p></div>
+
+<div class="source-note"><p><strong>周辺情報（原論文・公式実装による補足）。</strong>ここまでのtiling、online softmax、backward時の再計算、N×N中間行列をHBMへ保存しないという説明は、<a href="https://arxiv.org/abs/2205.14135" target="_blank" rel="noopener">FlashAttention原論文</a>と<a href="https://github.com/Dao-AILab/flash-attention" target="_blank" rel="noopener">公式実装</a>を参照して補った。原論文はFlashAttentionを「IO-aware exact attention algorithm」と定義し、通常attentionよりHBM accessを減らし、memory使用量をsequence lengthに対して線形にできると説明する。これは講義字幕だけから推測した説明ではなく、原著者の資料に基づく補足である。</p></div>
+
+<h3>5. Data parallelismとmodel parallelismは、FlashAttentionとは別の分割問題</h3>
+<p>講義は同じ復習区間で複数GPUの使い方も扱うが、これはFlashAttentionとは別の軸である。FlashAttentionは<strong>1 GPU内のmemory移動</strong>を主に減らす。並列化は<strong>仕事を複数GPUへどう割るか</strong>を決める。</p>
+<p><strong>Data parallelism</strong>は、同じmodelの複製を各GPUへ置き、異なる学習例を処理する。たとえばbatch 128件を8 GPUへ16件ずつ配り、各GPUが計算したgradientを最後に集約する。<strong>Model parallelism</strong>は、一つのGPUに収まらないmodelのlayerやmatrixを複数GPUへ分割し、一つの入力をdevice間で受け渡しながら処理する。前者は同じ教科書を8クラスで分担して解く方法、後者は一冊の巨大な教科書を8人で章分けして読む方法に近い。</p>
+<p>どちらもGPU間通信が増えるため、GPU数を倍にしても速度が単純に倍にはならない。FlashAttention、GQA、KV cache、MoE、並列化はすべて効率化に関係するが、減らす対象が異なる。FlashAttentionはHBM access、GQAは保存するKey/Value head、MoEは動かすFFN expert、並列化は1台が担当する仕事量を変える。次節では、計算を回せるようになったmodelへ、どの順番で何を学ばせるかを扱う。</p>
 </section>
 
 <section id="s7">
@@ -571,8 +599,8 @@ D-->E[反復して完成文]</div><p class="hint">図をクリックすると拡
 <footer class="page">
 <p class="note"><strong>一次資料・注意事項。</strong> 本文の中心は公式動画・字幕・スライドである。ViT（Dosovitskiy et al., 2020）、FlashAttention（Dao et al., 2022）、Chinchilla（Hoffmann et al., 2022）、LLaVA、LLaDA、DeepSeek-OCR、Kimi K2、model collapse、analog attentionの性能値・構成は各原論文／technical reportを確認すること。製品発表とLLM Arena表示は講義内で紹介された時点のsnapshotであり、現在の提供状況を保証しない。</p>
 <p class="disclaimer">本レポートは、上記の出典元コンテンツを参照し、内容を省略せず日本語で要約・再構成した非公式まとめです。記述に誤りがある場合は出典元の表現が正となります。</p>
-<p class="disclaimer">講義画面のキャプチャ24枚は、内容理解に必要な範囲で動画から引用し、各画像に出典タイムスタンプを付記しています。破線枠の補足、数式の記号説明、用語索引は理解支援のための再構成であり、登壇者の発言そのものとは区別しています。</p>
-<p>出典: <a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss">公式動画</a> ／ <a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture9.pdf">公式スライドPDF</a> ／ 取得手段: yt-dlp公式英語字幕＋ffmpeg動画フレーム抽出＋公式PDF照合 ／ 作成日: 2026年8月27日</p>
+<p class="disclaimer">講義映像からのキャプチャ23枚と、公式スライドPDFからの高解像度画像1枚は、内容理解に必要な範囲で引用し、各画像に出典を付記しています。破線枠の補足、数式の記号説明、用語索引、原論文・公式実装に基づく周辺情報は理解支援のための再構成であり、登壇者の発言そのものとは区別しています。</p>
+<p>出典: <a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss">公式動画</a> ／ <a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture9.pdf">公式スライドPDF</a> ／ 取得手段: yt-dlp公式英語字幕＋ffmpeg動画フレーム抽出＋公式PDF照合＋FlashAttention原論文・公式実装 ／ 作成日: 2026年8月27日</p>
 </footer>
 </main></div>
 <div id="diagramModal" class="modal" role="dialog" aria-modal="true" aria-label="図と講義画面の拡大ビューア"><div class="modal-toolbar"><button class="modal-button" type="button" onclick="zoomCmd('in')">拡大</button><button class="modal-button" type="button" onclick="zoomCmd('out')">縮小</button><button class="modal-button" type="button" onclick="zoomCmd('reset')">リセット</button><button class="modal-button" type="button" onclick="closeModal()">閉じる</button></div><div id="modalBody" class="modal-body"></div></div>
