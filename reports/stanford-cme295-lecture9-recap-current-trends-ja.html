@@ -4,762 +4,970 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
+<title>Stanford CME295 Lecture 9 — LLMの仕組みを、計算から理解する</title>
+<meta name="description" content="Stanford CME295最終回を7部で学び直す日本語ガイド。文章生成、学習、MoE・FlashAttention、RAG・評価、ViT、拡散生成を、途中計算と日本語の説明図でつなぐ。">
 <link rel="stylesheet" href="../assets/stash-theme.css">
 <script src="../assets/stash-theme.js"></script>
-<title>Stanford CME295 Lecture 9「Recap &amp; Current Trends」日本語学習ガイド</title>
-<meta name="description" content="Stanford CME295最終回を、公式字幕・128ページの公式スライド・24枚の映像キャプチャで、TransformerからViT、VLM、拡散LLM、データ、コスト、hardware、安全性まで一続きに学ぶ日本語ガイド。">
 <style>
-  :root {
-    --sidebar-w: 286px;
-    --content-max: 980px;
-    --radius: 14px;
-    --shadow: 0 8px 28px rgba(0,0,0,.34);
-  }
+  :root { --sidebar-w: 276px; --content-max: 920px; --radius: 14px; }
   * { box-sizing: border-box; }
-  html, body { background: var(--bg); color: var(--text); scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; }
   body {
-    margin: 0;
-    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    line-height: 1.85;
+    margin: 0; background: var(--bg); color: var(--text); line-height: 1.85;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   a { color: var(--link); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  strong { color: var(--text); }
-  .layout { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); min-height: 100vh; }
-  aside.sidebar {
-    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
-    border-right: 1px solid var(--border); background: var(--bg-elev); padding: 24px 18px;
+  p { margin: 12px 0; }
+  li { margin: 6px 0; }
+  ul, ol { padding-left: 24px; }
+  .layout { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); }
+  .sidebar {
+    position: sticky; top: 0; height: 100vh; align-self: start; overflow-y: auto;
+    padding: 24px 16px; border-right: 1px solid var(--border); background: var(--bg-elev);
   }
-  .toc-panel > summary { display: none; color: var(--text); cursor: pointer; font-weight: 700; }
-  .toc-title {
-    margin: 0 0 10px; color: var(--text-dim); font-size: 12px; font-weight: 700;
-    letter-spacing: .12em; text-transform: uppercase;
+  .toc-panel > summary { display: none; font-weight: 700; cursor: pointer; }
+  .toc-title { color: var(--text-dim); font-size: 12px; letter-spacing: .1em; }
+  #toc, #toc ol { list-style: none; margin: 0; padding: 0; }
+  #toc > li { margin: 14px 0; }
+  #toc a {
+    display: block; padding: 5px 9px; border-left: 2px solid transparent;
+    font-size: 13px; line-height: 1.5; color: var(--text-dim);
   }
-  aside.sidebar ol { list-style: none; padding: 0; margin: 0; }
-  aside.sidebar li { margin: 2px 0; }
-  aside.sidebar a {
-    display: block; padding: 6px 10px; border-left: 2px solid transparent;
-    border-radius: 0 7px 7px 0; color: var(--text-dim); font-size: 13.5px;
-    line-height: 1.45; transition: color .15s, border-color .15s, background .15s;
-  }
-  aside.sidebar a:hover { color: var(--text); background: rgba(127,127,127,.07); text-decoration: none; }
-  aside.sidebar a.active {
-    border-left-color: var(--accent); background: rgba(127,127,127,.1);
-    color: var(--accent); font-weight: 700;
-  }
-  aside.sidebar li.lvl-3 a { padding-left: 22px; font-size: 12.5px; }
-  main { width: min(100%, var(--content-max)); margin: 0 auto; padding: 48px 28px 96px; }
-  header.page { margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
-  header.page .eyebrow {
-    color: var(--accent); font-size: 13px; font-weight: 800;
-    letter-spacing: .08em; text-transform: uppercase;
-  }
-  header.page h1 { margin: 8px 0 12px; font-size: clamp(28px, 4vw, 42px); line-height: 1.3; }
-  header.page .lead { margin: 0; color: var(--text-dim); font-size: 16px; }
+  #toc > li > a { font-weight: 700; }
+  #toc ol a { padding-left: 18px; font-size: 12px; }
+  #toc a.active { color: var(--accent); border-color: var(--accent); background: rgba(127,127,127,.08); }
+  main { width: min(100%, var(--content-max)); min-width: 0; margin: 0 auto; padding: 44px 28px 80px; }
+  header.page { padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+  .eyebrow { color: var(--accent); font-size: 13px; font-weight: 700; }
+  h1 { margin: 10px 0 14px; font-size: clamp(27px, 4vw, 38px); line-height: 1.4; }
+  .lead { color: var(--text-dim); }
   .meta-card {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 8px 24px; margin: 20px 0 32px; padding: 18px 20px;
-    border: 1px solid var(--border); border-radius: var(--radius);
-    background: var(--bg-elev); font-size: 14px;
+    gap: 10px 24px; padding: 18px 20px; margin: 24px 0;
+    border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev);
   }
-  .meta-card dt { color: var(--text-dim); font-size: 12px; letter-spacing: .04em; }
-  .meta-card dd { margin: 0 0 7px; color: var(--text); }
-  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-  .badge {
-    display: inline-block; padding: 2px 8px; border: 1px solid var(--border);
-    border-radius: 999px; background: var(--bg); color: var(--text-dim); font-size: 12px;
-  }
-  .tldr, .callout, .source-note {
-    margin: 24px 0; padding: 17px 22px; border: 1px solid var(--border);
+  .meta-card dt { color: var(--text-dim); font-size: 12px; }
+  .meta-card dd { margin: 0; font-size: 14px; }
+  .source-note, .callout, .example {
+    margin: 20px 0; padding: 16px 20px; border: 1px solid var(--border);
     border-radius: var(--radius); background: var(--bg-elev);
   }
-  .tldr h2 { margin: 0 0 10px; color: var(--accent); font-size: 17px; letter-spacing: .04em; }
-  .callout { border-left: 3px solid var(--accent); }
-  .callout strong { color: var(--accent); }
-  .callout p:last-child, .source-note p:last-child { margin-bottom: 0; }
-  .source-note { border-style: dashed; }
-  section { margin: 48px 0; scroll-margin-top: 24px; }
-  section h2 {
-    display: inline-block; margin: 0 0 16px; padding-bottom: 8px;
-    border-bottom: 2px solid var(--accent); font-size: 23px; line-height: 1.45;
+  .source-note { border-style: dashed; font-size: 14px; }
+  .callout, .example { border-left: 4px solid var(--accent); }
+  .source-note p:first-child, .callout p:first-child, .example p:first-child { margin-top: 0; }
+  .source-note p:last-child, .callout p:last-child, .example p:last-child { margin-bottom: 0; }
+  .part { margin-top: 64px; }
+  h2 { margin: 0 0 20px; padding-bottom: 10px; border-bottom: 2px solid var(--accent); font-size: 25px; line-height: 1.5; }
+  h3 { margin: 36px 0 12px; font-size: 20px; line-height: 1.5; }
+  h4 { margin: 20px 0 8px; font-size: 17px; }
+  [id] { scroll-margin-top: 24px; }
+  code { padding: 1px 4px; border-radius: 5px; background: var(--bg-elev); font-size: .94em; overflow-wrap: anywhere; }
+  .equation {
+    margin: 18px 0; padding: 16px 20px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev); overflow-x: auto; font-size: 18px;
   }
-  section h3 { margin: 28px 0 9px; color: var(--accent); font-size: 18px; }
-  section > h2 + p { margin: 0 0 22px; color: var(--text-dim); font-size: 15.5px; }
-  section > h2 + p strong { color: var(--text); }
-  p { margin: 10px 0; }
-  ul, ol { margin: 12px 0; padding-left: 23px; }
-  li { margin: 6px 0; }
-  code {
-    padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px;
-    background: var(--bg-elev); font-size: .92em;
+  .equation p { margin: 5px 0; }
+  .symbols { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; }
+  .symbols dt { font-weight: 700; }
+  .symbols dd { margin: 0; }
+  .table-wrap { width: 100%; overflow-x: auto; margin: 20px 0; }
+  table { width: 100%; border-collapse: collapse; background: var(--bg-elev); }
+  caption { text-align: left; padding: 6px 0; color: var(--text-dim); font-size: 14px; }
+  th, td { padding: 10px 12px; border: 1px solid var(--border); text-align: left; vertical-align: top; font-size: 15px; }
+  th { font-weight: 700; background: rgba(127,127,127,.06); }
+  .comparison { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px; margin: 20px 0; }
+  .flow { margin: 0; padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); }
+  .flow h4 { margin: 0 0 14px; }
+  .flow ol { list-style: none; padding: 0; margin: 0; }
+  .flow li { padding: 10px; margin: 0; border: 1px solid var(--border); border-radius: 8px; text-align: center; }
+  .flow li + li { position: relative; margin-top: 28px; }
+  .flow li + li::before { content: "↓"; position: absolute; top: -29px; left: 50%; transform: translateX(-50%); color: var(--text-dim); }
+  .flow .transfer { border-color: var(--accent); }
+  .flow .working { border-color: var(--link); }
+  .flow figcaption { margin-top: 12px; font-size: 14px; color: var(--text-dim); }
+  .mermaid, .vector-figure {
+    margin: 22px 0; padding: 18px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-elev); overflow-x: auto;
   }
-  .sequence {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 10px; margin: 20px 0;
+  .mermaid { text-align: center; cursor: zoom-in; }
+  .mermaid svg, .vector-figure svg { width: 100%; height: auto; display: block; }
+  .vector-figure svg { max-width: 520px; margin: 0 auto; }
+  .vector-figure.vit svg { max-width: 340px; }
+  .vector-figure { cursor: zoom-in; }
+  .vector-figure svg { color: var(--text); }
+  .vector-figure figcaption { margin-top: 12px; color: var(--text-dim); font-size: 14px; }
+  .hint { color: var(--text-dim); font-size: 13px; }
+  details.source-gallery, details.advanced {
+    padding: 14px 18px; margin: 24px 0; border: 1px solid var(--border); border-radius: var(--radius);
   }
-  .sequence .step {
-    position: relative; padding: 15px 16px; border: 1px solid var(--border);
-    border-radius: var(--radius); background: var(--bg-elev);
-  }
-  .sequence .step .step-no {
-    display: block; margin-bottom: 5px; color: var(--accent);
-    font-size: 12px; font-weight: 800; letter-spacing: .05em;
-  }
-  .sequence .step p { margin: 0; color: var(--text-dim); font-size: 13.5px; line-height: 1.65; }
-  .table-wrap { width: 100%; overflow-x: auto; margin: 17px 0; }
-  table {
-    width: 100%; min-width: 680px; border-collapse: collapse;
-    border: 1px solid var(--border); border-radius: var(--radius);
-    background: var(--bg-elev); overflow: hidden;
-  }
-  th, td {
-    padding: 11px 14px; border-bottom: 1px solid var(--border);
-    text-align: left; vertical-align: top; font-size: 14px;
-  }
-  thead th {
-    background: rgba(127,127,127,.08); color: var(--text-dim);
-    font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase;
-  }
-  tbody tr:last-child td { border-bottom: none; }
-  .formula {
-    margin: 20px 0; padding: 20px; border: 1px solid var(--border);
-    border-left: 4px solid var(--accent); border-radius: var(--radius);
-    background: var(--bg-elev); text-align: center;
-    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-    font-size: clamp(14px, 2.2vw, 20px); font-weight: 700; overflow-x: auto;
-  }
-  .formula small {
-    display: block; margin-top: 8px; color: var(--text-dim);
-    font-family: inherit; font-size: 12px; font-weight: 400;
-  }
-  .note {
-    margin: 20px 0; padding: 17px 20px; border: 1px dashed var(--border);
-    border-radius: var(--radius); background: var(--bg-elev);
-  }
-  .note strong { color: var(--accent); }
-  figure.shot { margin: 24px 0; }
-  figure.shot img {
-    display: block; width: 100%; height: auto; aspect-ratio: 16 / 9;
-    border: 1px solid var(--border); border-radius: var(--radius);
-    background: var(--bg-elev); object-fit: contain; cursor: zoom-in;
-  }
-  figure.shot img:focus-visible, .mermaid:focus-visible {
-    outline: 2px solid var(--accent); outline-offset: 3px;
-  }
-  figure.shot figcaption { margin-top: 8px; color: var(--text-dim); font-size: 13px; line-height: 1.6; }
-  figure.shot figcaption .ts {
-    display: inline-block; margin-left: 6px; padding: 1px 7px;
-    border: 1px solid var(--border); border-radius: 999px;
-    background: var(--bg-elev); color: var(--accent);
-    font-size: 12px; font-weight: 700; white-space: nowrap;
-  }
-  .mermaid {
-    margin: 20px 0; padding: 18px; border: 1px solid var(--border);
-    border-radius: var(--radius); background: var(--bg-elev);
-    text-align: center; overflow-x: auto; cursor: zoom-in;
-  }
-  .mermaid svg { max-width: 100%; height: auto; }
-  .hint { margin: -10px 0 18px; color: var(--text-dim); font-size: 12px; text-align: center; }
-  footer.page {
-    margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--border);
-    color: var(--text-dim); font-size: 13px;
-  }
-  footer.page .disclaimer { font-size: 12.5px; opacity: .95; }
-  .modal {
-    position: fixed; inset: 0; z-index: 50; display: none;
-    padding: 22px; background: rgba(9,20,38,.82);
-  }
-  .modal.is-open { display: grid; grid-template-rows: auto 1fr; gap: 12px; }
-  .modal-toolbar { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-  .modal-button {
-    appearance: none; padding: 8px 12px; border: 1px solid var(--border);
-    border-radius: 999px; background: var(--bg-elev); color: var(--text);
-    font-weight: 700; cursor: pointer;
-  }
-  .modal-button:hover { border-color: var(--accent); color: var(--accent); }
-  .modal-body {
-    display: grid; place-items: center; min-height: 0; border: 1px solid var(--border);
-    border-radius: var(--radius); background: var(--bg-elev);
-    box-shadow: var(--shadow); overflow: hidden;
-  }
-  .modal-body svg { width: 100%; height: 100%; min-height: 70vh; }
+  details > summary { cursor: pointer; font-weight: 700; }
+  figure.shot { margin: 20px 0; }
+  figure.shot img { display: block; width: 100%; height: auto; aspect-ratio: 16/9; object-fit: contain; border-radius: 10px; cursor: zoom-in; }
+  figure.shot figcaption { margin-top: 8px; color: var(--text-dim); font-size: 14px; }
+  .ts { white-space: nowrap; margin-left: 8px; }
+  .refs { font-size: 14px; }
+  .refs li { margin: 10px 0; }
+  .source { color: var(--text-dim); font-size: 14px; }
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 13px; }
+  .modal { display: none; position: fixed; inset: 0; z-index: 50; padding: 20px; background: rgba(9,20,38,.85); }
+  .modal.is-open { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; }
+  .modal-toolbar { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+  .modal-button { padding: 8px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-elev); color: var(--text); font: inherit; cursor: pointer; }
+  .modal-body { min-height: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
+  .modal-body svg { width: 100%; height: 100%; display: block; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   @media (max-width: 900px) {
-    .layout { grid-template-columns: minmax(0, 1fr); width: 100%; }
-    aside.sidebar {
-      position: static; height: auto; min-width: 0; max-width: 100%;
-      padding: 14px 20px; border-right: none; border-bottom: 1px solid var(--border);
-    }
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); padding: 14px 20px; }
     .toc-panel > summary { display: block; }
     .toc-title { display: none; }
-    aside.sidebar ol { margin-top: 10px; }
-    main { min-width: 0; max-width: 100%; padding: 36px 20px 80px; }
+    main { padding: 32px 20px 70px; }
   }
-  @media (max-width: 720px) {
-    .modal { padding: 12px; }
-    .modal-toolbar { justify-content: center; }
-    .modal-button { padding: 7px 10px; }
+  @media (max-width: 480px) {
     .meta-card { grid-template-columns: 1fr; }
+    th, td { padding: 8px 6px; font-size: 14px; }
+    .equation { padding: 12px; font-size: 16px; }
+    .mermaid, .vector-figure { padding: 10px; }
+    .modal { padding: 10px; }
+    h2 { font-size: 23px; }
   }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 </style>
 </head>
-<body><div class="layout">
-<aside class="sidebar" aria-label="目次"><details class="toc-panel" open><summary>目次を開く / 閉じる</summary><p class="toc-title">Contents</p><ol id="toc"></ol></details></aside>
+<body>
+<div class="layout">
+<aside class="sidebar" aria-label="目次">
+  <details class="toc-panel" open><summary>目次を開く / 閉じる</summary><p class="toc-title">CONTENTS</p><ol id="toc"></ol></details>
+</aside>
 <main>
-<header class="page"><div class="eyebrow">Stanford CME295 · Transformers &amp; Large Language Models · Autumn 2025 · Lecture 9</div><h1>Lecture 9「Recap &amp; Current Trends」日本語学習ガイド【講義スライド24枚付き】</h1><p class="lead">Transformerの最初の一式から、学習・推論・agent・評価を復習し、Vision Transformer、VLM、拡散型LLM、データ・コスト・hardware・安全性までを一つの因果の流れとして読む、Stanford CME295最終回の学習ガイド。</p></header>
-<dl class="meta-card"><div><dt>出典</dt><dd><a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss" target="_blank" rel="noopener">Stanford Online — Lecture 9</a></dd></div><div><dt>登壇者</dt><dd>Afshine Amidi / Shervine Amidi</dd></div><div><dt>講義 / 公開</dt><dd>2025年12月5日 / 12月9日</dd></div><div><dt>所要時間</dt><dd>1時間51分31秒（6,691秒）</dd></div><div><dt>一次資料</dt><dd><a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture9.pdf" target="_blank" rel="noopener">公式スライドPDF（128ページ）</a></dd></div><div><dt>作成方法</dt><dd>公式英語字幕1,786 cues・13,759語、公式PDF、映像23枚＋高解像度公式スライド1枚を照合</dd></div><div style="grid-column:1/-1"><dt>タグ</dt><dd class="badges"><span class="badge">Transformer</span><span class="badge">Vision Transformer</span><span class="badge">VLM</span><span class="badge">Diffusion LLM</span><span class="badge">Agentic LLM</span><span class="badge">AI Trends</span></dd></div></dl>
-<div class="source-note"><strong>本文の読み方。</strong>「講義の要点」は、動画で登壇者が説明した内容を読みやすい順に並べ直したものです。破線枠の<strong>補足</strong>、数式の読み方、身近な例は、初学者の理解を助けるために<strong>本レポートが追加した説明</strong>であり、登壇者の発言そのものではありません。数値、製品発表、研究性能は、いずれも講義時点（2025年12月）に紹介された情報として読んでください。</div>
-<div class="tldr"><h2>3行サマリ</h2><ul><li><strong>この講義は、文章を数の列として読み、学習し、外部資料や道具へつなぎ、評価するまでを一つの流れとして復習する。</strong>後半の画像・拡散型 LLM・agent は、その土台の別用途または別の生成順である。</li><li><strong>新しい技術は一つの万能解ではない。</strong>MoE は計算する部分、RAG は知識の置き場所、ViT は入力の切り方、拡散は生成順を変え、それぞれ速度・品質・費用・安全性の交換を持つ。</li><li><strong>実運用では、性能 score だけでは足りない。</strong>データの質、評価の偏り、待ち時間、hardware、権限、安全性を、用途ごとに確かめて選ぶ必要がある。</li></ul></div>
-<div class="sequence" aria-label="この学習ガイドの道順"><div class="step"><span class="step-no">1 · 文章の土台</span><p>§2–3。文章を token に分け、ベクトルへ変え、語順と過去の文脈を使って読む。画像を読む前にも必要な共通部品。</p></div><div class="step"><span class="step-no">2 · 大きく、速く、望ましく</span><p>§4–9。必要な expert だけを動かし、モデル・データ・計算を釣り合わせ、基礎学習から選好・reasoning の学習へ進む。</p></div><div class="step"><span class="step-no">3 · 外の世界と画像</span><p>§10–20。RAG と tool で外部を読み・使い、評価の基準を整える。続いて画像を token 列として扱い、拡散という別の生成順を比べる。</p></div><div class="step"><span class="step-no">4 · 現実の選択</span><p>§21–28。設計、データ、費用、hardware、日常用途、agent の安全、学習方法を結び、必要な節へ戻れる索引で終える。</p></div></div>
-
-<section id="s1">
-<h2>1. この最終回で、何をつなげて学ぶのか</h2>
-<p>最初に確かめるのは、「Lecture 9 は新しい用語を増やす回ではなく、これまで学んだ部品をどんな順で結び直す回なのか」である。まだ前の節はないので、まずこのガイド全体の地図を置く。以後の節では、文章を扱う基本のしくみから始め、画像、生成方法、実運用の順に進む。先に地図を持つと、途中で出る技術が「何のための部品か」を見失いにくい。</p>
-<p>ここでいう<strong>大規模言語モデル（Large Language Model、LLM）</strong>は、大量の文章から次に来そうな文字列の単位を予測するよう学んだ計算モデルである。料理にたとえるなら、LLM は一皿を丸ごと暗記するのではなく、「この材料の後には何を置くと自然か」という多数の組合せを覚えた料理人に近い。<strong>Transformer</strong>は、その料理人が文章の離れた部分どうしを見比べるための基本設計である。講義の後半で扱う画像や<strong>agent（LLM が道具を使いながら作業を進める仕組み）</strong>も、この設計を別の問題へ広げたものとして読む。</p>
-<p>まず開始スライドでは、最終回が「復習、現在の傾向、締めくくり」の三部からなることを確認してほしい。登壇者名や講義名だけでなく、単一の新手法ではなく全体像を扱う回だという位置づけに注目する。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/01-title.jpg" alt="CME 295 Lecture 9の題名とAfshine Amidi、Shervine Amidiの氏名がある開始スライド" loading="lazy"><figcaption>開始画面。最終回が単一手法の新講義ではなく、四半期全体を接続する回であることを示す。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=22s">00:22</a></figcaption></figure>
-<p>この画面からの持ち帰りは、以後の説明を「流行した製品の一覧」ではなく因果の連鎖として読むことだ。次に、前半の復習が後半へ何を渡すのかを表で確かめる。表に出る<strong>ベクトル（vector）</strong>は情報を数の並びにしたもの、<strong>パッチ（patch）</strong>は画像を切り分けた小さな四角、<strong>外部化</strong>はモデルの内部記憶だけに頼らず資料や道具を外から渡すことである。</p>
-<p>次の表では、各回の名前を覚えるのでなく、「何を解決した部品か」と「その部品が後でどこへ再登場するか」を縦に追ってほしい。たとえば最初の二回で学ぶ token と attention は、後で画像の patch を読む道具になる。</p>
-<div class="table-wrap"><table><thead><tr><th>復習の連鎖</th><th>中心の問い</th><th>後半で再利用される先</th></tr></thead><tbody><tr><td>L1–2</td><td>数値で表したtoken同士の関係をどう計算するか</td><td>画像patchと縦横の位置情報</td></tr><tr><td>L3–6</td><td>大規模な生成モデルをどう学習・推論するか</td><td>自己回帰生成と拡散生成の比較</td></tr><tr><td>L7–8</td><td>外部資料・tool・評価基準をどう使うか</td><td>安全な実運用</td></tr></tbody></table></div>
-<p>表の三行は独立した箱ではない。まず情報を数列にして関係を読む。次に、その能力を大量データで育て、答え方を調整する。最後に、資料・道具・評価を外へつなぐ。この順序を頭に置けば、後半の ViT や拡散型 LLM も「別世界の話」ではなくなる。次節はその一番目、文章をモデルが読める数列へ変えるところから始める。</p>
-<div class="callout"><p><strong>講義の地図を一文で言うと。</strong> §2–3 は「文章を読める形にする」、§4–6 は「大きく・速く動かす」、§7–12 は「望ましい答えを学ばせ、外部とつなぎ、測る」、§13–20 は「画像と新しい生成方法へ広げる」、§21–28 は「それを安く、安全に、学び続けられる形にする」という流れである。迷ったら、今の用語がこのどこに置かれるかへ戻るとよい。</p></div>
-</section>
-
-<section id="s2">
-<h2>2. 文章を数に変え、必要な言葉を参照するしくみ</h2>
-<p>§1 の地図を受けて、まず問い直すのは、「人にはそのまま読める文章を、モデルはどんな単位に分け、どの言葉を手掛かりに意味をつかむのか」である。§1 の地図で最初に置いた「情報を数列にする」工程を具体化する。後で画像の patch を token として扱うためにも、まず文章の token が単語と同じではないことを理解しておく。</p>
-<p><strong>トークン（token）</strong>は、モデルが一度に扱う文字列の区切りである。日本語では「今日」「は」「晴れ」「です」のような語や文字のまとまりに、英語では語全体や語の一部に分かれることがある。<strong>サブワード分割器（subword tokenizer）</strong>は、単語を再利用しやすい部品へ分ける道具だ。例えば <code>unhappiness</code> を <code>un</code>、<code>happi</code>、<code>ness</code> に分ければ、初めて見る語でも既知の部品から扱える。これは、すべての完成品を倉庫に置く代わりに、共通の部品で多くの製品を組み立てる方法に似ている。ただし、区切り方が悪いと日本語の一語が多数の token になり、費用や入力長に影響する。</p>
-<p>次のスライドでは、テディベアの短い文が「分割する → 数にする → 文中の別の場所を参照する」という連鎖の共通例として繰り返し使われている点を見てほしい。矢印や専門語を暗記するより、同じ文の中で各段階が何を受け取るかを追う。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/02-tokenization-attention.jpg" alt="テディベアの文を用いたLecture 1復習スライド。token化とattentionの文脈を示す" loading="lazy"><figcaption>Lecture 1の復習。テディベア文が、token分割・表現・token間参照の共通例として後のスライドにも反復登場する。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=245s">04:05</a></figcaption></figure>
-<p>図の要点は、token 化は意味理解の終わりではなく入口だということだ。分けた token は<strong>埋め込み（embedding）</strong>、すなわち特徴を表す多数の数の並びへ変換される。たとえば「銀行」と「川岸」のように同じ綴りでも文脈で意味が変わる語を扱うには、単語帳のように一つの固定ベクトルを置くだけでは足りない。ここで各位置が文中のほかの位置を読める仕組みが必要になる。</p>
-<h3>固定の単語帳から、文脈を読む仕組みへ</h3>
-<p><strong>word2vec</strong>は、近くに現れる語を予測して単語のベクトルを学ぶ代表的な方法である。しかし同じ語には同じ表現を与えやすく、文脈ごとの違いを作りにくい。<strong>再帰型ニューラルネットワーク（Recurrent Neural Network、RNN）</strong>は、左から順に読み、途中までのメモである<strong>隠れ状態（hidden state）</strong>へ情報を渡す方法である。長い文では最初の情報が薄れ、遠い語を直接見直しにくく、順番待ちのため並列計算もしにくい。この二つの弱点を解くのが<strong>自己注意機構（self-attention）</strong>である。自己注意機構は、各 token が同じ文の中から必要な token を選んで読む仕組みで、付箋を付けた資料から必要なページだけを引く作業にたとえられる。</p>
-<p>次の式を見る前に、三つの役割を決める。<strong>Query（Q、探したい内容を書く質問札）</strong>、<strong>Key（K、その質問札と照合する見出し札）</strong>、<strong>Value（V、実際に受け取る本文）</strong>である。「<em>その</em> は何を指すか」を読む位置なら、Q は「指示語の参照先を探したい」という質問札、各名詞の K は見出し札、各名詞が持つ情報が V になる。式は、① Q とすべての K の近さを比べる、② 数が極端にならないよう縮める、③ 比率に直す、④ その比率で V を集める、という四段階を一行に縮めたものとして読む。</p>
-<p>小さな例では、「クマは本を読んだ。<em>それ</em>は面白かった」の二文目で、<em>それ</em> の Q が「本」の K と強く合えば、「本」の V に大きな重みが付く。他の語を完全に捨てるのではなく、重みの合計を 1 にして配分するのがポイントである。次の数式では、どの記号がどの段階を表すかに注目してほしい。</p>
-<div class="formula">Attention(Q,K,V) = softmax(QKᵀ / √d<sub>k</sub>) V<small>① QKᵀ：各 Query と各 Key の内積を取り、「どれくらい関係がありそうか」の表を作る。② √d<sub>k</sub> で割る：Key の次元数 d<sub>k</sub> が大きいほど内積も大きくなりやすいため、点数が一つへ極端に集中しないよう整える。③ softmax：各 Query ごとの点数を、合計 1 の重みへ変える。④ V を掛ける：重みの大きい Value を多く受け取る。Q = 質問札、K = 見出し札、V = 本文、T は転置を表す。</small></div>
-<p>式の後半で V に掛かる重みが変わると、受け取る文脈も変わる。Q と特定の K が強く合えば、その V の比率は大きくなる。逆に d<sub>k</sub> を考慮せず点数が大きくなりすぎると、softmax が一つの候補だけを過信しやすい。自己注意機構は遠い語を一度で直接参照できる反面、語順そのものはまだ知らない。次節では「どの順番で並ぶか」と、長い文を生成するときの記憶の節約を加える。</p>
-<div class="source-note"><p><strong>補足（本レポートの説明）。</strong> token 数は文字数や単語数と一致しない。日本語、記号、URL、珍しい固有名詞では分割が細かくなることがあるため、API の入力上限や料金を見積もるときは実際の tokenizer で数えるのが安全である。この実務上の注意は、講義の基礎説明を補うものだ。</p></div>
-</section>
-
-<section id="s3">
-<h2>3. 語順を伝え、長い文章を効率よく読むしくみ</h2>
-<p>§2 の仕組みを一歩進めるために確認するのは、「§2 の自己注意機構は、同じ単語が並んだ文でも、どの順番で置かれたかと長い会話の過去をどう扱うのか」である。自己注意機構は必要な場所を選べるが、位置を渡さなければ「犬が人を追う」と「人が犬を追う」の違いを知る手掛かりがない。そこで位置情報と生成時の記憶を足し、目的に応じた Transformer の使い分けへつなぐ。</p>
-<p><strong>位置表現（positional encoding）</strong>は、列の何番目にいるかをベクトルへ知らせる印である。<strong>RoPE（Rotary Position Embedding、回転位置埋め込み）</strong>は、位置ごとに Query と Key の数値を異なる角度へ回す方法だ。ここで「回す」は画面の文字を回転することではなく、ベクトルの座標を数学的に変換することを指す。時計の針が時刻ごとに異なる向きを持つように、Q と K の照合結果へ位置の差を織り込める。近い語と遠い語を同じようには扱いたくない問題を解くが、非常に長い位置へ外挿したときの振る舞いは、学習方法や実装に依存する。</p>
-<p>次の図では、RoPE が token 本体へ単純に番号札を足すのではなく、Q と K を位置に応じて変えてから照合することを見てほしい。行列が難しく見えても、「位置の違いが Q と K の相性に現れる」という一点を押さえればよい。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/03-rope-position-embeddings.jpg" alt="RoPEの回転行列と位置埋め込みを示すLecture 2復習スライド" loading="lazy"><figcaption>RoPE（Rotary Position Embedding）の図。Q/Kを位置ごとに回転させ、attention計算に相対距離を持ち込む考え方を視覚化する。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=500s">08:20</a></figcaption></figure>
-<p>図から分かるのは、attention が語の意味だけでなく相対的な距離も使えるようになることだ。次に必要なのは、生成済みの長い列を毎回読み直さない工夫である。<strong>attention head</strong>は、関係を読む独立した小さな視点で、ある head は主語と動詞、別の head は指示語と参照先のように異なる手掛かりを拾える。</p>
-<p><strong>Key/Value キャッシュ（KV cache）</strong>は、すでに生成した token の K と V を保存する記憶である。次の token を出すたびに過去全体の K/V を作り直さずに済むため、会話履歴が増える生成で有効だ。ただし、保存する token が増えるほどメモリを使う。<strong>グループ化 Query 注意機構（Grouped-Query Attention、GQA）</strong>は、複数の Q 用 head に K/V 用 head を共有させる設計である。全員に別々の資料棚を持たせず、数人で同じ棚を使うような節約で、KV cache を小さくできる。その代わり、共有を強めすぎると head ごとの見方の自由度は下がりうる。</p>
-<p>次の表では、「どちら向きの token を見られるか」と「何を出力したいか」を対応させて読む。表にある<strong>encoder</strong>は入力全体を読んで表現を作る側、<strong>decoder</strong>は左側の生成済み token を見ながら続きを作る側である。BERT、GPT、T5 は固有名ではなく、この見え方の違いを表す代表例として見る。</p>
-<div class="table-wrap"><table><thead><tr><th>形式</th><th>読む範囲</th><th>主な仕事</th></tr></thead><tbody><tr><td>Encoder-only（BERT）</td><td>両方向</td><td>分類・embedding</td></tr><tr><td>Decoder-only（GPT）</td><td>左側のみ</td><td>次token生成</td></tr><tr><td>Encoder–decoder（T5）</td><td>入力全体＋生成途中</td><td>入力を別textへ変換</td></tr></tbody></table></div>
-<p>表の結論は優劣ではない。文章を分類したいなら両側を読める encoder が便利で、続きを生成したいなら未来を見ない decoder が必要になる。GQA と KV cache は特に後者の待ち時間とメモリに効く。次節では、モデル全体を毎回同じように動かすのではなく、token ごとに専門部分を選ぶという、さらに大きな計算節約へ進む。</p>
-</section>
-
-<section id="s4">
-<h2>4. MoEで大きなモデルの一部だけを動かし、temperatureで次のtokenの選び方を調整する</h2>
-<p>§3 の効率化の続きで、分けて考えたいのは二つの問いである。混ぜてはいけない。<strong>問いA</strong>は「大きなモデルの中で、今回の token にどの部分を計算させるか」、<strong>問いB</strong>は「計算後に出た候補から次の token をどの程度ランダムに選ぶか」である。§3 では一つの Transformer を効率よく読む方法を見た。ここでは、複数の専門部品から一部を選ぶ<strong>MoE</strong>と、候補の選ばれ方の散らばりを決める<strong>temperature</strong>を、別々の問題として学ぶ。</p>
-<p><strong>Mixture of Experts（MoE、専門家の混合）</strong>は、Transformer の<strong>フィードフォワードネットワーク（Feed-Forward Network、FFN）</strong>を複数の<strong>expert（専門ネットワーク）</strong>へ分け、token ごとに一部だけ使う設計である。通常の<strong>Dense モデル</strong>では、入力 token はその層の FFN 全体を通る。MoE では<strong>gate（振り分け器）</strong>が「この token にはどの expert が役立ちそうか」を点数化し、上位だけへ送る。これは会社の全員に毎回同じ問い合わせを配る代わりに、受付が二人の担当者だけへ回す仕組みに似ている。モデル全体のパラメータ数を増やしながら、毎 token で実行する<strong>有効パラメータ（active parameters）</strong>を抑えるのが狙いである。単に「規模を使わない」と言うと、保存するパラメータを減らすのか、実行する部分を減らすのかが区別できない。MoE が正確に行うのは後者である。</p>
-<p>次の図では、token が全 expert へ同報されるのではなく、gate から選ばれた経路だけを通る点を見てほしい。expert の箱が多いことと、毎回すべてが動くことは別だと意識する。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/04-moe-routing.jpg" alt="複数のFFN expertとgateがtokenを疎にルーティングするMoEスライド" loading="lazy"><figcaption>MoEのrouting図。expertは別々のFFNであり、gateがtokenごとに一部を選ぶ。全expertを常時実行しない点が要点である。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=785s">13:05</a></figcaption></figure>
-<p>図から読み取る要点は、MoE がモデルの知識量そのものを魔法のように無料にする技術ではないことだ。gate の計算、expert 間の通信、特定 expert への仕事の偏りは残る。たとえば 8 人の expert を用意し <strong>Top-2</strong>、すなわち上位 2 人を選ぶ設定なら、各 token で主に動く expert は 8 人中 2 人である。残り 6 人の FFN はその token には実行しないが、別の token では選ばれうる。次に、同じモデルの出力候補をどう選ぶかという別問題を扱う。</p>
-<p>数式を読む目的は、MoE の振り分けと temperature の確率調整が同じ操作ではないと確認することだ。まず MoE の式では、入力 <code>x</code> を選ばれた expert の変換へ通し、gate の重みで混ぜる。次に temperature の式では、モデルがすでに出した<strong>logit（ロジット、確率に変える前の候補点）</strong> <code>z</code> を確率へ変える。具体例として候補の logit が <code>[4, 2, 1]</code> なら、低い T は 4 の候補を強く選びやすくし、高い T は 2 や 1 の候補にも機会を与える。前者は expert の数を一人も変えず、後者はパラメータの一つも増減させない。</p>
-<div class="formula"><div><strong>問いA：どの expert を実行するか（MoE）</strong></div><div>MoE: y = Σ<sub>e∈Top-k</sub> g<sub>e</sub>(x) f<sub>e</sub>(x)</div><small>y = MoE 層から出る最終の表現、x = 入力 token の表現、e = expert の番号、f<sub>e</sub>(x) = expert e の変換結果、g<sub>e</sub>(x) = gate が付ける重み、Σ = 選ばれた expert の結果を足し合わせる記号、Top-k = 実際に動かす上位 k 個。8 experts の Top-2 なら、和に入るのは選ばれた 2 expert だけである。</small><hr><div><strong>問いB：次の token をどのくらい散らして選ぶか（temperature）</strong></div><small>これは MoE の routing とは無関係で、同じ logit から作る確率分布を調整する操作である。</small><div>Temperature: p<sub>i</sub>(T)=exp(z<sub>i</sub>/T)/Σ<sub>j</sub>exp(z<sub>j</sub>/T)</div><small>i = 今見ている候補、j = 比べる全候補の番号、p<sub>i</sub>(T) = 候補 i を選ぶ確率、z<sub>i</sub> = その候補の logit、T = temperature、exp = 点数を正の重みに変える関数、Σ = 全候補の重みの合計。T を下げると点数差が強調され、上げると分布が平らになる。</small></div>
-<p>k を 2 から 1 に下げれば、MoE はさらに少ない expert しか動かさず計算を節約するが、複数専門家を混ぜる余地は減る。tokenを確率分布から<strong>sampling</strong>する場合、T を低くすれば出力は安定しやすいが、同じ誤りを繰り返すことがある。T を高くすれば多様な候補を試せるが、もっともらしくない token も増える。最大logitのtokenを常に選ぶ<strong>greedy decoding</strong>では、正のTを変えても候補順位は変わらない。また数式上のT=0は未定義なので、実装では「samplingせず最大候補を選ぶ」特別指定として扱われることが多い。つまり k は<strong>モデル内部の計算経路</strong>、T は<strong>sampling時の探索の強さ</strong>を決める別のつまみである。次節では、モデルを大きくするだけでなく、どれだけデータと計算を与えるかも一緒に決める必要を見る。</p>
-<div class="source-note"><p><strong>補足（本レポートの説明）。</strong> MoE の「総パラメータ数」と「有効パラメータ数」を同じ数字として比べると誤解しやすい。前者は保存される expert 全体の大きさ、後者は一 token の計算で選ばれる部分である。通信量やバッチの偏りも実際の速度に影響するため、Top-k だけで提供コストは決まらない。</p></div>
-</section>
-
-<section id="s5">
-<h2>5. モデルの大きさ・学習データ・計算量をどう釣り合わせるか</h2>
-<p>MoE で大きさと実行量を分けた次に尋ねるのは、「§4 のように大きなモデルを用意したとき、パラメータ数だけを増やせば性能は伸びるのか」である。答えは否で、十分な練習問題と練習時間がなければ大きな器を使い切れない。そこで、モデルの大きさ、読ませるデータ量、学習に使える計算量を同時に考える<strong>スケーリング則（scaling law）</strong>を使う。</p>
-<p><strong>パラメータ（parameter）</strong>は、学習によって調整されるモデル内部の数値のつまみである。<strong>学習 token 数</strong>は、訓練中に読ませた文字列単位の合計で、同じ文を何度読むかも含む。<strong>計算量（compute）</strong>は、それらの token を通し重みを更新するための演算予算である。スケーリング則は、これらを変えた実験で<strong>テスト損失（test loss、未知データへの予測の外れ具合）</strong>がどう変わるかを観測した経験的な関係であって、自然法則ではない。大きいモデルに少ないデータしか与えない<strong>学習不足（undertraining）</strong>を避ける問題を解くが、データ品質や構造が変われば比率も変わる。</p>
-<p>次の図では、縦軸の test loss が低いほどよいこと、横方向に一つの量だけを増やす曲線ではなく、限られた計算予算で data と parameter をどう配るかを見てほしい。「右へ行くほど常に勝つ」と読まないことが重要である。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/05-scaling-laws.jpg" alt="test lossとcompute、data、parameter数の関係およびcompute-optimal trainingを示すスライド" loading="lazy"><figcaption>scaling lawとcompute-optimal trainingのスライド。縦軸のtest lossは低いほどよく、単独の規模拡大ではなく資源配分を見る図である。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=1050s">17:30</a></figcaption></figure>
-<p>図から読み取る要点は、固定予算なら巨大モデルへ偏らせるより、モデルとデータを釣り合わせた点がよくなりうることだ。これを<strong>計算最適（compute-optimal）</strong>な学習と呼ぶ。次の簡潔な式は、講義で紹介された目安を数字の大きさまで読み下すために置く。</p>
-<p>式の <code>N</code> はパラメータ数、<code>D</code> は学習 token 数で、<code>20</code> は「一パラメータ当たり約 20 token」という係数である。例えば <code>N = 100B</code> の B は billion（10 億）なので、<strong>100B は 1,000 億パラメータ</strong>を表す。式に入れると <code>D ≈ 2,000B</code>、すなわち<strong>2T、2 兆 token</strong>になる。これは足し算の公式ではなく、ある時点の研究結果から得た「まず疑うためのものさし」である。式を見るときは、20 倍がいつでも正解だと思わず、何を固定した実験かを意識してほしい。</p>
-<div class="formula">D ≈ 20N<small>D = 学習 token 数、N = パラメータ数。講義が紹介した歴史的な rule of thumb（経験的な目安）では、100B（1,000億）parameter なら約 2T（2兆）token を読む。係数 20 は、特定のモデル構造・データ品質・tokenizer・計算予算で観測された比率であり、普遍的な法則ではない。</small></div>
-<p>N を大きくして D を増やさなければ、モデルは表現力を十分に学べず学習不足になりうる。逆に D を増やしても N や計算予算が小さければ、すべてのパターンを取り込めない。さらに「20」はデータの重複、品質、目標タスク、訓練手順で動く。規模を正しく配分しても、実行時にデータをメモリへ運ぶ時間が支配的なら遅いままである。次節ではその物理的な詰まりを減らす FlashAttention を見る。</p>
-</section>
-
-<section id="s6">
-<h2>6. FlashAttentionは、なぜ計算をやり直しても速くなるのか</h2>
-<p>§5ではmodel・data・計算予算の配分を見た。次の問いは、「同じattention式を計算するのに、なぜ実装方法だけで速度とmemory使用量が変わるのか」である。FlashAttentionの中心は計算式の変更ではなく、GPU内でdataを<strong>どこに置き、何回運ぶか</strong>の変更にある。この節では、まず通常attentionが何を保存するか、次にFlashAttentionがそれをどうblock処理するか、最後に再計算がなぜ合理的かを順に説明する。</p>
-
-<h3>1. GPUには「大きな書庫」と「小さな作業机」がある</h3>
-<p><strong>HBM（High Bandwidth Memory）</strong>は、modelの重みや大きな中間dataを置ける大容量memoryである。<strong>SRAM（Static Random-Access Memory）</strong>は、GPUの演算器のすぐ近くにある非常に高速だが小容量のmemoryである。たとえるなら、HBMは大量の本を保管できる部屋の書庫、SRAMは今使う数冊だけを置ける机の引き出しだ。書庫と机の間を何度も往復すると、計算器が速くても待ち時間が増える。</p>
-<p>次の表は、原論文が例に使ったA100 GPUのmemory hierarchyを、役割と制約で読み直したものだ。数値は2022年論文中のhardware例であり、すべてのGPUに共通する仕様ではない。</p>
-<div class="table-wrap"><table><thead><tr><th>Memory</th><th>原論文のA100例</th><th>得意なこと</th><th>制約</th></tr></thead><tbody><tr><td><strong>HBM</strong></td><td>40〜80GB、約1.5〜2.0TB/s</td><td>model・入力・大きな中間値を保存する</td><td>容量は大きいが、SRAMより転送が遅い</td></tr><tr><td><strong>SRAM</strong></td><td>各streaming multiprocessor当たり192KB、推定約19TB/s</td><td>今計算する小さなblockを高速に処理する</td><td>非常に小さく、attention全体は置けない</td></tr></tbody></table></div>
-<p>表の要点は、HBMも名前どおり高速だが、chip内のSRAMはさらに桁違いに速い一方で極端に小さいことだ。FlashAttentionは「すべてをSRAMへ置く」のではなく、SRAMに収まる分だけ順番に運ぶ。</p>
-
-<p>従来の動画フレームでは文字が小さかったため、次の画像は<strong>Stanford公式スライドPDFの21ページを高解像度で書き出したもの</strong>へ差し替えた。左下のHBMから右上のSRAMへ向かう矢印と、「Big and slow」「Small and fast」の対比を見てほしい。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/06-flash-attention-memory.jpg" alt="Stanford公式スライドPDF 21ページ。大容量だが相対的に遅いHBMと、小容量だが高速なSRAMを対比したGPU memory hierarchy" loading="lazy"><figcaption>Stanford公式スライドPDF p.21の高解像度画像。大容量のHBMと、小容量だが高速なSRAMの間のdata移動がFlashAttentionの焦点である。<a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture9.pdf#page=21" target="_blank" rel="noopener">公式PDF p.21</a><a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=1210s">動画 20:10</a></figcaption></figure>
-
-<h3>2. 通常attentionは、大きな中間行列を何度もHBMへ出し入れする</h3>
-<p>§2のattentionを実装上の三段階に分けると、① <code>S = QKᵀ / √d</code> でtoken同士の関連scoreを作る、② <code>P = softmax(S)</code> で各行を合計1の重みにする、③ <code>O = PV</code> でValueを重み付き合計する、となる。token数をNとすると、SとPはどちらもN×Nの行列になる。</p>
-<p>たとえばN=4,096なら、Sだけで約1,678万個の値を持つ。各値を16bit（2byte）で置く単純計算では、1 attention head当たり約32MBである。実際のmodelには複数head・複数layerがあり、学習時にはgradient計算用の中間値も必要になる。通常実装でSやPをHBMへ書き、次の処理で再び読むと、演算そのものよりdata移動が支配的になり得る。</p>
-<div class="callout"><p><strong>「Memory-bound」とは。</strong>処理時間が掛け算の回数ではなく、memoryからdataが届くのを待つ時間でほぼ決まる状態を<strong>memory-bound</strong>という。反対に、演算器が計算し続けているため計算回数が速度を決める状態を<strong>compute-bound</strong>という。FlashAttentionが狙うのは前者である。</p></div>
-
-<h3>3. FlashAttentionはQ・K・Vを小さなblockに分ける</h3>
-<p>FlashAttentionは、Q・K・V全体を一度にSRAMへ置こうとしない。SRAMに収まる小さな<strong>tile / block</strong>へ分け、HBMから必要なblockだけを運んで、その場でmatrix multiplication・softmax・Valueの集約を進める。原論文が<strong>I/O-aware</strong>（memory間のread/write回数を設計に含める）と呼ぶ理由はここにある。</p>
-<div class="sequence" aria-label="FlashAttentionのblock処理">
-  <div class="step"><span class="step-no">1 · LOAD</span><p>Qの一部と、K/Vの一部をHBMから高速なSRAMへ読み込む。</p></div>
-  <div class="step"><span class="step-no">2 · SCORE</span><p>SRAM上でそのblockの<code>QKᵀ</code>を計算し、関連scoreを得る。</p></div>
-  <div class="step"><span class="step-no">3 · NORMALIZE</span><p>running maxと合計値を更新するonline softmaxで、全列を一度に保存せず正規化する。</p></div>
-  <div class="step"><span class="step-no">4 · ACCUMULATE</span><p>Vの重み付き和を部分的に更新し、完成した出力だけをHBMへ書き戻す。</p></div>
+<header class="page">
+  <div class="eyebrow">Stanford CME295 · Lecture 9 · Recap &amp; Current Trends</div>
+  <h1>LLMの仕組みを、計算から理解する</h1>
+  <p class="lead">文章から次のtokenを作るところを出発点に、学習、効率化、外部ツール、画像、拡散生成へ進みます。専門用語と数式は、小さな例を計算しながら導入します。</p>
+</header>
+<dl class="meta-card">
+  <div><dt>出典</dt><dd><a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss">Stanford Online・Lecture 9</a></dd></div>
+  <div><dt>登壇者</dt><dd>Afshine Amidi / Shervine Amidi</dd></div>
+  <div><dt>講義日 / 動画公開日</dt><dd>2025年12月5日 / 12月9日</dd></div>
+  <div><dt>動画の長さ</dt><dd>1時間51分31秒</dd></div>
+  <div><dt>講義資料</dt><dd><a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture9.pdf">公式スライド128ページ</a>・公式英語字幕</dd></div>
+  <div><dt>構成</dt><dd>7部・途中計算と説明図・講義画像24枚</dd></div>
+  <div><dt>改稿日</dt><dd>2026年9月6日</dd></div>
+</dl>
+<div class="source-note">
+  <p>講義の主要内容を、復習順ではなく理解に必要な順に並べ直した非公式ガイドです。講義は2025年12月時点の内容を扱います。数値例と日本語の模式図は理解のために作成したもので、モデルの実測結果ではありません。</p>
+  <p>数式は本文で説明します。実装差などの発展事項と講義画像は折りたたみに分けました。原論文・公式実装による補足には出典を付けています。</p>
 </div>
-<p>難所はsoftmaxである。softmaxは本来、同じQueryから全Keyへ付けたscoreをまとめて見て、最大値と合計を計算する必要がある。そこで<strong>online softmax</strong>は、各行について「これまで見た最大score」と「正規化用の合計」を保持する。新しいblockにもっと大きなscoreが現れたら、それまでの部分結果を新しい最大値に合わせて縮尺変更し、新blockの結果と合成する。これにより、全N×N行列を保存しなくても、最後には通常softmaxと同じ数学的結果を得られる。</p>
 
-<h3>4. 「Exact」は、attentionの意味を近似しないということ</h3>
-<p>FlashAttention原論文の題名にある<strong>exact attention</strong>は、近いtokenだけを見るsparse attentionや、scoreを近似する方式へ変えず、通常のscaled dot-product attentionと同じ式を計算するという意味である。速さの源は「計算を省略して答えを近似すること」ではなく、「同じ答えへ至る計算順とmemory配置を変えること」にある。</p>
-<p>学習の<strong>backward pass</strong>（出力誤差からparameter更新量を逆向きに計算する処理）では、通常ならSとPを保存して再利用したくなる。FlashAttentionは代わりに、forward passの出力Oとsoftmaxの正規化情報だけを保存し、backward時に必要なS/PのblockをSRAM上で再計算する。これは、小さな計算をやり直す代わりに、巨大な中間表をHBMへ保存して再読込する費用を避ける選択である。</p>
-<div class="callout"><p><strong>なぜ「演算を増やしても速い」のか。</strong>再計算でFLOPは増えるが、memory-boundな処理ではHBMとの往復削減の効果が上回る場合がある。つまり「計算回数が少ない実装」と「実時間が短い実装」は必ずしも同じではない。ただし速度向上率はGPU、sequence length、head dimension、data型、実装versionによって変わるため、一つの倍率を普遍的な値として扱ってはいけない。</p></div>
+<section class="part" id="part-1">
+<span id="s1"></span>
+<h2>1. 文章から、次のtokenを作る</h2>
+<p>LLMは、入力された文章の続きとして出せるtokenに点数を付けます。点数を確率へ変え、一つ選んで文章の末尾に加える。この処理を繰り返すと、回答が伸びていきます。まず、その一回分の計算を追います。</p>
+<div class="mermaid" aria-label="一回のtoken生成">
+flowchart TD
+  A["文章をtokenに分け<br/>ベクトルへ変換"] --> B["Attention・FFNで<br/>表現を変える"]
+  B --> C["各候補の点数 logit"]
+  C --> D["softmaxで確率へ<br/>tokenを選ぶ"]
+  D --> E["選んだtokenを末尾に追加"]
+  E --> A
+</div>
 
-<div class="source-note"><p><strong>周辺情報（原論文・公式実装による補足）。</strong>ここまでのtiling、online softmax、backward時の再計算、N×N中間行列をHBMへ保存しないという説明は、<a href="https://arxiv.org/abs/2205.14135" target="_blank" rel="noopener">FlashAttention原論文</a>と<a href="https://github.com/Dao-AILab/flash-attention" target="_blank" rel="noopener">公式実装</a>を参照して補った。原論文はFlashAttentionを「IO-aware exact attention algorithm」と定義し、通常attentionよりHBM accessを減らし、memory使用量をsequence lengthに対して線形にできると説明する。これは講義字幕だけから推測した説明ではなく、原著者の資料に基づく補足である。</p></div>
+<h3 id="s2">文章をtokenとベクトルにする</h3>
+<p><strong>Token</strong>は、モデルが扱う文字列の単位です。単語全体の場合もあれば、単語の一部や記号の場合もあります。文章をこの単位へ分ける道具が<strong>tokenizer</strong>です。</p>
+<p><strong>Subword tokenizer</strong>は、単語より小さい文字列も部品として使います。たとえば <code>unhappiness</code> を <code>un</code>・<code>happi</code>・<code>ness</code> と分ける、と考えると仕組みをつかめます。これは模式例で、実際の区切りはtokenizerの語彙によって変わり、必ず語根や接辞に一致するわけではありません。</p>
+<p>Subword方式も、登録済みtokenの集合である<strong>固定語彙</strong>を使います。違うのは、完成した単語だけを登録するのでなく、部品を組み合わせて多くの単語を表せることです。日本語の「今日は晴れです」も、分割器によって区切り方とtoken数が変わります。</p>
+<p>Tokenはそのままでは計算できないので、数値の並びである<strong>ベクトル（vector）</strong>へ変換します。この学習済みの数値表現を<strong>embedding（埋め込み）</strong>と呼びます。たとえば <code>[0.2, −0.5, 1.1]</code> のような形です。各成分が一つずつ日本語の意味に対応するわけではありません。</p>
 
-<h3>5. Data parallelismとmodel parallelismは、FlashAttentionとは別の分割問題</h3>
-<p>講義は同じ復習区間で複数GPUの使い方も扱うが、これはFlashAttentionとは別の軸である。FlashAttentionは<strong>1 GPU内のmemory移動</strong>を主に減らす。並列化は<strong>仕事を複数GPUへどう割るか</strong>を決める。</p>
-<p><strong>Data parallelism</strong>は、同じmodelの複製を各GPUへ置き、異なる学習例を処理する。たとえばbatch 128件を8 GPUへ16件ずつ配り、各GPUが計算したgradientを最後に集約する。<strong>Model parallelism</strong>は、一つのGPUに収まらないmodelのlayerやmatrixを複数GPUへ分割し、一つの入力をdevice間で受け渡しながら処理する。前者は同じ教科書を8クラスで分担して解く方法、後者は一冊の巨大な教科書を8人で章分けして読む方法に近い。</p>
-<p>どちらもGPU間通信が増えるため、GPU数を倍にしても速度が単純に倍にはならない。FlashAttention、GQA、KV cache、MoE、並列化はすべて効率化に関係するが、減らす対象が異なる。FlashAttentionはHBM access、GQAは保存するKey/Value head、MoEは動かすFFN expert、並列化は1台が担当する仕事量を変える。次節では、計算を回せるようになったmodelへ、どの順番で何を学ばせるかを扱う。</p>
+<h3 id="attention-example">Attentionは、参照先の情報を重み付きで集める</h3>
+<p>「クマは本を読んだ。それは面白かった」の「それ」を処理するとき、直前の「本」が手掛かりになります。<strong>Self-attention</strong>は、同じ列の各tokenからどれだけ情報を受け取るかを計算する仕組みです。</p>
+<p>各tokenの表現から、照合する側の<strong>Query（Q）</strong>、照合される側の<strong>Key（K）</strong>、受け取る情報の<strong>Value（V）</strong>を作ります。いずれも学習した変換で得るベクトルです。「参照先を探す質問」「見出し」「本文」という比喩は使えますが、実際に日本語の質問札が内部にあるわけではありません。</p>
+<p>一つのQueryを <code>[1, 0]</code>、参照先のKeyを下表の3つとします。<strong>内積（dot product）</strong>は、対応する成分を掛けて足す計算です。Key 1なら <code>1×2 + 0×0 = 2</code> になります。</p>
+<div class="table-wrap">
+<table>
+  <caption>Query [1, 0] と3つのKeyを照合する仮想例</caption>
+  <thead><tr><th>参照先</th><th>Key</th><th>内積</th><th>√2で割ったscore</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>[2, 0]</td><td>2</td><td>約1.414</td></tr>
+    <tr><td>2</td><td>[1, 1]</td><td>1</td><td>約0.707</td></tr>
+    <tr><td>3</td><td>[0, 2]</td><td>0</td><td>0</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Keyの成分数を <code>d<sub>k</sub></code> とすると、通常は内積を <code>√d<sub>k</sub></code> で割ります。成分数が多いと内積の値も大きくなりやすいため、後の確率変換が極端になりにくいよう調整します。この例では2成分なので√2です。</p>
+<p>得たscoreは、まだ合計1の重みではありません。次のsoftmaxで変換してから、Valueを混ぜます。</p>
+
+<h3 id="decoding-prototype">Softmax：点数を正の重みに変え、合計で割る</h3>
+<p><strong>Softmax</strong>は、点数の並びを合計1の重みに変える計算です。まず各点数に指数関数 <code>exp</code> を適用し、その合計で割ります。<code>exp(z)</code> は <code>e<sup>z</sup></code> と同じで、eは約2.718という定数です。負の点数も正の重みに変わります。</p>
+<p>先ほどのscore <code>[1.414, 0.707, 0]</code> を変換すると、expの値は約 <code>[4.113, 2.028, 1]</code>。合計は約7.141です。</p>
+<div class="equation" aria-label="attention scoreをsoftmaxで重みにする">
+  <p>参照先1の重み = 4.113 / 7.141 ≈ 0.576</p>
+  <p>参照先2の重み = 2.028 / 7.141 ≈ 0.284</p>
+  <p>参照先3の重み = 1.000 / 7.141 ≈ 0.140</p>
+</div>
+<p>重みの合計は1です。Valueの一成分をそれぞれ10、20、30とすると、受け取る値は次のようになります。</p>
+<div class="equation" aria-label="Valueの重み付き和">
+  <p>0.576×10 + 0.284×20 + 0.140×30 ≈ <strong>15.64</strong></p>
+</div>
+<p>実際のValueはベクトルなので、各成分について同じ計算をします。ここで得たものは文脈を取り込んだ表現であり、出力するtokenそのものではありません。</p>
+<p>この計算を全Queryについてまとめた式が、次のscaled dot-product attentionです。</p>
+<div class="equation" aria-label="scaled dot-product attention">
+  Attention(Q, K, V) = softmax(QK<sup>T</sup> / √d<sub>k</sub>) V
+</div>
+<dl class="symbols">
+  <dt>QK<sup>T</sup></dt><dd>全Queryと全Keyの内積を並べた表。Tは行と列を入れ替える転置です。</dd>
+  <dt>softmax</dt><dd>各Queryの行ごとに、scoreを合計1の重みに変えます。</dd>
+  <dt>最後のV</dt><dd>その重みでValueを合計し、各Queryの出力ベクトルを得ます。</dd>
+</dl>
+<p class="source">定義：<a href="#ref-transformer">Transformer原論文</a>、<a href="#ref-softmax">PyTorchのsoftmax仕様</a>。上の数値は丸めて表示しています。</p>
+
+<h3 id="temperature-example">Temperature：次のtokenの選ばれやすさを調整する</h3>
+<p>Attentionなどの層で表現を変換したあと、モデルは語彙中の各候補に<strong>logit</strong>という点数を付けます。ここでもsoftmaxを使いますが、今回は参照先の重みではなく、<strong>次に出力するtokenの確率</strong>を求めます。</p>
+<p>「今日は」の次を、説明用に「晴れ」「雨」「雪」の3候補だけとし、logitを <code>[2, 1, 0]</code> とします。expで変換すると <code>[7.389, 2.718, 1]</code>、合計11.107で割ると約 <code>[0.665, 0.245, 0.090]</code> です。</p>
+<p><strong>Temperature</strong>を使うときは、expの前にlogitを正の数Tで割ります。T=2なら <code>[2, 1, 0]</code> が <code>[1, 0.5, 0]</code> になり、点数差が小さくなります。</p>
+<div class="equation" aria-label="temperature付きsoftmax">
+  p<sub>i</sub>(T) = exp(z<sub>i</sub>/T) / Σ<sub>j</sub> exp(z<sub>j</sub>/T),　T &gt; 0
+</div>
+<p>z<sub>i</sub>は候補iのlogit、Σ<sub>j</sub>は全候補の合計、p<sub>i</sub>は選択確率です。新しく加わった操作は「zをTで割る」だけです。</p>
+<div class="table-wrap">
+<table>
+  <caption>同じlogit [2, 1, 0] に対する選択確率</caption>
+  <thead><tr><th>T</th><th>晴れ</th><th>雨</th><th>雪</th></tr></thead>
+  <tbody>
+    <tr><td>0.5</td><td>86.68%</td><td>11.73%</td><td>1.59%</td></tr>
+    <tr><td>1</td><td>66.52%</td><td>24.47%</td><td>9.00%</td></tr>
+    <tr><td>2</td><td>50.65%</td><td>30.72%</td><td>18.63%</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Tを下げると最高点に集中し、上げると低い候補も選ばれやすくなります。この確率に従って抽選する方法が<strong>sampling</strong>です。最大点を必ず選ぶ<strong>greedy decoding</strong>なら、正のTを変えても順位は変わらず、どの場合も「晴れ」を選びます。表は丸めにより合計が100%とわずかに異なる場合があります。<a href="#ref-generation">[生成方法の公式解説]</a></p>
+<details class="advanced"><summary>T=0について</summary><p>上の式にT=0は代入できません。APIによっては、T=0をgreedy decodingの特別指定として扱います。Tを下げることは正しさの保証ではなく、同じ誤った候補へ集中する場合もあります。</p></details>
+
+<h3 id="s16">選んだtokenを加えて、同じ処理を繰り返す</h3>
+<p>生成済みのtokenを条件に次のtokenを作る方式を<strong>自己回帰モデル（Autoregressive Model、ARM）</strong>と呼びます。「猫」「が」「寝る」の3 tokenを作る仮想例なら、文全体の確率は次の積です。</p>
+<div class="equation" aria-label="三つのtokenの生成確率">
+  p(猫 が 寝る) = p(猫) × p(が | 猫) × p(寝る | 猫 が)
+</div>
+<p>縦棒 <code>|</code> は「右側を条件として」という意味です。長さLの列へ一般化すると、積を表す記号Πを使って書けます。</p>
+<div class="equation">p(x<sub>1:L</sub>) = Π<sub>t=1</sub><sup>L</sup> p(x<sub>t</sub> | x<sub>&lt;t</sub>)</div>
+<p>推論時は前のtokenが決まるまで、次の入力が完成しません。一方、学習時には正解の文章全体があるため、未来tokenを見えなくする<strong>causal mask</strong>を使いつつ、多くの位置の予測を同時に計算できます。「モデル内部の演算」と「出力tokenを決める順序」の並列性は別です。</p>
+
+<h3 id="s3">語順と、モデル内部の部品</h3>
+<p>位置情報がなければ、attentionは同じtokenの並び替えを語順として区別できません。<strong>RoPE</strong>は、QueryとKeyの座標を位置に応じて回転させ、内積に相対距離が反映されるようにします。文字を回すのではなく、数値ベクトルの変換です。</p>
+<p><strong>Multi-head attention</strong>は、異なる学習済み変換で複数組のQ/K/Vを作る方法です。各headがどんな関係を捉えるかは学習によって決まり、「主語専用」などの役割があらかじめ固定されているわけではありません。</p>
+<p>Attentionがtoken間で情報を集めたあと、<strong>FFN（Feed-Forward Network）</strong>が各tokenの表現を変換します。Transformerの層には、入力を足し戻す残差接続と、数値の大きさを整える正規化もあります。これらを重ねた表現から、最後にlogitを作ります。</p>
+<div class="table-wrap">
+<table>
+  <caption>どの方向を読ませるかで、基本的な用途が変わる</caption>
+  <thead><tr><th>構成</th><th>参照する範囲</th><th>代表例と用途</th></tr></thead>
+  <tbody>
+    <tr><td>Encoder-only</td><td>入力の前後</td><td>BERT：分類や埋め込み</td></tr>
+    <tr><td>Decoder-only</td><td>生成済みの左側</td><td>GPT：文章の続きを生成</td></tr>
+    <tr><td>Encoder–decoder</td><td>入力全体と、生成済みの出力</td><td>T5：入力を別の文章へ変換</td></tr>
+  </tbody>
+</table>
+</div>
+<p>この表は能力の順位ではなく、入力を読む仕組みの違いです。以降の学習では「出した確率をどう改善するか」を、画像の部ではencoderを画像へ使う方法を扱います。</p>
+<details class="advanced"><summary>歴史的な位置づけ：word2vecとRNN</summary><p>Word2vecは近隣語の予測から単語ベクトルを学びますが、学習後の単語表では同じ語に固定のベクトルを割り当てます。たとえば英語の <code>bank</code> の「銀行」と「川岸」を、その都度別の表現にする仕組みではありません。</p><p>RNNは文章を順に読み、過去の情報をhidden stateへ渡します。長距離の情報を多くの段階を介して伝える必要があり、計算も順番に依存します。Self-attentionは、離れたtokenを直接参照できる点が異なります。RNNが必ず過去を忘れるという意味ではありません。</p></details>
+<details class="source-gallery"><summary>講義画像：開始・token・RoPE・自己回帰生成</summary>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/01-title.jpg" alt="Lecture 9の題名とAfshine Amidi、Shervine Amidiの氏名" loading="lazy"><figcaption>講義の開始画面。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=22s">00:22</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/02-tokenization-attention.jpg" alt="テディベアの文と単語表現を使ったLecture 1の復習" loading="lazy"><figcaption>Tokenと表現の復習。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=245s">04:05</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/03-rope-position-embeddings.jpg" alt="RoPEの回転行列を示す復習スライド" loading="lazy"><figcaption>位置によるQ/Kの回転。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=500s">08:20</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/14-autoregressive-limitation.jpg" alt="A teddy bear isを一tokenずつ生成する自己回帰モデルの図" loading="lazy"><figcaption>生成時には前のtokenを待つ。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=3995s">1:06:35</a></figcaption></figure>
+</details>
 </section>
 
-<section id="s7">
-<h2>7. 基礎知識、指示への応答、好ましい振る舞いをどう分けて学ぶか</h2>
-<p>計算の速さを見た次に、教材の役割として問うのは、「§6 の計算資源を使ってモデルを学習するとき、なぜ一種類の教材だけで済ませず段階を分けるのか」である。大量の文章を読むこと、質問に答える形を覚えること、人の好みに合う答えを選ぶことは、似て見えて異なる仕事だ。役割を分けると、次節の RLHF がどこに入るかも分かる。</p>
-<p><strong>事前学習（pretraining）</strong>は、大量の text や code を使い、次の token を当てる練習で言語・知識・形式の土台を作る段階である。<strong>教師あり微調整（Supervised Fine-Tuning、SFT）</strong>は、「質問」と「望ましい回答」の組を使って、指示に従う出力形式を教える段階である。<strong>選好調整（preference tuning）</strong>は、二つの回答のどちらを人が好むかという比較を使い、有用さ、安全さ、文体などを整える段階である。本をたくさん読んで語彙を得る、模範解答を見て問題への答え方を学ぶ、添削でよりよい伝え方を覚える、という三段階にたとえられる。</p>
-<p>次の図では、初期化されたモデルから三つの段階が直列に並び、それぞれで与える信号が違うことを見てほしい。「後ろの段階が前を捨てる」のではなく、前の能力の上へ別の目的を重ねる図である。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/07-training-pipeline.jpg" alt="initialized modelからpretraining、finetuning、preference tuningへ進む三段階パイプライン" loading="lazy"><figcaption>三段階のパイプライン。初期化modelが、言語・codeの基礎、タスク形式、人の選好の順に獲得するという役割分担を示す。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=1390s">23:10</a></figcaption></figure>
-<p>図から読み取る要点は、pretraining が会話用アシスタントを完成させるわけではなく、SFT だけが好ましくない選択肢を比較して下げるわけでもない、という役割分担だ。次に表で、各段階の教材と出力の変化を照合する。表の略称を丸暗記せず、「どんな採点信号があるか」を読む。</p>
-<p>次の表では、<strong>入力と出力の対（pair）</strong>が正解を直接示す SFT と、<strong>比較データ</strong>が相対的な好みを示す選好調整を区別してほしい。前者は正しい行動の見本、後者は複数の候補を比べた添削結果に近い。</p>
-<div class="table-wrap"><table><thead><tr><th>段階</th><th>主なdata</th><th>主に得るもの</th></tr></thead><tbody><tr><td>Pretraining</td><td>大量text/code</td><td>次token予測、言語・知識の型</td></tr><tr><td>SFT</td><td>高品質な入出力対</td><td>指示追従、応答形式</td></tr><tr><td>Preference tuning</td><td>比較・選好</td><td>有用性、安全性、tone</td></tr></tbody></table></div>
-<p>表から分かるように、三段階は「後ほど高級」という順位ではない。pretraining の土台が弱ければ SFT で覚えられる範囲は狭く、選好調整を強くかけすぎれば元の言語能力を損ねることがある。高品質な SFT データを作る費用も制約だ。そこで選好を数値の報酬へ変え、少しずつ振る舞いを調整する RLHF が登場する。次節でその翻訳を行う。</p>
+<section class="part" id="part-2">
+<h2>2. 出力の確率を、学習で変える</h2>
+<p>推論では、学習済みの数値を使って回答を作ります。学習では、回答の誤りを手掛かりに、その数値である<strong>パラメータ</strong>を更新します。まず「何を良い出力とするか」を点数にする必要があります。</p>
+
+<h3 id="learning-basics">予測の外れを損失として測る</h3>
+<p>正解tokenへの確率が0.1より0.8の方が、良い予測です。次token予測では、正解確率の自然対数を取り、符号を逆にした<strong>負の対数尤度</strong>を損失に使います。自然対数lnはexpの逆の関数です。</p>
+<div class="equation">
+  <p>損失 = −ln(正解tokenの確率)</p>
+  <p>確率0.1なら約2.303、確率0.8なら約0.223</p>
+</div>
+<p>学習はこの損失を小さくする方向へ進みます。<strong>勾配（gradient）</strong>は、各パラメータを少し動かすと損失がどちらへ、どれくらい変わるかを表します。出力を計算するforward passのあと、<strong>backward pass</strong>で勾配を求め、optimizerが更新量を決めます。</p>
+
+<h3 id="s7">同じモデルに、三種類の教材を与える</h3>
+<p>大量の文章から続きを予測できても、そのまま質問へ親切に答えるとは限りません。教材を変えることで、基礎能力、指示への応答、人の選好を段階的に学ばせます。</p>
+<div class="table-wrap">
+<table>
+  <caption>学習段階と、与える信号の違い</caption>
+  <thead><tr><th>段階</th><th>教材</th><th>主に教えること</th></tr></thead>
+  <tbody>
+    <tr><td>Pretraining<br>事前学習</td><td>大量の文章・コード</td><td>言語、知識、構造のパターン</td></tr>
+    <tr><td>SFT<br>教師あり微調整</td><td>指示と望ましい回答の組</td><td>質問への答え方、出力形式</td></tr>
+    <tr><td>Preference tuning<br>選好調整</td><td>どちらの回答がよいかという比較</td><td>有用性、安全性、語調など</td></tr>
+  </tbody>
+</table>
+</div>
+<p>SFTは良い回答の見本を与えます。選好調整は「別の回答よりこちらを好む」という相対情報を加えます。目的は重なり得ますが、教材が伝える情報は同じではありません。</p>
+
+<h3 id="s8">二つの回答の比較から、報酬モデルを学ぶ</h3>
+<p><strong>RLHF</strong>は、人のフィードバックを使う強化学習です。まず人が比較した回答対から、回答に点数を付ける<strong>reward model</strong>を学びます。その点数を報酬として、LLMが好ましい回答を出しやすいように更新します。</p>
+<p>回答AとBへの内部scoreをr<sub>A</sub>、r<sub>B</sub>とすると、<strong>Bradley–Terry model</strong>では次の確率を使います。</p>
+<div class="equation">P(Aが好まれる) = exp(r<sub>A</sub>) / {exp(r<sub>A</sub>) + exp(r<sub>B</sub>)}</div>
+<p>r<sub>A</sub>=2、r<sub>B</sub>=0なら、<code>7.389 / (7.389 + 1) ≈ 0.881</code>。Aが好まれる確率は約88.1%です。同点なら50%になります。人の比較結果を説明できるようscoreを学ぶので、学習後は一つの回答だけにもscoreを付けられます。</p>
+<p>このscoreは真偽を測った絶対値ではありません。採点器の癖だけを利用して得点を上げる<strong>reward hacking</strong>を避けるため、元のモデルとの確率分布の違いを<strong>KL divergence</strong>で抑える方法があります。<strong>PPO</strong>のclippingは、更新前後の選択確率の比が大きく変わりすぎないよう学習を制限する仕組みです。</p>
+<details class="advanced"><summary>強化学習の用語をLLMへ対応付ける</summary><p>Policyは次tokenの選び方、stateはpromptと生成済みtoken、actionは次tokenです。語彙全体は選べる行動の集合であるaction spaceに当たり、選んだtokenを列へ追加すると次のstateになります。完成した回答への報酬を、それ以前のtoken選択へどう結び付けるかが学習の課題です。講義スライドの「environment＝tokens」は簡略表記として読みます。</p></details>
+<p class="source">選好学習の背景：<a href="#ref-instructgpt">InstructGPT論文</a>。PPOの詳細は<a href="stanford-cme295-lecture5-llm-tuning-ja.html">Lecture 5</a>を参照。</p>
+
+<h3 id="s9">GRPOは、同じ問題への複数回答を比べる</h3>
+<p>数学の答えの一致やコードのテスト通過は、自動で採点できます。こうした<strong>検証可能な報酬</strong>を使えば、回答前の途中のtoken列である<strong>reasoning chain / Chain of Thought</strong>も含めて学習できます。最終答が正しいことは、途中の全手順が正しいことまで保証しません。</p>
+<p>PPOではvalue model（critic）が期待報酬を予測し、それと実際の報酬を比べます。<strong>GRPO</strong>は同じ問題から複数回答を作り、群の平均と比べることでcriticを省きます。基準よりどれだけ良いかを表す値が<strong>advantage</strong>です。</p>
+<p>4回答の報酬を <code>[1, 0, 0, 0]</code> とします。平均は0.25。平均からの差は <code>[0.75, −0.25, −0.25, −0.25]</code> です。</p>
+<div class="equation">
+  <p>分散 = (0.75² + 0.25² + 0.25² + 0.25²) / 4 = 0.1875</p>
+  <p>標準偏差 = √0.1875 ≈ 0.433</p>
+  <p>advantage ≈ <strong>[+1.73, −0.58, −0.58, −0.58]</strong></p>
+</div>
+<p>分散は平均からの差を二乗した平均、標準偏差はその平方根です。この例は4で割る定義を使っています。差を標準偏差で割ることで、報酬のばらつきを基準にした値になります。</p>
+<div class="equation">A<sub>i</sub> = {r<sub>i</sub> − mean(r)} / std(r)</div>
+<p>正のadvantageはその回答を出しやすく、負なら出しにくくする信号になります。全回答が同じ報酬ならstd=0で、この式は未定義です。実装では分母へ小さなεを足すなどの処理が必要になります。</p>
+<p>元のGRPOには、回答長で割るため長い誤答への罰が弱くなる<strong>length bias</strong>などの問題もあります。講義はDAPO、GRPO Done Right（Dr. GRPO）を改良例として紹介します。GRPOが常にPPOより優れるという意味ではありません。<a href="#ref-grpo">[原論文]</a> <a href="#ref-trl">[実装と改良点]</a></p>
+
+<h3 id="s22">学習量を増やす前に、教材の質を整える</h3>
+<p>学習に使う文書集合を<strong>corpus</strong>と呼びます。<strong>Data curation</strong>は、重複や誤情報を減らし、目的に合う資料を選ぶ作業です。量だけ増やすと、同じ表現や誤りを繰り返し学ぶ場合があります。</p>
+<p><strong>Mid-training</strong>は、広い事前学習と用途別の微調整の間に、高品質・専門的な教材を追加する段階です。モデルが作った<strong>synthetic data</strong>も利用できますが、低多様性の生成物を繰り返し学ぶと、元の分布の稀な特徴が失われる<strong>model collapse</strong>が懸念されます。</p>
+<p>これは合成データをすべて禁止すべきという意味ではありません。内容の検証、元データとの混合、多様性の確認が必要です。講義中の「検索結果の80%がLLM生成かもしれない」は問題意識を示す口頭例であり、確認済みの統計としては扱いません。</p>
+
+<h3 id="s5">大きなモデルには、相応のデータと計算が必要</h3>
+<p><strong>Scaling law</strong>は、モデル規模・学習データ量・計算量と損失の関係を観測した経験則です。固定の計算予算をモデルの大型化だけへ使うと、読むtokenが足りず<strong>undertraining</strong>になることがあります。</p>
+<p>講義はcompute-optimalな配分の目安として、パラメータ数Nに対する学習token数Dを次のように紹介します。</p>
+<div class="equation">D ≈ 20N</div>
+<p>N=100BのBは10億なので、1,000億パラメータです。20倍すると2兆token（2T）になります。これは<a href="#ref-chinchilla">Chinchilla研究</a>に基づく歴史的な目安で、モデル構造・データ品質・推論費用まで考えた全用途に共通の最適比率ではありません。</p>
+<details class="source-gallery"><summary>講義画像：学習の配分・三段階・RL・推論・データ</summary>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/05-scaling-laws.jpg" alt="計算量、データ量、パラメータ数と学習の関係を示す復習" loading="lazy"><figcaption>Scalingと資源配分。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=1050s">17:30</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/07-training-pipeline.jpg" alt="Pretraining、Finetuning、Preference tuningの三段階" loading="lazy"><figcaption>学習段階の役割。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=1390s">23:10</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/08-rl-llm-mapping.jpg" alt="LLMと強化学習の用語対応" loading="lazy"><figcaption>Token生成を行動として捉える。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=1490s">24:50</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/09-grpo-ppo.jpg" alt="GRPOとPPOの構成図。PPO側にはValue Modelがある" loading="lazy"><figcaption>比較基準の作り方と必要なモデルの違い。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=1930s">32:10</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/19-data-model-collapse.jpg" alt="高品質データの将来を問うスライドとmodel collapse研究への言及" loading="lazy"><figcaption>学習データの質と多様性。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=5580s">1:33:00</a></figcaption></figure>
+</details>
 </section>
 
-<section id="s8">
-<h2>8. 人の「こちらがよい」を、モデルの学習へどう戻すか</h2>
-<p>三段階の最後へ進む前に問うのは、「§7 の選好調整で、人が二つの回答を比べた判断を、次の token を選ぶモデルへどう伝えるのか」である。人は「この回答は 0.73 点」と絶対点を付けるより、「A より B がよい」と比較するほうが判断しやすい。その比較を報酬へ変える<strong>人間のフィードバックによる強化学習（Reinforcement Learning from Human Feedback、RLHF）</strong>を、まず言葉の対応から読む。</p>
-<p><strong>強化学習（reinforcement learning）</strong>は、行動の結果に付く点数を手掛かりに、よい行動を選びやすくする学習方法である。LLM では<strong>方策（policy）</strong>が「今までの文章から次の token をどの確率で選ぶか」という規則、<strong>状態（state）</strong>が prompt と生成済み token、<strong>行動（action）</strong>が次の token、<strong>報酬（reward）</strong>が完成した回答への評価になる。ロボットが一歩ずつ動く代わりに、LLM は一語ずつ文章を作り、完成後にまとめて評価を受ける。途中の token に最後の評価をどう割り振るかが難しさである。</p>
-<p>次の図では、LLM と強化学習の用語を一対一に対応させている点を見てほしい。特に「一回の回答」が多数の token 行動の連鎖であり、評価が最後に来ることに注目する。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/08-rl-llm-mapping.jpg" alt="LLM、人間の選好、これまでの入力、次token、token集合をRLのagent、reward、state、action、environmentに対応させる図" loading="lazy"><figcaption>RLとLLMの対応図。completion全体に得た選好を、途中のtoken選択を行うpolicyへ返す見方を与える。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=1490s">24:50</a></figcaption></figure>
-<p>図から読み取る要点は、LLM を人間のような意思主体だと主張することではなく、確率的な次 token 選択を学習問題として扱う見方だ。人の比較をたくさん集めたら、<strong>報酬モデル（reward model）</strong>、すなわち回答へ一つの評価点を付ける別モデルを学習できる。<strong>Bradley–Terry model</strong>は、その二つの評価点の差が大きいほど高い方を選ぶ確率も高くなる、と表す比較のモデルである。</p>
-<p>次の式は「絶対的に正しい点」を出すためではなく、同じ prompt への二回答のどちらが好まれやすいかを確率で表すために必要になる。<code>y_i</code> と <code>y_j</code> は二つの回答、<code>r_i</code> と <code>r_j</code> は報酬モデルの点である。例えば <code>r_i = 2</code>、<code>r_j = 0</code> なら、i の重みは j よりかなり大きくなり、i が選ばれる確率は直感的にはおよそ 9 割に近づく。差が 0 なら五分五分、差を広げるほど高い側へ寄る、と読む。</p>
-<div class="formula">P(y<sub>i</sub> ≻ y<sub>j</sub>) = exp(r<sub>i</sub>) / (exp(r<sub>i</sub>)+exp(r<sub>j</sub>))<small>y<sub>i</sub>, y<sub>j</sub> = 同一 prompt への二応答、≻ = 前者を好む、r = 報酬モデルが出す scalar（単一の数値）score、exp = 数値を正の重みに変える関数。分子は i の重み、分母は二回答の重みの合計なので、結果は 0〜1 の確率になる。</small></div>
-<p><code>r_i</code> を上げる、または <code>r_j</code> を下げると、i を好む確率は上がる。だが報酬モデルの点を無制限に追わせると、内容をよくする代わりに採点器の癖だけを突く<strong>報酬ハッキング（reward hacking）</strong>が起こりうる。そこで<strong>KL ダイバージェンス（KL divergence）</strong>という、二つの確率分布のずれを測る量で、SFT 後の参照モデルから急に離れすぎないよう罰点を付ける。<strong>PPO（Proximal Policy Optimization）</strong>はさらに一度の更新幅を切り詰める<strong>clipping</strong>を使う代表的な方法である。次節では、人の好みではなく、数学や code の正誤を自動で確かめられる場合へ進む。</p>
-<div class="source-note"><p><strong>補足（本レポートの説明）。</strong> Bradley–Terry の score は「真の品質を物差しで測った値」ではない。比較データに現れた傾向を並び順へ写すための内部尺度であり、評価者、prompt、候補集合が変われば校正も変わりうる。</p></div>
+<section class="part" id="part-3">
+<h2>3. 計算・メモリ・転送を減らす</h2>
+<p>モデルを動かす費用は、掛け算の回数だけでは決まりません。過去の計算をやり直す費用、保存する量、メモリやGPUの間でデータを運ぶ時間もあります。技術名ではなく、何を減らすかで分けます。</p>
+
+<h3 id="cache-gqa">KV cacheとGQA：過去の計算を残し、共有する</h3>
+<p><strong>KV cache</strong>は、生成済みtokenのKeyとValueを保存する仕組みです。新しいtokenを作るたびに過去のK/Vを作り直さずに済みます。ただし、新しいQueryが過去のK/Vを参照する計算や読み出しは残ります。</p>
+<p><strong>MHA</strong>では各attention headが別のK/Vを持ちます。<strong>MQA</strong>は全Query headで一組のK/V headを共有し、<strong>GQA</strong>はQuery headをグループに分けてK/Vを共有します。たとえば8個のQuery headが2組のK/Vを共有するなら、保存するK/V head数は8から2へ減ります。</p>
+<p>GQAはモデルの設計変更なので、同じ答えを保つだけの実装最適化とは違います。共有量と性能の関係は学習条件にも依存します。</p>
+
+<h3 id="s4">MoE：選んだexpertの出力だけを混ぜる</h3>
+<p><strong>MoE（Mixture of Experts）</strong>はFFNを複数の<strong>expert</strong>へ分け、入力tokenごとに一部を実行する設計です。<strong>Gate</strong>がexpertへ点数を付け、上位k個（Top-k）を選んで、その出力を混ぜる重みを決めます。</p>
+<p>8 expertから2つを選んだとします。出力を <code>[2, 0]</code> と <code>[0, 4]</code>、重みを0.75と0.25とする仮想例では、次の計算になります。</p>
+<div class="equation">
+  <p>0.75 × [2, 0] = [1.5, 0]</p>
+  <p>0.25 × [0, 4] = [0, 1]</p>
+  <p>[1.5, 0] + [0, 1] = <strong>[1.5, 1]</strong></p>
+</div>
+<p>この重み付き合計を一般化すると、<code>f<sub>e</sub>(x)</code>をexpertの出力、<code>g<sub>e</sub>(x)</code>をgateの重みとして書けます。</p>
+<div class="equation">y = Σ<sub>e∈Top-k</sub> g<sub>e</sub>(x) f<sub>e</sub>(x)</div>
+<p>yは次の層へ渡すベクトルです。<a href="#temperature-example">Temperature</a>が変えるtokenの選択確率とは別の値です。</p>
+<p>MoEは実行する<strong>active parameters</strong>を絞りますが、全expertの重みを保存する容量は必要です。Gateの処理、expert間通信、負荷の偏りもあるため、8個中2個を使っても4倍速になるとは限りません。kの変更も学習済みモデルに自由に適用できるとは限りません。</p>
+
+<h3 id="s6">FlashAttention：大きな中間表を保存しない</h3>
+<p>通常のattention式は、関連scoreをS、softmax後の重みをP、出力をOとして、<code>S=QKᵀ/√d</code>、<code>P=softmax(S)</code>、<code>O=PV</code>と分けられます。N tokenをまとめて処理すると、SとPはN×Nの表です。</p>
+<p><strong>HBM</strong>は大きなデータを置くGPUメモリ、<strong>SRAM</strong>は演算器の近くにある小容量で高速なメモリです。素直な実装はSをHBMへ保存して読み直し、Pも保存して読み直します。FlashAttentionは、SRAMに収まる小さな<strong>block / tile</strong>ずつ計算し、この全体表の保存を避けます。</p>
+<div class="comparison" aria-label="attention実装のデータ移動の模式図">
+  <figure class="flow">
+    <h4>素直な実装</h4>
+    <ol>
+      <li>Q・Kからscoreを計算</li>
+      <li class="transfer">N×NのSをHBMへ保存・読出し</li>
+      <li>softmaxで重みへ変換</li>
+      <li class="transfer">N×NのPをHBMへ保存・読出し</li>
+      <li>Vを混ぜて出力</li>
+    </ol>
+    <figcaption>橙色の枠が、大きな中間表の転送です。</figcaption>
+  </figure>
+  <figure class="flow">
+    <h4>FlashAttention</h4>
+    <ol>
+      <li>Q・K・Vの一部をSRAMへ</li>
+      <li class="working">その範囲を計算し<br>合計と出力用の値を更新</li>
+      <li class="working">次の範囲で繰り返す<br>全体表は作らない</li>
+      <li>全範囲を反映した出力</li>
+    </ol>
+    <figcaption>入力や出力の転送は残ります。省くのは中間表全体の保存です。</figcaption>
+  </figure>
+</div>
+<p>ここで疑問になるのは、<strong>softmaxは全体の合計で割るのに、小分けにして同じ答えが出るのか</strong>という点です。</p>
+
+<h4 id="flash-worked-example">小分けにしても、分母は全体でそろえる</h4>
+<p>一つのQueryについて、4参照先の <code>exp(score)</code> を <code>[2, 1, 3, 1]</code>、Valueの一成分を <code>[10, 20, 30, 40]</code> とします。Softmaxの分母は7なので、出力は次の値です。</p>
+<div class="equation">
+  <p>出力 = (2/7)×10 + (1/7)×20 + (3/7)×30 + (1/7)×40</p>
+  <p>　　 = (20 + 20 + 90 + 40) / 7 = <strong>170/7 ≈ 24.29</strong></p>
+</div>
+<p>前半と後半を別々に計算し、重みの合計Lと、出力用の合計Uだけを引き継いでみます。</p>
+<div class="table-wrap">
+<table>
+  <caption>二つのblockの合計を合わせる</caption>
+  <thead><tr><th>範囲</th><th>L：exp(score)の合計</th><th>U：exp(score)×Valueの合計</th></tr></thead>
+  <tbody>
+    <tr><td>前半2個</td><td>2 + 1 = 3</td><td>2×10 + 1×20 = 40</td></tr>
+    <tr><td>後半2個</td><td>3 + 1 = 4</td><td>3×30 + 1×40 = 130</td></tr>
+    <tr><td>全体</td><td>3 + 4 = 7</td><td>40 + 130 = 170</td></tr>
+  </tbody>
+</table>
+</div>
+<p>最後にU/Lを計算すれば、やはり170/7です。前半のscoreをすべて保存しておく必要はありません。一方、blockごとの出力 <code>40/3</code> と <code>130/4</code> を単純平均すると約22.92になり、間違います。重みの合計3と4を捨ててはいけないためです。</p>
+<p>この合算を数値的に安定させた方法が<strong>online softmax</strong>です。Onlineは「順次更新する」の意味で、ネット接続ではありません。実際には大きなexpによる桁あふれを避けるため、最大scoreも保持して合計の尺度を合わせます。<a href="#ref-flash">[原論文 §3.1]</a></p>
+<details class="advanced"><summary>最大値が変わるときの計算</summary>
+  <p>Softmaxは、全scoreから同じ最大値mを引いても変わりません。分子と分母が同じ <code>exp(−m)</code> 倍になるためです。そこで <code>L=Σ exp(s−m)</code>、<code>U=Σ exp(s−m)V</code>を保持します。</p>
+  <p>前半の最大値をm<sub>A</sub>、後半をm<sub>B</sub>、新しい最大値をm=max(m<sub>A</sub>,m<sub>B</sub>)とすると、以前の合計を同じ尺度へ直して足せます。</p>
+  <div class="equation">
+    <p>L = exp(m<sub>A</sub>−m)L<sub>A</sub> + exp(m<sub>B</sub>−m)L<sub>B</sub></p>
+    <p>U = exp(m<sub>A</sub>−m)U<sub>A</sub> + exp(m<sub>B</sub>−m)U<sub>B</sub></p>
+  </div>
+  <p>上の例ならm<sub>A</sub>=ln2、m<sub>B</sub>=ln3です。前半のL=1.5、U=20を2/3倍し、後半のL=4/3、U=130/3へ足すと、全体はL=7/3、U=170/3。U/Lは再び170/7になります。</p>
+</details>
+
+<h4>再計算が増えても、なぜ速くなるのか</h4>
+<p>学習のbackward passでは、forward時のscoreや重みが再び必要です。FlashAttentionはQ/K/V、出力、正規化情報などから、必要な中間blockを再計算します。大きなS/PをHBMへ保存して読み直す代わりに、小さな演算をやり直します。</p>
+<p><strong>増えた演算の時間より、減った転送の時間が大きければ、処理全体は速くなります。</strong>演算回数であるFLOPが少ないことと、実時間が短いことは同じではありません。転送待ちが速度を制限する状態をmemory-bound、演算が制限する状態をcompute-boundと呼びます。</p>
+<p><strong>Exact attention</strong>は、同じattention式を計算する意味です。全組み合わせの計算が不要になるわけではなく、計算順と保存方法を変えています。浮動小数点の丸めにより、通常実装とbit単位で一致する保証はありません。</p>
+<details class="advanced"><summary>大きさの目安とGPUの仕様</summary><p>N=4,096ならSは16,777,216要素です。1要素2byteなら1 headの一つの表だけで32MiBになります。原論文のA100例はHBM 40〜80GB、帯域1.5〜2.0TB/s、SRAMは各SM当たり192KB、帯域の推定はGPU全体で約19TB/sです。容量・帯域・集計単位を区別して読みます。速度向上率はGPU、入力長、headの次元、実装に依存します。</p></details>
+
+<h3 id="parallelism">複数GPUへ、何を分担するか</h3>
+<p><strong>Data parallelism</strong>は、各GPUに同じモデルを置き、異なる学習例を処理して勾配を集約します。128件を8 GPUへ分けるなら担当は16件ずつです。<strong>Model parallelism</strong>は、モデルの層や行列を分割し、一つの入力を複数GPUで計算します。</p>
+<p>どちらもGPU間通信が必要です。これは一台の中の転送を減らすFlashAttentionとは別の軸で、組み合わせて使えます。</p>
+<details class="source-gallery"><summary>講義画像：MoE・HBMとSRAM</summary>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/04-moe-routing.jpg" alt="Gateから選択されたFFNへ経路が通るMoEの講義図" loading="lazy"><figcaption>本文のTop-2数値例は説明用で、原図の選択数とは別です。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=785s">13:05</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/06-flash-attention-memory.jpg" alt="公式PDF 21ページ。下側にHBMとSRAMの配置図がある" loading="lazy"><figcaption>メモリ階層の原図。本文の処理比較図は原論文に基づく自作の模式図です。<a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture9.pdf#page=21">PDF p.21</a><a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=1210s">20:10</a></figcaption></figure>
+</details>
 </section>
 
-<section id="s9">
-<h2>9. 正解を確かめられる問題で、推論のしかたをどう育てるか</h2>
-<p>人の選好から自動判定へ移すときに問うのは、「§8 で人の好みを報酬にした方法を、正誤を自動で判定できる数学や code の問題へどう使うのか」である。最終回答の前に途中の考えを書く<strong>推論連鎖（reasoning chain / Chain of Thought）</strong>を出すと、モデルは一発で答えるより多くの計算を使える。しかし長い文章が正しいとは限らないため、検証と学習の基準が必要になる。</p>
-<p><strong>検証可能な報酬（verifiable reward）</strong>は、答えの一致やテストの通過のように、あらかじめ決めた規則で正誤を判定できる点数である。これは「説明が親切か」のような主観的な評価とは違う。<strong>PPO</strong>では<strong>critic（価値モデル、value model）</strong>が「ここまで書いたら最終報酬はどれくらいになりそうか」を予測し、その予測と実際の差を使う。<strong>GRPO（Group Relative Policy Optimization）</strong>では、同じ問題へ複数の回答を出し、その集団内の平均を比較基準にするため、別の critic を省ける。問題の難しさごとに絶対点を比べるのでなく、同じ問題の別解どうしを比べる工夫である。</p>
-<p>次の図では、推論連鎖を含む回答を採点して学ぶ流れと、PPO が value model を持つ一方で GRPO は回答群を使う違いを見てほしい。図の目的は「どちらが万能か」ではなく、比較基準をどこから得るかを見分けることだ。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/09-grpo-ppo.jpg" alt="reasoning chainを出すLLMと、GRPOおよびPPOの必要model構成を比較するスライド" loading="lazy"><figcaption>ReasoningとGRPO/PPOの図。PPOがvalue modelを持つのに対し、GRPOは同一問題の複数回答を群内比較してrelativeなadvantageを作る。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=1930s">32:10</a></figcaption></figure>
-<p>図から読み取る要点は、GRPO が数学そのものを理解する追加部品ではなく、良い回答を相対的に増やす更新方法だということだ。ここで<strong>baseline（比較基準）</strong>は通常どれくらいの報酬かという目安、<strong>advantage（優位度）</strong>は実際の報酬がその目安より上か下かを表す。次の式は、その上下を群の中で同じ尺度にするために使う。</p>
-<p>式は三段階で読む。① 同一 prompt から G 個の回答を作り、それぞれの報酬 <code>r_i</code> を得る。② <code>mean(r)</code>、つまり群平均を引いて、平均よりよいか悪いかの符号を出す。③ <code>std(r)</code>、報酬のばらつきで割り、群ごとの尺度をそろえる。例えば 4 回答の報酬が <code>[1, 0, 0, 0]</code> なら平均は 0.25 で、正解の 1 本は平均より上、三つの誤答は平均より下になる。標準偏差まで含めると正答はおよそ正の <code>+1.73</code>、各誤答は負の <code>-0.58</code> となり、正答側を増やし、誤答側を減らす方向の信号になる。</p>
-<div class="formula">A<sub>i</sub> = (r<sub>i</sub> − mean(r)) / std(r)<small>A<sub>i</sub> = i 番目の回答の advantage、r<sub>i</sub> = その回答の報酬、mean(r) = 同じ prompt から作った回答群の平均報酬、std(r) = 群内の報酬のばらつき。平均より高ければ A<sub>i</sub> は正、低ければ負になり、0 に近ければ更新の根拠が弱い。</small></div>
-<p>正答が増えて平均が上がれば、同じ報酬 1 でも advantage は小さくなり、「簡単な問題での当たり」を過大評価しにくい。一方、全回答の報酬が同じなら <code>std(r)=0</code> となり、表示した式はそのままでは0除算で未定義になる。実装では分母へ小さな値εを足す、または全advantageを0として更新信号を出さないなどの処理を行う。標準偏差が非常に小さい群でも値が不安定になりうる。回答の長さによって更新が偏る問題も報告され、講義は DAPO や GRPO Done Right を修正研究として紹介した。次節では、モデルの内部記憶ではなく最新資料を取りに行く RAG を扱う。</p>
+<section class="part" id="part-4">
+<h2>4. 外部を調べ、道具を使い、結果を確かめる</h2>
+<p>学習したモデルの重みは、今日のニュースや非公開資料に合わせて自動更新されるわけではありません。必要な情報を実行時に渡す経路と、外部操作を行う経路を追加します。</p>
+
+<h3 id="s10">RAGは、回答前に根拠を渡す</h3>
+<p><strong>RAG（Retrieval-Augmented Generation）</strong>は、外部資料を検索し、関連する本文をpromptへ追加して回答を生成する方法です。学習データの時点の限界である<strong>knowledge cutoff</strong>や、モデルが学習していない社内知識を補います。</p>
+<p>講義は二段階検索を紹介します。<strong>Bi-encoder</strong>で質問と文書を別々にベクトル化し、多数の候補から近いものを取ります。次に<strong>cross-encoder</strong>が質問と候補文書を一緒に読み、関連度を再採点する<strong>reranking</strong>を行います。上位k件（top-k）の本文を回答の根拠にします。</p>
+<p>最初の検索を高速に、少数候補の比較を丁寧にする設計です。RAG全般がベクトル検索を必須とするわけではなく、キーワード検索なども使えます。</p>
+<p>資料を小さな断片へ分けるchunking、古い版の除外、出典の保存も重要です。必要な資料が検索漏れしたり、LLMが本文を読み違えたりする可能性は残るため、出典を示すだけで正答を保証できるわけではありません。</p>
+
+<h3 id="s11">Tool callingは、外部プログラムへ操作を依頼する</h3>
+<p>予約の確定やデータベース更新は、資料を読むだけでは実行できません。<strong>Tool calling</strong>では、LLMがtool名と引数を出し、周囲のプログラムが実行して結果を返します。LLM自身に無制限の操作権限があるわけではありません。</p>
+<figure class="flow" aria-label="tool callingの実行境界の模式図">
+  <ol>
+    <li><strong>利用者 → LLM</strong><br>目的と利用可能なtoolの説明を渡す</li>
+    <li><strong>LLM → 実行プログラム</strong><br>使いたいtool名と引数を出す</li>
+    <li class="transfer"><strong>実行プログラム</strong><br>形式・権限・必要な承認を確認し、許可された操作だけ実行</li>
+    <li><strong>Tool → LLM</strong><br>実行プログラムを経由して、結果またはエラーを戻す</li>
+    <li><strong>LLM</strong><br>結果に応じて回答するか、次の操作を要求する</li>
+  </ol>
+  <figcaption>実行を許可する境界はLLMの外側にあります。次の操作も同じ確認を通します。</figcaption>
+</figure>
+<p><strong>Schema</strong>は引数名・型・必須項目などの規則です。Schemaに合うことと、正しい操作を選んだことは別です。権限や送信先、利用者の意図も実行側で確認します。</p>
+<p>結果を観測して次の操作を選ぶ反復を持つ仕組みが<strong>agent</strong>です。RAGは外部知識を読む機能、tool callingは検索や計算、更新を依頼する機能であり、一つのagent内で組み合わせられます。</p>
+
+<h3 id="s12">評価には、採点基準とその偏りを含める</h3>
+<p>「正しい」「簡潔」「根拠がある」を採点条件として書き分けたものが<strong>rubric</strong>です。LLMの回答は言い換えが多いため、一つの模範文との一致だけでは十分に評価できません。</p>
+<div class="table-wrap">
+<table>
+  <caption>評価の方法と、主な見落とし</caption>
+  <thead><tr><th>方法</th><th>何を比べるか</th><th>注意点</th></tr></thead>
+  <tbody>
+    <tr><td>BLEU / ROUGE / METEOR</td><td>参照文との語句の一致や対応</td><td>意味が正しい別表現を低く採点し得る</td></tr>
+    <tr><td>LLM-as-a-Judge</td><td>Prompt・回答・rubricを読んだ判定</td><td>判定役にも誤りや偏りがある</td></tr>
+    <tr><td>人手校正</td><td>一部の回答を人が採点し、Judgeとの不一致を確認</td><td>費用と評価者間のばらつきがある</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Judgeには、候補の提示順を好む<strong>position bias</strong>、長い回答を好む<strong>verbosity bias</strong>、自分と同系列の出力を好む<strong>self-enhancement bias</strong>があります。候補順の入替え、明確な基準、理由を先に出す判定、二値判定、人手との照合を組み合わせます。</p>
+<p>公開benchmarkは知識、推論、コード、安全性などの一面を測る試験です。最終選定には、自分の用途に近いデータでの評価と、費用・待ち時間も必要です。</p>
+
+<h3 id="s25">用途ごとに、確認する対象を変える</h3>
+<p>講義は、コード作成、自然言語からSQLなどを作る<strong>text-to-query</strong>、会話支援、創作の初稿、学習時の案出しを挙げます。どれも同じ方法で検証できるわけではありません。</p>
+<p>コードにはテストとreview、検索回答には出典と鮮度、創作には目的と権利の確認が要ります。主張を資料で裏付けられる度合いが<strong>groundedness</strong>です。外部へ変更を加えるなら、変更を取り消す<strong>rollback</strong>も設計します。</p>
+
+<h3 id="s26">作業をつなぐほど、一回の誤りの影響が広がる</h3>
+<p>各stepが独立に1%の確率で失敗する、と仮定します。1 stepの成功確率は0.99なので、10 step全部の成功は <code>0.99<sup>10</sup> ≈ 0.904</code>。少なくとも一回の失敗は、その反対です。</p>
+<div class="equation">
+  <p>P(少なくとも1回失敗) = 1 − (1 − p)<sup>n</sup></p>
+  <p>p=0.01、n=10なら、約<strong>9.6%</strong></p>
+</div>
+<p>実際の失敗には相関があります。最初の誤解が後続判断へ連鎖する場合も、確認stepが誤りを取り除く場合もあるため、この式は実際の事故率の予測ではありません。</p>
+<p>外部文書中の命令を正規の指示と取り違える攻撃が<strong>prompt injection</strong>、許可されない場所へ秘密情報を持ち出すことが<strong>data exfiltration</strong>です。外部データと指示の境界、最小権限、重要操作の承認、実行記録が必要になります。</p>
+<p>講義は自然言語によるagent作成の民主化や、ChatGPT Atlasなどのbrowser支援、将来のOSレベル支援を展望します。同時に、共感と根拠を備えた顧客対応を本当に完遂できるかを課題とします。利用中に知識を更新する<strong>continual learning</strong>、個別化とprivacy、判断の<strong>interpretability</strong>、事実と異なる内容をもっともらしく生成する<strong>hallucination</strong>も未解決です。</p>
+<details class="source-gallery"><summary>講義画像：RAG・Judge・応用・agentの将来</summary>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/10-rag.jpg" alt="RAGの復習図" loading="lazy"><figcaption>外部資料を回答へ使う。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=2440s">40:40</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/11-llm-judge.jpg" alt="モデルの応答をLLM-as-a-Judgeで採点する図" loading="lazy"><figcaption>回答と基準を判定役へ渡す。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=2735s">45:35</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/22-llm-daily-applications.jpg" alt="Coding、assistant、creativity、learningを列挙した講義スライド" loading="lazy"><figcaption>現在の主な応用。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=6040s">1:40:40</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/23-atlas-agent-future.jpg" alt="Agentの民主化、browserやOSのLLM支援、ChatGPT Atlasへの言及" loading="lazy"><figcaption>講義時点の将来像と製品例。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=6320s">1:45:20</a></figcaption></figure>
+</details>
 </section>
 
-<section id="s10">
-<h2>10. 最新資料や社内資料を、回答の前にどう読ませるか</h2>
-<p>推論を育てた後に現れる知識の問いは、「§9 のように推論を上達させても、学習後に変わったニュースや非公開の社内文書をどう参照するのか」である。モデルの重みには学習時点までの傾向しか入らない。そこで回答の直前に関連資料を探して渡す<strong>検索拡張生成（Retrieval-Augmented Generation、RAG）</strong>を使う。</p>
-<p><strong>知識の締切（knowledge cutoff）</strong>は、学習データが反映している時点の限界である。RAG の<strong>検索（retrieval）</strong>は、質問と資料を検索用のベクトルにし、近い候補を取り出す工程である。これは本棚全体を会話欄へ貼るのでなく、まず索引で候補の棚を絞る作業に似ている。次に<strong>再順位付け（reranking）</strong>で、質問と候補を詳しく比べ、本当に役立つ数件だけを prompt へ入れる。重みを再学習せず、外部知識を回答条件として渡す問題を解くが、検索が外れれば流暢な回答でも根拠は外れる。</p>
-<p>次の図では、質問から候補取得、再順位付け、上位文書を prompt に加えるまでが別工程になっている点を見てほしい。「検索結果を一件貼るだけ」とは違う流れである。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/10-rag.jpg" alt="queryからbi-encoder検索、reranking、関連文書をpromptへ加えるRAGの流れ" loading="lazy"><figcaption>RAGの復習図。retrievalは単に検索結果を貼ることではなく、候補取得、精密な再順位付け、contextへの追加から成る。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=2440s">40:40</a></figcaption></figure>
-<p>図から読み取る要点は、RAG の品質が最後の LLM だけで決まらないことだ。<strong>bi-encoder</strong>は質問と文書を別々にベクトル化し、大量候補から高速に近いものを拾う方法である。<strong>cross-encoder</strong>は質問と一文書を同時に読み、より細かく関連度を付ける方法で、再順位付けに使われる。この二段構えは速さと精度の両立を狙うが、cross-encoder を全資料へ使うと遅くなる。</p>
-<h3>RAG を一回の回答として追う</h3>
-<ol><li>資料を小さな断片へ分け、各断片の検索用ベクトルと出典を保存する。</li><li>質問を同じ空間のベクトルにし、近い断片を広めに取得する。</li><li>質問と候補を詳しく比べて順位を付け、少数の本文と出典を選ぶ。</li><li>選んだ本文を「根拠」として prompt に添え、LLM に根拠の範囲で答えさせる。</li></ol>
-<p>この手順でも、資料の分割が悪い、必要資料が検索漏れする、古い版と新しい版が混ざる、LLM が渡された本文を読み違える、といった失敗は残る。したがって回答には出典を示し、検索結果が十分かを確認する設計が必要になる。RAG は外部世界を<strong>読む</strong>経路である。次節では、予約や検索 API のような道具を<strong>使う</strong>経路へ進む。</p>
+<section class="part" id="part-5">
+<h2>5. 画像を、Transformerが読める列にする</h2>
+<h3 id="s13">画像にもtokenに相当する単位を作る</h3>
+<p>Transformerが計算するのは文字そのものではなくベクトルの列です。画像の各領域をベクトルへ変換すれば、同じattentionで領域同士の関係を扱えます。</p>
+<p><strong>CNN</strong>は近くの画素を同じフィルタで調べます。この局所性のように、学習前から設計に組み込む仮定を<strong>inductive bias</strong>と呼びます。<strong>ViT（Vision Transformer）</strong>は近所だけを特別扱いせず、画像の小領域同士をattentionで関連付けます。</p>
+<p>局所性の仮定が弱いと少ないデータでは学びにくい場合がありますが、大量のデータから柔軟な関係を学べます。講義は大規模学習したViTがCNNを上回った研究を紹介します。「弱い仮定なら常に優れる」という意味ではありません。</p>
+
+<h3 id="s14">224×224の画像から、196個のpatchを作る</h3>
+<p>画像を16×16画素の正方形で区切ると、縦横に14個ずつ、<strong>196個のpatch</strong>ができます。RGB画像なので、一つのpatchには <code>16×16×3 = 768</code> 個の数があります。</p>
+<figure class="vector-figure vit" aria-label="ViTのpatchから分類まで">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 505" role="img" aria-labelledby="vit-title">
+  <title id="vit-title">画像をpatchに分け、各patchをベクトルにし、CLSを加えて分類する</title>
+  <rect x="10" y="10" width="320" height="65" rx="8" fill="none" stroke="currentColor"/>
+  <text x="24" y="37" fill="currentColor" font-size="18">224 × 224 のRGB画像</text>
+  <text x="24" y="61" fill="currentColor" font-size="18">16 × 16に分割 → 196 patch</text>
+  <text x="160" y="104" fill="currentColor" font-size="24">↓</text>
+  <rect x="10" y="117" width="320" height="65" rx="8" fill="none" stroke="currentColor"/>
+  <text x="24" y="143" fill="currentColor" font-size="18">各patch：16 × 16 × 3 = 768値</text>
+  <text x="24" y="168" fill="currentColor" font-size="18">一列にし、行列EでD次元へ</text>
+  <text x="160" y="211" fill="currentColor" font-size="24">↓</text>
+  <rect x="10" y="224" width="320" height="65" rx="8" fill="none" stroke="var(--accent)"/>
+  <text x="24" y="250" fill="currentColor" font-size="18">CLS + patch 1 … patch 196</text>
+  <text x="24" y="275" fill="currentColor" font-size="18">197 tokenに位置情報を加える</text>
+  <text x="160" y="319" fill="currentColor" font-size="24">↓</text>
+  <rect x="10" y="332" width="320" height="55" rx="8" fill="none" stroke="currentColor"/>
+  <text x="38" y="365" fill="currentColor" font-size="18">Transformer encoder</text>
+  <text x="160" y="419" fill="currentColor" font-size="24">↓</text>
+  <rect x="10" y="432" width="320" height="60" rx="8" fill="none" stroke="currentColor"/>
+  <text x="24" y="457" fill="currentColor" font-size="18">最後のCLS表現をHeadへ</text>
+  <text x="24" y="481" fill="currentColor" font-size="18">画像の分類結果を得る</text>
+</svg>
+<figcaption>本レポートの模式図。段階ごとに、何個の値が次へ渡るかを示しています。</figcaption>
+</figure>
+<p>高さH、幅W、patchの一辺Pに対し、patch数Nは次の式です。HとWがPで割り切れるように、必要なら画像を切り抜く・余白を足すなどの前処理をします。</p>
+<div class="equation">N = (H/P) × (W/P) = HW/P²</div>
+<p>各patchの数値を一列にする操作が<strong>flatten</strong>です。その列に学習した行列Eを掛けて、モデルの幅Dに合わせます。入力が768成分なら、Eは768×Dの行列です。</p>
+<p>先頭に集約用の<strong>CLS token</strong>を一つ加え、各tokenに位置埋め込みE<sub>pos</sub>を足します。この段階だけを式にすると次のようになります。</p>
+<div class="equation">z<sub>0</sub> = [x<sub>CLS</sub>; x<sub>1</sub>E; …; x<sub>N</sub>E] + E<sub>pos</sub></div>
+<p>セミコロンはtokenを列として並べる記号です。z<sub>0</sub>はencoderへの入力で、ここでは197×Dの形になります。encoderをL層通した先頭tokenの表現を、分類部へ渡します。</p>
+<div class="equation">予測クラス ŷ = Head(z<sub>L</sub><sup>CLS</sup>)</div>
+<p>Patchの辺を16から8へ半分にすると、枚数は縦横2倍ずつ、合計4倍です。細かい情報を扱える一方でattentionの計算とメモリは重くなります。<a href="#ref-vit">[ViT原論文]</a></p>
+
+<h3 id="s15">VLMは、画像の特徴を文章生成へ渡す</h3>
+<p><strong>VLM（Vision-Language Model）</strong>は画像と文章を扱うモデルです。分類名を一つ返すViTと違い、「この画像には何がある？」という質問に文章で答えます。</p>
+<p>講義は二つの接続方法を示します。LLaVA型の<strong>連結方式</strong>は、画像ベクトルをprojectorで言語モデルの入力次元へ合わせ、text tokenと同じ列へ並べます。Llama 3論文の例の<strong>cross-attention方式</strong>は、text側のQueryが、別に保持した画像のKey/Valueを参照します。</p>
+<p>どちらも画像と言語を結びますが、融合する場所が違います。画像tokenが長い場合の費用や、細かな文字、個数、位置関係の読み違いは残ります。</p>
+<details class="source-gallery"><summary>講義画像：ViT・VLM</summary>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/12-vision-transformer.jpg" alt="ViTのpatch embedding、Transformer encoder、分類head。分類例はBird、Ball、Car" loading="lazy"><figcaption>元のViT図はBird・Ball・Carなどの分類例を示す。本文の数値例は説明用です。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=3205s">53:25</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/13-vlm.jpg" alt="How cute is this teddy bear?という質問にVery cute!と答えるVLMの例" loading="lazy"><figcaption>画像と質問に応じて言語を生成する。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=3585s">59:45</a></figcaption></figure>
+</details>
 </section>
 
-<section id="s11">
-<h2>11. 外部の道具を安全に使い、結果を受け取るしくみ</h2>
-<p>資料を読む RAG の次に問うのは、「§10 の RAG が資料を読むだけなのに対し、検索、計算、予約、データベース更新のような外部操作をどう扱うのか」である。文章を返すだけの LLM は現実の状態を変えない。そこで、LLM が必要な道具を選び、別のプログラムが実行して結果を戻す<strong>tool calling</strong>と、その反復を行う<strong>agent</strong>を分けて考える。</p>
-<p><strong>tool calling</strong>は、LLM が「この操作を、この引数で呼びたい」という構造化された要求を出す仕組みである。<strong>tool</strong>は検索 API、電卓、予定表、社内システムなど、決められた入力を受け取り結果を返す機能を指す。<strong>agent</strong>は、観測し、次の行動を選び、結果を見てまた行動するループを持つシステムである。LLM が直接ネットワークや口座を自由に操作するのではなく、実行を仲介する層が必要なのが肝心である。</p>
-<p>次の図では、LLM の「tool を使いたい」という出力と、仲介層の「検証してから実行する」仕事を分けて見てほしい。結果が LLM へ戻り、必要なら次の行動を選び直す矢印が agent の特徴である。</p>
-<div class="mermaid">flowchart LR
-Q[ユーザー質問]-->L[LLM]
-L-->T[tool選択・引数]
-T-->M[仲介層が検証・実行]
-M-->R[結果]
-R-->L
-L-->A[最終応答]</div><p class="hint">図をクリックすると拡大できます。</p>
-<p>図から読み取る要点は、tool の結果を読むことも次の判断の材料になるという点だ。仲介層は<strong>スキーマ（schema）</strong>、すなわち引数名、データ型、必須項目、許される値を定めた入力契約に照らして要求を検証する。例えば日付が必須の予約 tool へ文字だけを送らない、読み取り専用 tool に更新命令を渡さない、といった境界を作る。これは LLM の出力がもっともらしくても、そのまま正しい API 呼び出しだとは限らない問題を解く。</p>
-<ol><li>ユーザーの目的と、利用可能な tool の説明を LLM へ渡す。</li><li>LLM が必要なら tool 名と引数を構造化して選ぶ。</li><li>仲介層が schema、権限、許可された操作範囲を検査してから実行する。</li><li>実行結果や失敗理由を LLM に返し、最終回答または次の安全な操作を決める。</li></ol>
-<p>ただし schema は「形式が合う」ことしか保証しない。間違った tool を選ぶ、古い結果を信用する、複数 step の順番を誤る、不要に強い権限を使う、といった問題は残る。RAG と tool calling を組み合わせるほど便利になる一方、評価と監視の必要も増す。次節では、自由な文章や agent の出力を何で測るかを考える。</p>
+<section class="part" id="part-6">
+<h2>6. 左から順に書かない、拡散による生成</h2>
+<p><a href="#s16">自己回帰生成</a>は、直前までのtokenが決まるのを待ちます。別の順序で複数箇所を生成できれば、この待ち時間を減らせる可能性があります。講義は画像で使われたdiffusionの発想を、文章へ移す研究を紹介します。</p>
+
+<h3 id="s17">画像diffusionは、ノイズを加える過程の逆を学ぶ</h3>
+<p>画像を浮動小数点の画素値として表し、ランダムな揺らぎである<strong>Gaussian noise</strong>を段階的に加えます。元画像がわかっているので、学習では「何をどれだけ加えたか」を正解にできます。</p>
+<div class="comparison" aria-label="拡散モデルの学習と生成の違い">
+  <figure class="flow"><h4>学習：正しい画像がある</h4>
+    <ol><li>学習画像を用意</li><li>既知のノイズを加える</li><li>モデルがノイズ等を予測</li><li>正解との差から重みを更新</li></ol>
+    <figcaption>画像と加えたノイズを使って、予測の誤差を測れます。</figcaption>
+  </figure>
+  <figure class="flow"><h4>生成：完成画像はまだない</h4>
+    <ol><li>ランダムなノイズから開始</li><li>学習済みモデルで少し更新</li><li>更新を繰り返す</li><li>生成画像を得る</li></ol>
+    <figcaption>学習した変換を使います。正解画像との比較や重み更新は行いません。</figcaption>
+  </figure>
+</div>
+<p>ノイズを加える方向が<strong>forward process</strong>、それを減らす方向が<strong>reverse process</strong>です。生成時は新しいノイズから始めるので、特定の元画像を復元しているわけではありません。学習した画像の分布に沿った新しい画像を作ります。</p>
+<p>講義はミケランジェロを引き合いに、「大理石から彫刻を削り出す」とたとえます。これは反復的な生成の直観で、ノイズの中に完成画像が最初から隠れているという意味ではありません。</p>
+<details class="advanced"><summary>拡散過程の記号</summary><p><code>q(x<sub>t</sub>|x<sub>t−1</sub>)</code>はノイズを一段加える条件付き分布、<code>p<sub>θ</sub>(x<sub>t−1</sub>|x<sub>t</sub>)</code>はモデルが学ぶ逆向きの分布です。tは段階、θは学習パラメータを表します。厳密なDDPMの学習目的の導出は、この講義の範囲を超えるため原論文を参照します。</p></details>
+
+<h3 id="s18">Masked diffusionは、伏せたtokenを予測する</h3>
+<p>Text tokenは離散的な選択なので、画像の画素へ連続ノイズを足す操作はそのまま使えません。講義で扱う<strong>Masked Diffusion Model（MDM）</strong>では、tokenを隠す<strong>MASK</strong>を使います。</p>
+<p>学習では正しい文の一部をMASKに変え、元のtokenを当てます。生成ではpromptを条件として残し、回答領域のMASKを反復して予測・確定します。固定して与える条件を<strong>conditioning</strong>と呼びます。</p>
+<div class="table-wrap">
+<table>
+  <caption>3つの位置を復元する模式例。実際の分割や確定順はモデル依存</caption>
+  <thead><tr><th>段階</th><th>回答領域</th><th>何が決まったか</th></tr></thead>
+  <tbody>
+    <tr><td>開始</td><td>[MASK] [MASK] [MASK]</td><td>回答の内容はまだ決まっていない</td></tr>
+    <tr><td>更新1</td><td>今日は [MASK] よい</td><td>二つの位置を確定</td></tr>
+    <tr><td>更新2</td><td>今日は 天気が よい</td><td>残りを前後の文脈から補う</td></tr>
+  </tbody>
+</table>
+</div>
+<p>完成文は最初から与えられていません。各更新でモデルが候補を作ります。誤ったtokenを早く確定すると後の候補を狭めるため、確定位置の選び方や再MASKの扱いが重要です。すべての拡散型LLMが同じ手順を使うわけではありません。<a href="#ref-llada">[LLaDA原論文]</a></p>
+
+<h3 id="s19">速さは、反復回数と一回の計算量で決まる</h3>
+<p>出力長をN、拡散の更新回数をKとすると、自己回帰では概ねN回の逐次生成、拡散ではK回の更新が必要です。ただし拡散の一回は複数位置を処理するため、<strong>KがNより小さいだけで速いとは言えません</strong>。実時間と品質を一緒に比較します。</p>
+<div class="table-wrap">
+<table>
+  <caption>生成方法の違い</caption>
+  <thead><tr><th>観点</th><th>自己回帰</th><th>Masked diffusion</th></tr></thead>
+  <tbody>
+    <tr><td>確定する順序</td><td>基本は左から右</td><td>複数位置を反復的に確定</td></tr>
+    <tr><td>推論の特徴</td><td>過去のK/Vを再利用しやすい</td><td>一回に複数位置を処理できる可能性</td></tr>
+    <tr><td>残る課題</td><td>長い出力の逐次待ち</td><td>反復回数、確定誤り、最高水準の品質</td></tr>
+  </tbody>
+</table>
+</div>
+<p>前後のコードを残して中央だけ埋める<strong>fill-in-the-middle</strong>は、両側を参照する生成と相性がよい用途です。自己回帰モデルでも専用の学習や入力形式で対応できます。</p>
+<p>講義はLLaDA、Googleの実験、Inceptionなどを挙げ、長文生成で約10倍の速度向上という報告を紹介します。タスク、生成長、更新回数、GPU、品質条件に依存する結果で、常時の保証ではありません。Reasoningや逐次的なtool利用をどう組み合わせるかも研究課題です。</p>
+<details class="source-gallery"><summary>講義画像：画像diffusion・masked diffusion</summary>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/15-image-diffusion-intuition.jpg" alt="画像生成のnoiseと学習する変換、彫刻の比喩を紹介するスライド" loading="lazy"><figcaption>画像diffusionの直観。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=4270s">1:11:10</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/16-masked-diffusion.jpg" alt="Masked Diffusion Modelを紹介する講義スライド" loading="lazy"><figcaption>Textへ拡散の発想を移す。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=4570s">1:16:10</a></figcaption></figure>
+</details>
 </section>
 
-<section id="s12">
-<h2>12. 自由な回答を、どんな基準で公平に評価するか</h2>
-<p>道具を使えるようにした次に問うのは、「§11 の agent が出した回答や操作を、模範解答との文字一致だけに頼らず、何を基準に評価すればよいか」である。同じ意味のよい答えにも多くの言い方があるため、文章の表面だけを比べると見誤る。まず、何をよいとするかを先に言葉で決める<strong>rubric（採点基準表）</strong>を置く。</p>
-<p><strong>評価指標（metric）</strong>は、出力の望ましさを数や判定へ写す物差しである。<strong>BLEU、ROUGE、METEOR</strong>は参照文との語句の重なりを測る代表的な自動指標で、定型的な翻訳や要約の比較に役立つ。しかし意味が正しくても表現が違えば低くなりうる。<strong>LLM-as-a-Judge</strong>は、prompt、モデル回答、rubric を別の LLM に読ませ、理由と score を出させる評価方法である。幅広い文章を読める利点があるが、判定役も偏りや誤りを持つ。</p>
-<p>次の図では、Judge に回答だけでなく criteria、すなわち具体的な採点観点を渡し、score の前に理由を出させる構造を見てほしい。Judge が万能な真実判定器として描かれていないかを意識する。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/11-llm-judge.jpg" alt="prompt、model response、criteriaをLLM-as-a-Judgeへ入力しrationaleとscoreを出す図" loading="lazy"><figcaption>LLM-as-a-Judgeの入力と出力。rubricを明示し、scoreの前に理由を出す設計が描かれている。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=2735s">45:35</a></figcaption></figure>
-<p>図から読み取る要点は、rubric を明示すると「簡潔さ」「根拠」「安全性」のどれを見た score なのかを後から点検しやすいことだ。次の表では、各評価法が実際に何を観測しているかと、どんな誤りを見落とすかを比べる。数値の高低だけでなく、物差しの死角を読む。</p>
-<p>表を見る前に、<strong>人手校正（human calibration）</strong>は、少数の回答を人が採点し、Judge の点とどれだけ一致するかを確かめる作業だと押さえる。Judge を導入して人を完全に外す方法ではなく、速い自動評価を現実の判断へ近づけるための照合である。</p>
-<div class="table-wrap"><table><thead><tr><th>方法</th><th>見ているもの</th><th>主な限界</th></tr></thead><tbody><tr><td>BLEU / ROUGE / METEOR</td><td>模範解答との語句の重なり</td><td>意味が正しくても表現が違う回答を低く採点し得る</td></tr><tr><td>LLM-as-a-Judge</td><td>prompt、回答、rubricを読んだ総合判断</td><td>提示順・長さ・model系列による偏り</td></tr><tr><td>人手による校正</td><td>一部sampleを人が採点し、judgeとの不一致を確認</td><td>高costで、評価者間にもばらつきがある</td></tr></tbody></table></div>
-<p>表から読み取る要点は、一種類の metric だけでは品質を代表できないことだ。<strong>位置バイアス（position bias）</strong>は先または後に置かれた回答を選びやすい偏り、<strong>冗長さバイアス（verbosity bias）</strong>は長い回答を中身以上に高く見やすい偏り、<strong>自己優遇バイアス（self-enhancement bias）</strong>は Judge と同系列のモデルを有利にしやすい偏りである。候補の順番を入れ替える、短い rubric と長い rubric を比較する、二値判定と人手点検を組み合わせる、といった対策が必要になる。</p>
-<p>評価は「最も高い一個の score」を選ぶだけでなく、知識、推論、code、安全性、費用、待ち時間を分けて測る設計である。ここまでの Transformer は主に文章を扱った。次節からは、同じベクトル列の考え方を画像へ広げる前に、画像向けの前提となる inductive bias を説明する。</p>
-</section>
+<section class="part" id="part-7">
+<h2>7. モデルを選び、研究の変化を読む</h2>
+<h3 id="s20">異なる分野へ、どの部品を移せるか</h3>
+<p>文章、画像、音声といった情報の種類を<strong>modality</strong>と呼びます。Textから画像へattentionを移すViTと、画像からtextへ生成の発想を移すdiffusionは、分野間の<strong>cross-pollination</strong>の例です。</p>
+<p>講義は推薦・音声・Diffusion Transformerへの展開も挙げます。また、画像中の文字を認識する<strong>OCR</strong>について、DeepSeek-OCRを少数のvision tokenから多くのtext tokenを復元する例として紹介します。圧縮すれば計算量を減らせる可能性がありますが、細字や配置情報の欠落に注意が必要です。</p>
+<p>Text用RoPEの位置は一次元です。画像では縦・横を区別するため、二次元の位置表現へ拡張します。共通部品を使えても、情報の配置まで同じではありません。</p>
 
-<section id="s13">
-<h2>13. Transformer は文字以外の情報も扱えるのか</h2>
-<p>文章の評価から視覚へ広げる前に問うのは、「§12 まで文章の回答を評価してきた Transformer を、画像のように文字ではない情報へそのまま広げられるのか」である。§2 で見た通り、Transformer が直接読むのは文字そのものではなくベクトルの列である。画像も小さな領域を数列へ変えれば同じ計算へ渡せるが、画像には近くの画素が関係しやすいという性質がある。そこで、何を最初から仮定するかを考える。</p>
-<p><strong>モダリティ（modality）</strong>は、文章、画像、音声のような情報の種類である。<strong>帰納バイアス（inductive bias）</strong>は、データを見る前からモデル設計に埋め込む「この種類の関係を重視するとよい」という仮定を指す。例えば<strong>畳み込みニューラルネットワーク（Convolutional Neural Network、CNN）</strong>は、近くの画素を同じ小さなフィルタで繰り返し見るため、「近い場所には関連する模様がある」という強い局所性の仮定を持つ。写真の目や輪郭は隣り合う画素でできるので、少ない画像でも学びやすいことがある。</p>
-<p><strong>Vision Transformer（ViT）</strong>は、画像を patch の列にし、最初から近所だけを特別扱いせず attention で関係を学ぶ。これは、都市の近所だけをまず見る CNN と、最初から地図上のどの二地点も結べる Transformer の違いにたとえられる。ViT は遠く離れた領域の関係を扱いやすい一方、局所性という助けが弱いので、データが少ない条件では不利になりうる。次節では、この「画像を token 列にする」実装を一枚ずつ追う。</p>
-<div class="source-note"><p><strong>補足（本レポートの説明）。</strong> inductive bias が強いことは古い、弱いことは常に優れている、という意味ではない。データ量、画像の種類、計算予算に応じて、あらかじめ与える仮定とデータから学ばせる範囲の交換がある。講義の ViT 導入はその比較を考える入口である。</p></div>
-</section>
+<h3 id="s21">Transformerの内部設計にも、選択肢が残る</h3>
+<p>設計を構成する各部品は、何を変えるかが異なります。名称だけで優劣を決めず、改善したい対象と対応させます。</p>
+<div class="table-wrap">
+<table>
+  <caption>講義で挙がった設計項目</caption>
+  <thead><tr><th>項目</th><th>変えるもの</th><th>代表例</th></tr></thead>
+  <tbody>
+    <tr><td>Optimizer</td><td>勾配から更新量を決める方法</td><td>AdamW、Muon、MuonClip</td></tr>
+    <tr><td>Normalization</td><td>層内の値の尺度と、整える場所</td><td>LayerNorm / RMSNorm、post-norm / pre-norm</td></tr>
+    <tr><td>Activation</td><td>線形変換の間に加える非線形性</td><td>ReLU、GELU</td></tr>
+    <tr><td>Attention head</td><td>K/Vを共有する範囲</td><td>MHA、MQA、GQA</td></tr>
+    <tr><td>FFN</td><td>Tokenごとに動かす変換</td><td>Dense、MoE</td></tr>
+    <tr><td>深さ・幅</td><td>層数と各層の表現容量</td><td>層数、head数、FFN幅</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Kimi K2のMuonClipは、optimizerも研究対象であることを示す講義中の例です。各項目は独立ではなく、層を深くすれば正規化、MoEを増やせば通信と負荷分散も考える必要があります。</p>
 
-<section id="s14">
-<h2>14. 画像を小さな token の列にして分類する ViT</h2>
-<p>ViT の考えを具体化するために見るのは、「§13 の ViT は、縦横に並ぶ画像をどの順で Transformer が読める token 列へ変え、最後に一つの分類名を出すのか」である。画像の全画素を一気に一語として扱うと細部を失い、画素を一つずつ token にすると長すぎる。そこで小さな正方形の patch をちょうどよい単位にする。</p>
-<p><strong>ViT（Vision Transformer）</strong>は画像を<strong>patch（小さな正方形の切れ端）</strong>へ分け、各 patch を文章の token のように扱うモデルである。画像の高さを <strong>H</strong>、幅を <strong>W</strong>、色 channel 数を <strong>C</strong> とする。通常の RGB 画像なら C は赤・緑・青の 3 である。patch の一辺を <strong>P</strong>、patch の枚数を <strong>N</strong> とする。<strong>CLS token</strong>は、列全体の情報を集約して最後に分類へ渡すため、先頭へ足す特別な token である。これは各 patch の代表者が最後に一つの報告書へまとめる役に近い。</p>
-<p>次の図では、画像が patch の格子に切られ、位置情報と CLS token が加わってから encoder へ入る順を見てほしい。最終的な「teddy bear」という label は、一つの patch だけを見て決めるのでなく、CLS token が全 patch から集めた情報で決める。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/12-vision-transformer.jpg" alt="画像をpatchへ分割し、position embeddingとCLS tokenを加え、Transformer encoderと分類headでteddy bearを予測するViT図" loading="lazy"><figcaption>ViTの全体図。patch、位置、CLS、encoder、classificationという、画像からlabelまでの情報の流れを一枚で示す。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=3205s">53:25</a></figcaption></figure>
-<p>図から読み取る要点は、patch を並べただけでは左上か右下かを区別できないため、位置埋め込みも必要なことだ。次の式は、画像サイズから N を数え、patch を埋め込みへ変え、CLS 表現から予測を出す四段階をまとめたものになる。</p>
-<p>式を左から読む。① <code>x ∈ R<sup>H×W×C</sup></code> は画像が H×W 個の位置と C 色成分を持つこと。② <code>N = HW/P²</code> は、HとWがPで割り切れる場合に、画像を P×P patch へ切った枚数を表す。割り切れない画像は、端へ余白を足すpaddingや一部を切るcroppingで大きさを調整する。具体例として 224×224 の RGB 画像を 16×16 patch にすると、縦 14 枚、横 14 枚なので <strong>14×14 = 196 patch</strong> になる。③ 各 patch の画素を一列にして線形射影 <code>E</code> で token の次元へそろえ、CLS と位置埋め込みを足す。④ L 層の encoder を通った先頭の CLS 表現を分類 head へ渡し、予測 <code>ŷ</code> を得る。次の式では、記号を工程順に追ってほしい。</p>
-<div class="formula">x ∈ R<sup>H×W×C</sup>,　N = HW/P²,　z<sub>0</sub>=[x<sub>cls</sub>;x<sub>p</sub><sup>1</sup>E;…;x<sub>p</sub><sup>N</sup>E]+E<sub>pos</sub>,　ŷ=Head(z<sub>L</sub><sup>0</sup>)<small>R = 実数値の並びの集合、H = 高さ、W = 幅、C = 色 channel 数、P = patch の一辺、N = patch 数。x<sub>p</sub> = 一列にした patch、E = patch を token 次元へ写す学習済みの線形射影、x<sub>cls</sub> = 集約用 CLS token、E<sub>pos</sub> = 位置埋め込み、L = encoder の層数、z<sub>L</sub><sup>0</sup> = L 層後の先頭 token、Head = class を決める分類部、ŷ = 予測 class。セミコロンは token を列へ連結することを表す。</small></div>
-<p>H や W を大きくする、または P を小さくすると N は増える。たとえば patch を 16 から 8 に半分にすると、縦横の枚数は二倍ずつになり、token 数は四倍になるため、細部は見やすくなる一方で attention の計算とメモリは重くなる。P を大きくすると逆の交換が起きる。ViT は大量データから自由な関係を学べる可能性があるが、分類名を一つ返すだけでは画像について会話できない。次節では画像 token と text token を結び、文章で答える VLM へ進む。</p>
-</section>
+<h3 id="s23">Pareto frontierで、明確に劣る選択肢を除く</h3>
+<p>仮にモデルAが10円で品質80、Bが10円で85、Cが5円で82とします。AよりBの方が同じ料金で高品質なので、Aは候補から外れます。一方、BとCは品質と費用の交換があり、どちらにも選ぶ理由があります。</p>
+<figure class="vector-figure" aria-label="Pareto frontierの3モデルの例">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 300" role="img" aria-labelledby="pareto-title">
+  <title id="pareto-title">AはBと同額で低品質。CはBより安いが品質が低く、BとCはともに候補となる</title>
+  <path d="M55 25v220h290" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text x="7" y="25" fill="currentColor" font-size="18">品質</text>
+  <text x="287" y="292" fill="currentColor" font-size="18">費用 →</text>
+  <text x="15" y="210" fill="currentColor" font-size="18">80</text>
+  <text x="15" y="150" fill="currentColor" font-size="18">82</text>
+  <text x="15" y="60" fill="currentColor" font-size="18">85</text>
+  <text x="132" y="271" fill="currentColor" font-size="18">5円</text>
+  <text x="253" y="271" fill="currentColor" font-size="18">10円</text>
+  <path d="M150 144L275 54" stroke="var(--accent)" stroke-width="3" stroke-dasharray="7 5"/>
+  <circle cx="150" cy="144" r="7" fill="var(--accent)"/>
+  <circle cx="275" cy="54" r="7" fill="var(--accent)"/>
+  <circle cx="275" cy="204" r="7" fill="currentColor"/>
+  <text x="121" y="133" fill="currentColor" font-size="20">C</text>
+  <text x="290" y="59" fill="currentColor" font-size="20">B</text>
+  <text x="290" y="211" fill="currentColor" font-size="20">A</text>
+  <path d="M275 191v-112" stroke="currentColor" stroke-width="2"/>
+  <path d="M269 90l6-11 6 11" fill="none" stroke="currentColor" stroke-width="2"/>
+</svg>
+<figcaption>説明用の仮想例。点線は候補B・Cを示す補助線で、その間のモデルが存在するという意味ではありません。</figcaption>
+</figure>
+<p>別候補より同額以上で品質が同等以下、かつ少なくとも一方で劣る候補を<strong>dominated</strong>といいます。そうした点を除いた境界が<strong>Pareto frontier</strong>です。待ち時間（latency）や安全性を加えるなら、比較軸も増えます。</p>
+<p><strong>SLM（Small Language Model）</strong>は、限定された用途で十分な品質を低費用で得る選択肢です。最高性能のモデルでも提供費用が高すぎれば採算が合いません。公開scoreは候補の絞り込みに使い、実際の用途で選びます。</p>
 
-<section id="s15">
-<h2>15. 画像と文章を結び、質問に文章で答える VLM</h2>
-<p>分類から会話へ進めるときに問うのは、「§14 の ViT が画像を一つの class に分類できても、『この画像で何が起きているか』へ文章で答えるには何を足すのか」である。画像の特徴を text の生成器へ渡せば、分類ラベルで止まらず、質問に応じて説明できる。これが<strong>視覚言語モデル（Vision-Language Model、VLM）</strong>の基本の考え方である。</p>
-<p><strong>vision encoder</strong>は画像を patch ベクトルの列に変える部品で、ViT が代表例である。<strong>言語モデル（LLM）</strong>は text token の列から続きを生成する部品である。両者の数の幅や意味空間はそのままでは合わないため、<strong>projector（射影器）</strong>という変換層で画像表現を LLM が受け取れる形へそろえる。写真を理解する目と、言葉で話す口を翻訳係でつなぐような構造だ。画像と質問が必要な部分だけを結び付ける問題を解く一方、画像内の小さな文字、数え上げ、空間関係は依然として難しいことがある。</p>
-<p>次の図では、テディベア画像と質問が同時に入って、固定 class ではなく短い自然言語の回答が出ることを見てほしい。画像だけから答えるのでなく、質問が「何について答えるか」を絞る条件になっている。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/13-vlm.jpg" alt="テディベア画像と質問How cute is this teddy bear?を入力しVery cute!と答えるVLMの例" loading="lazy"><figcaption>VLMの対話例。画像理解の出力を固定classで止めず、text tokenと結合して自然言語の回答を生成する用途を示す。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=3585s">59:45</a></figcaption></figure>
-<p>図から読み取る要点は、同じ画像でも質問が変われば違う文章を返せる点だ。接続方法には、画像 token を text token と同じ列へ並べる方法と、text 側が画像を必要なときに参照する方法がある。次の表では、両者の「どこで融合するか」を見比べる。</p>
-<p>表に出る<strong>cross-attention</strong>は、一方の列が Query を出し、別の列を Key と Value として読む attention である。§2 の Q/K/V を思い出せば、質問文の token が「画像のどこを見ればよいか」という Q を出し、画像特徴の K/V を参照すると理解できる。入力列への連結は、画像を先に text token と同じ列へ並べ、通常の attention に任せる方法である。</p>
-<div class="table-wrap"><table><thead><tr><th>接続法</th><th>仕組み</th><th>講義中の例</th></tr></thead><tbody><tr><td>入力列へ連結</td><td>画像vectorをtext tokenと同じ次元へ変換し、同じ入力列へ並べる</td><td>LLaVA型</td></tr><tr><td>Cross-attention</td><td>text側のQueryが、別に保持した画像表現をKey/Valueとして参照する</td><td>Llama 3論文の例</td></tr></tbody></table></div>
-<p>表から読み取る要点は、二方式とも「画像の内容を文章生成へ渡す」目的は同じでも、計算する場所と必要な表現が違うことだ。連結方式は単純な一列として処理しやすい反面、画像 token が長いと context を多く使う。cross-attention は画像を別に保てるが、接続層の設計が増える。どちらでも最終的な文章は左から右へ token を出すことが多い。次節では、この<strong>自己回帰</strong>の生成がなぜ待ち時間を生むのかを厳密に分ける。</p>
-</section>
+<h3 id="s24">計算する場所自体を変える研究</h3>
+<p><strong>Analog in-memory computing</strong>は、K/Vを保存する場所の内部や近くで演算し、データ転送を減らす考え方です。電圧・電荷・パルスなどの連続的な物理量を使う点が、通常のデジタル計算と異なります。</p>
+<p>講義は専用セルでattentionを扱う研究を紹介します。ただし、これはFlashAttentionのように同じ式の計算順だけを変えるものとは限りません。<a href="#ref-analog">原論文</a>では回路の制約に合わせた活性化やモデルの適応も扱います。</p>
+<p>大きな高速化・省エネルギー化が期待されますが、比較対象はattentionの演算部分です。LLM全体の実運用で同じ倍率を保証するものではありません。信号のノイズ、精度、変換回路、汎用性まで含めて評価する必要があります。</p>
+<details class="advanced"><summary>原論文の性能比較と、その範囲</summary><p>参照したarXiv v2の§2.7では、RTX 4090との比較で速度約300倍、エネルギー削減約90,000倍と報告しています。GPUの測定と、専用回路のシミュレーションに基づく推定を比べた結果です。H100やLLM全体にそのまま適用できる数字ではありません。</p></details>
 
-<section id="s16">
-<h2>16. 一語ずつ生成する方式は、なぜ待ち時間が長くなるのか</h2>
-<p>画像も扱える生成器が文章を出すとき、問い直すのは、「§15 の VLM を含む多くの LLM が文章を出すとき、なぜ GPU があっても次の token を待ちながら進むのか」である。<strong>自己回帰モデル（Autoregressive Model、ARM）</strong>は、すでに決まった左側の token を条件に、次の一つを選ぶ方式だ。便利で成熟した方法だが、未生成の未来を先に使えないという順序制約がある。</p>
-<p><strong>因果的（causal）</strong>とは、現在の出力が未来の token を見てはいけないという制約である。例えば三 token の文「<code>猫 が 寝る</code>」なら、最初は「猫」を選び、次に「猫」を見て「が」を選び、最後に「猫 が」を見て「寝る」を選ぶ。<strong>推論時（inference）</strong>は未知の文章を実際に生成する時点、<strong>学習時（training）</strong>は正解の文章全体をすでに持ち、予測の誤差から重みを更新する時点である。この二つを混同しないことが、並列化の話を正しく読む鍵になる。</p>
-<p>次の図では、BOS（文頭を表す特別な印）から token が一つずつ増え、次の forward pass が前の出力を待つ矢印を見てほしい。図は「モデル内部の計算が全く並列化できない」と言っているのではなく、完成前の token を次の入力にできないことを示す。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/14-autoregressive-limitation.jpg" alt="BOSからA teddy bear isと一tokenずつ生成するARMと、inference-time generation is not parallelizableという注記" loading="lazy"><figcaption>自己回帰生成の制約。causalな次token予測を繰り返すため、長い出力ほどforward passが連鎖する。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=3995s">01:06:35</a></figcaption></figure>
-<p>図から読み取る要点は、出力が長いほど待つ生成 step が増えることだ。次の確率の式は、一文全体の確率を「その時点より左が分かっている条件付き確率」の掛け算へ分けて書く。Π（パイ）は足し算の Σ と違い、並んだ項をすべて掛ける記号である。</p>
-<p>式の <code>x<sub>1:T</sub></code> は最初から T 番目までの token 列、<code>x<sub>t</sub></code> は t 番目の token、<code>x<sub>&lt;t</sub></code> はそれより左の token を表す。先の「猫 が 寝る」なら、全体の確率は <code>p(猫) × p(が | 猫) × p(寝る | 猫 が)</code> と読む。各項は「前までが決まったとき、この次が来る確率」なので、推論時は二項目を計算するまで三項目の入力が完成しない。次の式では、この分解と Π の位置を見てほしい。</p>
-<div class="formula">p(x<sub>1:T</sub>) = Π<sub>t=1</sub><sup>T</sup> p(x<sub>t</sub> | x<sub>&lt;t</sub>)<small>Π = t=1 から T までの確率をすべて掛ける記号。x<sub>1:T</sub> = 全 token 列、x<sub>t</sub> = 現在位置の token、x<sub>&lt;t</sub> = それ以前の token、縦棒 | = 「…を条件として」を表す。各項は左側だけを見て次 token を選ぶ確率である。</small></div>
-<p>T、つまり出力 token 数が増えるほど、推論時に必要な逐次 step は増える。学習時には正解列をあらかじめ持つため、<strong>causal mask</strong>、すなわち各位置から未来を見えなくする覆いを掛けながら、多くの位置を同時に計算できる。推論時だけは未知の token を埋める必要がある。この待ち時間を別の生成順で減らせないか、という問いが次節の画像 diffusion、さらにその後の text への応用につながる。</p>
-</section>
+<h3 id="s27">研究の主張を、条件と実装へ戻す</h3>
+<p>新しい手法に出会ったら、「何を固定して、何を変え、何が良くなったか」を確認します。Prompt、data、生成回数、temperature、GPU、品質条件が違えば、scoreや速度だけの比較はできません。</p>
+<p>講義はarXiv、NeurIPS・ICML・ICLR・ACL・EMNLPなどの会議、論文付属コード、Hugging Face Trending Papers、X、企業ブログ、Yannic KilcherやAndrej Karpathyの解説動画を学習資源として挙げます。説明から入口を見つけ、一次資料と実装で確かめる使い分けができます。</p>
+<p>Study guideは年次更新や多言語化を目指すと説明されました。最後に講師は学生とオンライン視聴者へ感謝し、Shervineは8年前には講義を見る側だったと振り返ります。講義の最終試験範囲はLectures 5〜8で、後半の新規トレンドは対象外という案内もありました。</p>
 
-<section id="s17">
-<h2>17. 画像をノイズから少しずつ復元する diffusion とは何か</h2>
-<p>逐次生成の待ちを見た後に問うのは、「§16 の一語ずつ待つ生成とは別に、画像ではどのように新しい絵を作る方法が成功してきたのか」である。画像の画素は連続した数値なので、きれいな画像を徐々に乱し、その逆を学ぶ<strong>拡散モデル（diffusion model）</strong>が使える。次節で text へ発想を移す前に、まず画像で何をしているかを直感的に分ける。</p>
-<p><strong>画素（pixel）</strong>は画像を構成する小さな点で、RGB の強さのような連続値を持つ。<strong>ガウス雑音（Gaussian noise）</strong>は、平均の周りへランダムに揺れる連続的なノイズで、テレビの砂嵐のように見える。<strong>forward process</strong>は元画像へ少しずつ雑音を足して最終的にほぼランダムな状態へ近づける過程、<strong>reverse process</strong>は今ある雑音を予測して少しずつ除く過程である。真っ白な大理石から彫刻を削り出すのではなく、砂嵐から不要な成分を何度も取り除いて写真らしい分布へ戻す、と考えるとよい。</p>
-<p>次の図では、「ノイズは作りやすい」「逆向きの変換を学ぶ」「数学的に段階を定義できる」という三点を見てほしい。完成画像を一回で当てる図ではなく、途中状態を何回も改善する図である。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/15-image-diffusion-intuition.jpg" alt="noise is easy to sample、learned transformation、mathematically well-definedと彫刻の比喩を示す画像diffusionの直観スライド" loading="lazy"><figcaption>画像diffusionの導入。noiseから彫刻を削り出す比喩は、reverse processが「不要なnoiseを予測して除く」直観を与える。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=4270s">01:11:10</a></figcaption></figure>
-<p>図から読み取る要点は、ランダムな出発点から自然画像らしい集合へ戻る変換を学ぶことだ。学習では本物の画像に既知の量の雑音を加え、モデルに「今入っている雑音」または「少し前のよりきれいな状態」を予測させる。生成では純粋な雑音から始め、学習した逆向きの変換を繰り返す。途中の形を修正できる利点がある一方、反復回数が多ければ速さは失われ、各 step の誤差が積み上がる。</p>
-<div class="note"><strong>補足（本レポートの説明）。</strong> <code>q(x<sub>t</sub>|x<sub>t−1</sub>)</code> は一段階ノイズを加える forward 過程、<code>p<sub>θ</sub>(x<sub>t−1</sub>|x<sub>t</sub>)</code> はモデルが学ぶ reverse 過程を表す。<code>t</code> は雑音の段階、<code>θ</code> は学習するパラメータである。講義はこの直観を中心に扱っており、ここで厳密な DDPM の損失式を導入しているわけではない。</div>
-<p>画像のように連続値なら雑音を少量ずつ足せる。しかし text の token は「この語か別の語か」という離散的な選択で、同じ雑音をそのまま足せない。次節では雑音の役を MASK、つまり伏せ字に置き換える。</p>
-</section>
-
-<section id="s18">
-<h2>18. 伏せ字を全体から埋め直す、text 用の拡散モデル</h2>
-<p>画像の雑音除去を文章へ移すときに問うのは、「§17 の連続的な画像ノイズを、飛び飛びの値である text token へどう置き換えるのか」である。文字列の token は 0.2 だけ「猫」にする、といった連続的な混ぜ方ができない。そこで、内容を隠す<strong>MASK</strong>をノイズの代わりにし、隠した位置を反復して復元する<strong>Masked Diffusion Model（MDM）</strong>を考える。</p>
-<p><strong>MASK token</strong>は「ここに何かがあるが、何かはまだ伏せる」という特別な印である。MDM の学習では正しい token 列の一部を MASK に置き換え、モデルが周囲の文脈から元の token を予測する。生成では回答領域を多くの MASK から始め、一部を埋め、残りを見直しながら完成させる。クロスワードの空欄を左から一つずつ埋めるのではなく、分かる箇所を同時に書き込み、全体を何度も見直す作業に近い。逐次生成の待ちを減らせる可能性があるが、どの空欄をいつ確定するかという新しい難しさが生まれる。</p>
-<p>次の図では、回答領域が全 MASK から始まり、<code>A teddy bear is reading</code> のような列へ変わる過程を見てほしい。質問などの条件部分まで消すのではなく、残しておく点が重要である。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/16-masked-diffusion.jpg" alt="全MASKのtoken列からA teddy bear is readingを復元するMDM masked diffusion modelのスライド" loading="lazy"><figcaption>MDM（Masked Diffusion Model）。answer領域をMASKから開始し、複数位置を反復してunmaskすることで文を復元する構図。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=4570s">01:16:10</a></figcaption></figure>
-<p>図から読み取る要点は、複数の位置を同時に候補化できることだ。<strong>conditioning（条件付け）</strong>は、prompt、画像、すでに確定した token のように、生成内容を決めるため残しておく情報である。MDM は条件部分を固定し、回答部分だけを復元する。次のフローでは、学習時の「隠す向き」と生成時の「埋める向き」を対にして追ってほしい。</p>
-<p>図を読む順序は左から右である。正しい列を徐々に MASK するのが forward、全 MASK または一部 MASK から段階的に復元するのが reverse である。矢印が直線でも、実際には reverse の更新を複数回行う点に注目する。</p>
-<div class="mermaid">flowchart LR
-A[正しいtoken列]-->B[forward: 徐々にMASK]
-B-->C[全MASK]
-C-->D[reverse: 一部を復元]
-D-->E[反復して完成文]</div><p class="hint">図をクリックすると拡大できます。</p>
-<p>図から読み取る要点は、MDM が完成までの各 step で文全体を参照できる可能性を持つことだ。一方、早い段階で誤った token を確定すると後の候補を狭めることがあり、反復回数を減らしすぎれば品質が落ちる。研究ごとに MDM、diffusion LLM、DLLM の呼び方や細部の設計もまだ統一されていない。次節では、自己回帰モデルと並べて、期待される速度と残る未解決点を具体的に比較する。</p>
-</section>
-
-<section id="s19">
-<h2>19. 拡散型 LLM は、どこで速くなり、何が未解決なのか</h2>
-<p>MDM の可能性を見た後で比べるのは、「§18 の MDM は複数の空欄を扱えるとして、成熟した自己回帰モデルより実際に何がよくなり、何を失うのか」である。新しい生成順は自動的な勝利ではない。ここでは<strong>拡散型 LLM</strong>を、出力順、モデルを呼ぶ回数、得意な編集、品質という同じ軸で自己回帰モデルと比べる。</p>
-<p><strong>反復 step</strong>は、MASK の予測と確定を一回行う単位である。自己回帰モデルは出力 token 数にほぼ対応する回数だけ順番に進むのに対し、MDM は設定した反復 step ごとに複数位置を更新できる可能性がある。<strong>fill-in-the-middle</strong>は、前と後ろが分かっている中央の欠落を埋める作業で、たとえば既存コードの関数の途中だけを補う用途である。両側を見ながら埋めやすいことは MDM の魅力だが、生成過程を細かく制御する方法や、複雑な reasoning を安定して行う方法は発展途上である。</p>
-<p>次の表では、「何倍速い」という一つの数字より、どの条件で model 実行回数が変わるかを見てほしい。特に ARM の行と MDM の行を、同じ出力長・同じ品質目標で比較しないと意味が変わる。</p>
-<div class="table-wrap"><table><thead><tr><th>観点</th><th>ARM</th><th>Masked diffusion LLM</th></tr></thead><tbody><tr><td>生成</td><td>左から右へ1 tokenずつ</td><td>複数のMASK位置を反復更新</td></tr><tr><td>Model実行回数</td><td>概ね出力token数に比例</td><td>設定したdiffusion step数へ抑えられる可能性</td></tr><tr><td>期待用途</td><td>成熟した汎用生成</td><td>長文生成、前後を見て中央の欠落を埋めるfill-in-the-middle</td></tr><tr><td>未解決</td><td>逐次生成による待ち時間</td><td>現時点の最高水準に並ぶ品質、reasoning技法の移植</td></tr></tbody></table></div>
-<p>表から読み取る要点は、拡散型 LLM が長い出力で step 数を抑えられる可能性を持つ一方、品質を保つための反復数が必要だということだ。講義で触れられた「長文でおよそ 10 倍」という benchmark 上の報告も、task、生成長、反復回数、hardware、評価方法を固定した結果として読むべきで、常時の速度保証ではない。</p>
-<p>もう一つの交換は編集の自由度と確定の安定性である。自己回帰モデルは左からの文章を自然に積み上げる学習と運用の蓄積が大きい。MDM は前後を同時に見て中央を直せるが、早期の誤りをどう戻すか、停止時にどの token を信用するか、tool calling のような逐次的な行動とどう結び付けるかを設計し直す必要がある。次節では、このように画像で成功した発想が text へ移り、text で成功した発想が画像へ移る関係を整理する。</p>
-</section>
-
-<section id="s20">
-<h2>20. 画像・文章・音声のあいだで、成功した発想はどう移るか</h2>
-<p>二つの生成法を比べた次に問うのは、「§19 の拡散型 LLM のように、ある情報形式でうまくいった方法を別の形式へ持ち込むとき、何をそのまま移し、何を作り替えるのか」である。単に流行語を輸入するのではなく、表現、位置、生成順という問題を別のモダリティへ写し替える<strong>cross-pollination（分野間の発想移植）</strong>として考える。</p>
-<p>§13 で定義した<strong>モダリティ</strong>は情報の種類である。Transformer は text token の関係を読む設計から画像 patch の関係を読む ViT へ広がった。逆に diffusion は画像の連続ノイズ除去から text の MASK 復元へ広がった。移植の核心は名前ではなく、「何を token の列にし、どの位置情報を与え、どの条件を固定するか」をその形式に合わせて決め直すことだ。似た形に見えても、画像の二次元位置と文章の一次元の語順は同じではない。</p>
-<p>次の図では、Transformer が text から vision へ、diffusion が vision から text へ渡っている矢印を見てほしい。二つのトピックを別々に覚えるのでなく、片方の成功がもう片方の制約を問い直す循環として読む。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/17-cross-modal-pollination.jpg" alt="modalities trade ideas on concepts that workという題と、diffusionをtextへ、Transformerを画像へ移す例のスライド" loading="lazy"><figcaption>cross-modal pollinationのまとめ。ViTとdiffusion LLMを別話題でなく、成功した表現・学習原理の再利用として位置付ける。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=5055s">01:24:15</a></figcaption></figure>
-<p>図から読み取る要点は、移植には必ず変換が必要だということだ。<strong>OCR（Optical Character Recognition、光学文字認識）</strong>は画像内の文字を text へ変換する技術である。講義で例に出る DeepSeek-OCR は、少数の<strong>vision token</strong>、すなわち画像を圧縮したベクトルから多くの text token を復元する方向を示す。圧縮率を上げれば計算を節約できる可能性があるが、小さい文字やレイアウトの情報を落とす危険も増える。</p>
-<p>また、text の RoPE は一列の位置差を表すが、画像では横と縦の両方を区別する<strong>二次元位置表現</strong>へ拡張できる。例えば「右上の赤い標識」を読むには、内容だけでなく横方向と縦方向の位置が必要だ。こうした移植を評価するときは、見栄えのよいデモだけでなく、どの情報を圧縮し、どの benchmark で失われたかを確認する。次節では、ここまで使った Transformer 自体にも、まだ固定解ではない設計選択が多いことへ戻る。</p>
-</section>
-
-<section id="s21">
-<h2>21. Transformer の設計は、どこまで決まっていてどこが未解決か</h2>
-<p>新しい分野へ移した後に戻って問うのは、「§20 のように新しいモダリティへ広げる前に、そもそも Transformer の中身は完成した定番なのか」である。答えはそうではない。文章、画像、効率を支える部品には複数の選択肢があり、目的・データ・hardware が変わればよい組合せも変わる。ここでは設計を部品表としてではなく、何を調整しているかとして見る。</p>
-<p><strong>アーキテクチャ（architecture）</strong>は、層、attention、FFN、正規化などをどう組み合わせるかというモデルの骨組みである。<strong>optimizer（最適化手法）</strong>は、誤差を小さくする方向を示す<strong>gradient（勾配）</strong>から、各 parameter をどれだけ動かすかを決める更新規則である。<strong>normalization（正規化）</strong>は層内の数値の大きさを整え、学習が不安定になりにくくする部品、<strong>activation（活性化関数）</strong>は単純な直線の組合せだけでは表せない曲がりを加える部品である。どれも見えにくいが、長い学習が壊れず進むかを左右する。</p>
-<p>次の図では、optimizer、normalization、attention の共有方法、FFN、層数が並んでいることを見てほしい。Kimi K2 や MuonClip は「これが唯一の標準」という証明ではなく、基礎部品も研究対象だという講義の例である。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/18-architecture-open-choices.jpg" alt="Kimi K2とMuonClipを例にoptimizer、normalization、MHA/MQA/GQA、activation、MoE、層数の選択が並ぶスライド" loading="lazy"><figcaption>未確定な設計選択の一覧。Kimi K2/MuonClipは、optimizerを含め既存の標準が固定されていない例として紹介される。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=5340s">01:29:00</a></figcaption></figure>
-<p>図から読み取る要点は、モデル名の新しさより、どの部品を替え、どの制約を改善しようとしたかを見るべきことだ。次の表では、固有名を「何を決めるつまみか」へ翻訳している。§3 の MHA、MQA、GQA、§4 の Dense と MoE が同じ表に戻ってくることに注目する。</p>
-<p>表に出る<strong>MHA（Multi-Head Attention）</strong>は複数 head がそれぞれ K/V を持つ基本形、<strong>MQA（Multi-Query Attention）</strong>は多くの Q で少数の K/V を共有する節約形、GQA はその中間である。これらは「どれが一番賢いか」だけでなく、KV cache と生成時メモリをどれだけ使うかの選択でもある。</p>
-<div class="table-wrap"><table><thead><tr><th>設計項目</th><th>何を決めるか</th><th>講義で挙がった例</th></tr></thead><tbody><tr><td>Optimizer</td><td>gradient（誤差を減らす方向）からparameterをどれだけ更新するか</td><td>AdamW、Muon、MuonClip</td></tr><tr><td>Normalization</td><td>層内の数値scaleを整え、学習を安定させる</td><td>post-norm / pre-norm、LayerNorm / RMSNorm</td></tr><tr><td>Activation</td><td>単純な線形変換だけでは表せない関係を加える</td><td>ReLU、GELU</td></tr><tr><td>Attention構成</td><td>Query head間でKey/Valueをどこまで共有するか</td><td>MHA、MQA、GQA</td></tr><tr><td>FFN構成</td><td>全parameterを毎tokenで動かすか、一部expertだけ動かすか</td><td>Dense、MoE</td></tr><tr><td>規模</td><td>modelの深さと各層の容量</td><td>層数、head数、FFN幅</td></tr></tbody></table></div>
-<p>表から読み取る要点は、設計項目が独立したスイッチではないことだ。例えば MoE で総パラメータを増やすなら通信と routing を、GQA で cache を減らすなら表現の自由度を、深い層を増やすなら正規化と optimizer の安定性を同時に考える必要がある。Kimi K2 の MuonClip を例にする講義の意図も、「名称を採用すれば勝てる」ではなく、実験条件と交換を確かめる姿勢にある。次節では、どんな設計にも与えるデータの品質が上限を作ることを見る。</p>
-</section>
-
-<section id="s22">
-<h2>22. 学習データを、量だけでなく質と多様性でどう選ぶか</h2>
-<p>設計の選択を見た次に問うのは、「§21 でアーキテクチャを工夫しても、学習に使う文章や画像が偏っていたら何が起きるのか」である。モデルは教材に含まれるパターンを学ぶため、無選別に大量収集するだけでは信頼性、専門性、多様性を保証できない。そこで<strong>データ選別（data curation）</strong>と、合成データを重ねたときの<strong>model collapse</strong>を分けて考える。</p>
-<p><strong>コーパス（corpus）</strong>は学習に使う文書やコードなどの集合である。data curation は、重複、低品質、誤情報、望ましくない内容を減らし、目的に合う資料を選び、出典や多様性を点検する作業を指す。食材をトラック一台分そのまま鍋へ入れるのでなく、傷んだものを除き、献立に必要な品目をそろえる作業に近い。<strong>mid-training</strong>は、広い基礎学習と用途別の微調整の間に、比較的大規模で高品質な資料を追加して学ばせる段階である。専門分野へ寄せる問題を解くが、狭い資料に寄せすぎると汎用性を失う可能性がある。</p>
-<p>次の図では、無選別の web scrape から curation へ関心が移り、pretraining と fine-tuning の間に mid-training を置く流れを見てほしい。右側の model collapse は、量の不足ではなく分布の多様性が痩せる懸念を表している。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/19-data-model-collapse.jpg" alt="高品質dataの将来と、LLM生成dataで学習すると忘却するmodel collapse論文を示すスライド" loading="lazy"><figcaption>dataの問題。無選別web scrapeからcurationへ進み、pretrainingとfine-tuningの間に大規模・高品質なmid-trainingを置く流れを示す。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=5580s">01:33:00</a></figcaption></figure>
-<p>図から読み取る要点は、よいデータとは単に「人間が書いたデータ」ではなく、目的に対して信頼でき、多様で、重複や汚染を点検できるデータだということだ。<strong>合成データ（synthetic data）</strong>はモデルが生成した教材で、検証可能な code や数学の答えを増やすなど有用な場合もある。問題は、低多様性の出力を検証せず繰り返し次世代の教材にすると、まれな表現や端の事例が徐々に落ちることにある。</p>
-<p><strong>model collapse</strong>は、生成物を再帰的に学習することで元のデータ分布の細かな特徴が失われ、出力が似通っていく懸念を指す。講義内の「検索結果の 80% が LLM 生成かもしれない」という表現は問題意識を示す口頭例であり、ここでは厳密な統計値として扱わない。対策は生成データを一律禁止することではなく、出典の追跡、品質検証、人間・一次資料との混合、長い尾の事例の監視を行うことだ。データを整えても提供コストが高すぎれば使えない。次節は品質と価格を同時に比べる Pareto frontier を説明する。</p>
-</section>
-
-<section id="s23">
-<h2>23. 最高性能だけでなく、品質・価格・待ち時間をどう選ぶか</h2>
-<p>高品質なデータを考えた後に問うのは、「§22 でよいデータから高性能なモデルを作れても、利用者が実際に使える形で提供するには何を比べるべきか」である。最高 score の一モデルだけを見ると、料金や待ち時間を見落とす。そこで<strong>Pareto frontier（パレート最前線）</strong>を使い、同じ品質なら安い候補、同じ費用なら高品質な候補を残す。</p>
-<p><strong>品質（quality）</strong>は task に対する正確さや評価 score、<strong>コスト（cost）</strong>は一回答や一定 token 数に必要な料金・計算資源、<strong>レイテンシ（latency）</strong>は要求から応答までの待ち時間である。ある候補が別の候補より<strong>同じか高いコスト</strong>で、品質が<strong>同じか低く</strong>、少なくとも一方で明確に劣るなら、その候補は<strong>支配される（dominated）</strong>といい、Pareto frontierには残らない。安い代わりに品質も低い候補はtrade-offを持つため、用途によってfrontierに残り得る。これは一つの万能な一位を決める方法ではなく、交換を隠さず候補を絞る方法である。</p>
-<p>次の図では、散布図の外側にある frontier と、内側で他に明確に負けている点を見分けてほしい。縦の performance だけでなく横の cost を同時に追うのが読み方である。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/20-quality-cost-frontier.jpg" alt="LLM Arenaのperformance対cost散布図とPareto frontierを示すスライド" loading="lazy"><figcaption>quality/cost Pareto frontier。同じcostならより高品質、同じqualityならより低costなmodelだけがfrontierへ残るという読み方をする。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=5800s">01:36:40</a></figcaption></figure>
-<p>図から読み取る要点は、frontier 上の複数候補には、それぞれ選ぶ理由が残ることだ。次に抽象的な語を具体化する。これは講義のモデル順位を再現する例ではなく、Pareto の読み方を示す仮想例である。</p>
-<div class="note"><strong>具体例（本レポートの補足）。</strong> 仮にモデル A が 1,000 回答あたり 10 円で品質 80、モデル B が同じ 10 円で品質 85 なら、A は B に支配される。モデル C が 5 円で品質 82 なら、B より品質は少し低いが半額なので、用途によっては C も frontier に残る。即時の簡単な要約なら C、難しい契約レビューなら B という選び方がありうる。待ち時間を加えれば、二次元の線ではなく三つ以上の軸になる。</div>
-<p><strong>小規模言語モデル（Small Language Model、SLM）</strong>は、単に能力が低い縮小版ではない。決まった社内分類、短い定型応答、端末内処理のように必要な品質が限定された task なら、低コスト・低レイテンシ・データを外へ出さない利点でよい候補になる。講義が最上位モデルの提供でも採算が課題になりうると述べる背景には、この運用上の交換がある。次節では frontier のコスト側を、model の式ではなく hardware の配置から動かす研究を見る。</p>
-</section>
-
-<section id="s24">
-<h2>24. データを動かす代わりに、計算を近づける hardware の考え方</h2>
-<p>コストを比べた後に問うのは、「§23 の品質・コストの交換を、モデルの縮小だけでなく、データが物理的にどこで計算されるかから改善できるか」である。§6 の FlashAttention で見た通り、生成では演算だけでなく KV cache の読み書きが遅さと電力を左右する。そこで memory の近くで attention を計算する<strong>analog in-memory computing</strong>という研究を読む。</p>
-<p><strong>GPU</strong>は多くの数を同時に掛けて足す<strong>行列積（matrix multiplication）</strong>が得意な計算装置である。自己回帰生成では過去 token の<strong>KV cache</strong>を何度も読み、Query と Key の<strong>内積（dot product）</strong>、すなわち対応する数を掛けて合計する類似度計算を行う。<strong>in-memory computing</strong>は、このデータを遠い演算器へ運ぶ代わりに、保存場所の内部または近くで計算する考え方である。<strong>analog</strong>は 0 と 1 だけでなく、連続的な電圧、電荷、パルスなどの物理量で値を表して演算する方式を指す。</p>
-<p>次の図では、KV を専用の cell に置き、物理信号を使って attention の一部を計算する構成を見てほしい。回路記号を覚えるより、「読み出してから掛ける」の距離を短くしようとしている点に注目する。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/21-analog-attention-hardware.jpg" alt="KV cacheを専用セルに保存しanalog signalでattentionを計算するin-memory hardwareのブロックおよび回路図" loading="lazy"><figcaption>analog in-memory attentionのproof-of-concept。行列積に最適化されたGPUではなく、KV read/writeと物理信号をattentionに直接使う案を示す。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=5940s">01:39:00</a></figcaption></figure>
-<p>図から読み取る要点は、Transformer の計算パターンが hardware の設計課題を変え始めたことだ。講義で紹介された研究は、特定の simulation 条件で H100 と比べて遅延を最大約 1/100、演算当たりの energy を最大約 1/70,000 にできる可能性を推定した。ここでの「可能性」は、どの task、precision、メモリ容量、製造条件でも同じ倍率になるという製品保証ではない。</p>
-<p>analog 回路には、連続信号のノイズ、精度のばらつき、書き込み耐久性、既存 GPU ソフトウェアとの統合、汎用性といった課題がある。精度が必要な部分をデジタル計算へ戻せば、移動を減らした利点も変わる。したがってこの図は「GPU はすぐ不要になる」という結論ではなく、data movement がボトルネックなら演算場所を変える余地があるという研究の例である。次節では、こうした効率化が既にどんな日常の用途を支えているかを見る。</p>
-</section>
-
-<section id="s25">
-<h2>25. 日常の仕事と学習で、LLM に任せる部分と確認する部分</h2>
-<p>hardware を見た後に現実の仕事で問うのは、「§24 の効率化で LLM を使いやすくしても、実際の仕事ではどの作業を任せ、どの確認を残すべきか」である。講義は coding、会話支援、創作、学習を既に変化した用途として挙げる。ここでは便利さだけでなく、誤りがどこで影響するかを対にして読む。</p>
-<p><strong>coding</strong>はプログラムを書く、読んで直す、テストする作業である。<strong>text-to-query</strong>は自然言語の質問を SQL のような検索・集計命令へ変えること、<strong>conversational assistant</strong>は対話で情報整理や説明を行う支援役である。<strong>groundedness（根拠への接地）</strong>は、回答中の主張を提示資料や確認可能な出典で裏付けられる度合いを指す。これらは LLM が初稿や候補を早く出す問題を解くが、もっともらしい誤り、権限外の操作、出典なしの断定までは消さない。</p>
-<p>次の図では、講義が現在の応用を四つに分けている点を見てほしい。どれも「完全自動化」という箱ではなく、人の仕事の前後にある探索、初稿、説明、feedback を速くする用途として読む。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/22-llm-daily-applications.jpg" alt="coding、general conversational assistant、creativity、learningをLLMの現在の主要応用として列挙するスライド" loading="lazy"><figcaption>現在の応用一覧。coding/text-to-query、assistant、創作の初稿、学習時の対話的feedbackを、すでに変化した日常用途として挙げる。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=6040s">01:40:40</a></figcaption></figure>
-<p>図から読み取る要点は、同じ LLM でも task ごとに検証の方法が違うことだ。次の表では、LLM の担当と、人間または周囲の system が必ず確認する担当を横に置く。<strong>rollback（元に戻す手段）</strong>は、誤った変更を取り消せる仕組みのことで、特に code やデータ更新で重要になる。</p>
-<p>表を見るときは、右列を「AI が失敗した証拠」ではなく、影響の大きい判断を安全に配分する設計だと考えてほしい。たとえば unit test は code の動作の一部を自動で確かめるが、要件や権限までは代わりに決めない。</p>
-<div class="table-wrap"><table><thead><tr><th>用途</th><th>LLMが担う部分</th><th>人間・system側の確認</th></tr></thead><tbody><tr><td>Coding / text-to-query</td><td>実装案や、自然言語からSQLなどのqueryを生成</td><td>test、review、権限、変更を元へ戻すrollback</td></tr><tr><td>Conversational assistant / web search</td><td>質問理解、情報統合、説明</td><td>出典、鮮度、主張を資料で裏付けられるgroundedness</td></tr><tr><td>Creativity</td><td>marketing文、構成、初稿</td><td>目的、独自性、権利、最終判断</td></tr><tr><td>Learning</td><td>概念についての案出し、対話的なfeedback</td><td>教科書・一次資料との照合</td></tr></tbody></table></div>
-<p>表から読み取る要点は、LLM が人間を一律に置き換える構図ではない。創作では目的と権利の判断、検索支援では出典と鮮度、学習では一次資料との照合が残る。小さな候補生成なら誤りのコストを抑えられるが、外部状態を変える agent では一回の誤りが連鎖しやすい。次節は、この step の増加を確率と安全性の両面から扱う。</p>
-</section>
-
-<section id="s26">
-<h2>26. 自律的な agent を便利にしながら、安全をどう保つか</h2>
-<p>日常用途から自律の問題へ進む際に問うのは、「§25 の日常用途から、複数の操作を自動でつなぐ agent へ進むと、なぜ便利さとともに失敗の危険も増えるのか」である。自然言語で workflow を作れるようになれば専門家以外も道具を組み合わせられる。しかし browser や OS の操作権限を持つほど、一つの誤認や外部の悪意ある指示の影響は大きくなる。</p>
-<p><strong>agentic workflow</strong>は、目標を受け、情報を集め、tool を呼び、結果を見て次の step を決める一連の作業である。<strong>browser agent</strong>は web ページを読み、必要に応じてクリックや入力を行う agent を指す。講義が当時の例として挙げた ChatGPT Atlas は、こうした browser/OS 支援が広がる方向を示す。ここでの問題は単に「一 step が正しいか」ではなく、複数 step のうち一つでも重要な失敗があれば最終結果が崩れうることだ。</p>
-<p>次の図では、agentic workflow の民主化、browser や OS での支援、そして真に自律的な agent の安全性が同じ将来像の中に置かれている点を見てほしい。機能の宣伝と未解決の問いが併記されていることが重要である。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/23-atlas-agent-future.jpg" alt="agentの民主化、browserやOSレベルのLLM、ChatGPT Atlas例、真に自律的なagentへの問いを示すスライド" loading="lazy"><figcaption>近未来のagent像。自然言語でagentic workflowを作る民主化、browser/OS支援、ChatGPT Atlasの例を置きつつ、安全性を未解決としている。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=6320s">01:45:20</a></figcaption></figure>
-<p>図から読み取る要点は、能力の拡大と安全性を別々の後回しにできないことだ。次の式は、step 数が増えると少なくとも一度失敗する確率がどう増えるかを、分かりやすい仮定の下で表す。</p>
-<p>まず <code>p</code> は一 step が失敗する確率、<code>n</code> は step 数である。直接「少なくとも一回失敗」を数える代わりに、①一 step が成功する確率を <code>1-p</code> とする、② n step すべてが成功する確率を <code>(1-p)<sup>n</sup></code> とする、③それを 1 から引く、という順で読む。例えば <code>p=1%</code>、<code>n=10</code> なら、全十 step が成功する確率は約 90.4%、少なくとも一回失敗する確率は<strong>約 9.6%</strong>になる。次の式では、この「全部成功」の余事象になっている構造を見てほしい。</p>
-<div class="formula">P(少なくとも1 step失敗) = 1 − (1 − p)<sup>n</sup><small>P = 求める確率、p = 1 step の失敗確率、n = step 数。p=1%、n=10 なら 1−0.99<sup>10</sup> ≈ 0.096、すなわち約 9.6%。これは各 step が独立し、同じ失敗率だと仮定した説明用の式である。</small></div>
-<p>p を下げれば失敗確率は下がり、n を増やせば上がる。ただし実際の agent では step が独立とは限らない。最初の誤った検索結果が後の判断を連続して誤らせるなら失敗は相関し、逆に確認 step が前の誤りを検出するなら単純式より安全になる。式は正確な事故率を予言するものではなく、長い workflow に検証点、権限分離、停止・承認の境界が必要な理由を示す。</p>
-<p><strong>prompt injection</strong>は、web ページや文書に混ぜられた命令を、agent が信頼できる指示と取り違える攻撃である。<strong>data exfiltration</strong>は、閲覧できた秘密情報を許可されない場所へ持ち出すことを指す。対策としては、外部コンテンツを命令として扱わない境界、最小権限、送信先の許可リスト、重要操作前の人の承認、実行記録が考えられる。さらに<strong>継続学習（continual learning）</strong>、<strong>個別化（personalization）</strong>と privacy、<strong>解釈可能性（interpretability）</strong>、<strong>hallucination</strong>（根拠なくもっともらしい誤情報を作る現象）は未解決の論点である。次節では、こうした変化の速い分野をどの順で学び、主張を確かめるかへ進む。</p>
-</section>
-
-<section id="s27">
-<h2>27. 新しい主張を、論文・実装・評価条件でどう確かめるか</h2>
-<p>安全性の未解決点を受けて問うのは、「§26 の未解決問題を前に、流行語や一枚の benchmark 図だけに振り回されず、何を順に学べばよいか」である。講義を読み終えた後に必要なのは、最新情報を無批判に追うことではなく、主張を一次資料と実装へ往復させる習慣だ。ここではその入口を、検証の順序として置く。</p>
-<p><strong>一次資料（primary source）</strong>は、研究者の原論文、公式仕様、公式スライドのように主張の元になる資料である。<strong>再現可能性（reproducibility）</strong>は、他者がデータ、設定、コード、評価手順をたどって結果を確かめられる度合いである。<strong>benchmark</strong>は同じ問題でモデルを比較する試験セットだが、score だけでは prompt、temperature、費用、評価者の差を隠す。§12 の評価バイアスを思い出し、結果を見る前に「何を比べ、何を固定したか」を聞く。</p>
-<p>次の図では、講義の終盤に Super Study Guide と学習資源が置かれ、受講を終点ではなく次の調査の入口としている点を見てほしい。感謝のスライドであると同時に、資料へ戻る導線でもある。</p>
-<figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/24-thank-you-resources.jpg" alt="Thank you for this quarterとSuper Study Guide: Transformers and Large Language Models、関連URLを示す終盤スライド" loading="lazy"><figcaption>closingの資料案内。Super Study Guideと講義への感謝を示し、学習を講義後も継続するための入口となる。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&t=6630s">01:50:30</a></figcaption></figure>
-<p>図から読み取る要点は、一つの解説を読み終えたら原典へ戻るという学び方だ。次の表では、情報源を「信頼順位」に固定せず、それぞれで何を確かめるかとして整理している。論文、実装、解説は役割が異なる。</p>
-<p>表を見る前に、<strong>評価条件</strong>とはモデル名以外の条件、たとえばデータの版、prompt、生成回数、temperature、hardware、測定した費用を指すと押さえる。二つの結果を比較するには、この条件がそろっているか、違いを明示しているかを見る必要がある。</p>
-<div class="table-wrap"><table><thead><tr><th>入口</th><th>何を見るか</th><th>読む際の問い</th></tr></thead><tbody><tr><td>arXiv / NeurIPS / ICML / ICLR / ACL / EMNLP</td><td>原論文</td><td>比較対象・data・評価条件は何か</td></tr><tr><td>著者GitHub / Hugging Face Trending Papers</td><td>実装とdataset</td><td>主張は再現可能か</td></tr><tr><td>企業・研究機関blog、解説動画</td><td>背景と実務文脈</td><td>一次資料へのリンクはあるか</td></tr><tr><td><a href="https://github.com/afshinea/stanford-cme-295-transformers-large-language-models">VIP Cheatsheet</a> / <a href="https://superstudy.guide">Super Study Guide</a></td><td>講義の横断復習</td><td>どの前提から導かれた概念か</td></tr></tbody></table></div>
-<p>表から読み取る要点は、入口を一つに絞らないことだ。実践の順序は、①興味を持った主張を短い言葉で書く、②原論文または公式資料で比較対象と条件を探す、③公開実装や dataset で実際の入出力を確かめる、④自分の用途に近い小さな評価を作る、⑤結果と限界を記録する、となる。再現できなくても失敗ではなく、何が欠けているかを見つける学習になる。</p>
-<p>Shervine は自分も以前は自宅で講義を見る側だったと振り返り、質問で講義を双方向にした受講者へ感謝した。最終的な持ち帰りは、技術名を暗記することではなく、「この方法は表現、学習信号、推論コスト、外部接続のどの交換を動かしたか」と問い続けることだ。最後の節では、途中で分からなくなったときに戻る講義と用語を、索引として整える。</p>
-<h3>難所を一度で解こうとしないための小さな手順</h3>
-<div class="callout"><p><strong>実践の例。</strong> MoE という語に出会ったら、まず §4 で「どの expert を動かす話か」を確認する。次に §21 で architecture 全体のどの選択肢かを見る。最後に §23–24 で、その選択が費用や hardware にどう影響するかを問う。一語を三つの場所へ往復することで、名称だけの記憶になりにくい。</p></div>
-</section>
-
-<section id="s28">
-<h2>28. 分からなくなったときに戻る、講義と用語の索引</h2>
-<p>学び方を決めた最後に、戻り先として問うのは、「§27 の検証ループを実際に回すとき、Lecture 9 で圧縮して再登場した前提へどこから戻ればよいか」である。この節は新しい主張を増やすのではなく、学習中に立ち止まるための足場である。前の節で紹介した調べ方を、既存講義と基本語へ結び付けて終える。</p>
-<p><strong>索引</strong>は用語を五十音順に並べるだけの一覧ではなく、「今の疑問はどの前提から来たか」を示す道標である。ここでの<strong>関連講義</strong>は、Lecture 9 の短い復習をより深く扱う既存レポートを指す。例えば scaling、SFT、RLHF、reasoning、agent、評価は同時に理解しようとせず、困っている部品の講義へ戻ってから再びこの全体地図へ帰る。</p>
-<p>次の表では、左列のリンク名を全部順に読むのでなく、中央列の「Lecture 9 での役割」と右列の問いを見て、いま必要な戻り先を選んでほしい。表に出る<strong>SFT</strong>は §7 で扱った教師あり微調整、<strong>PPO</strong>は §8 の方策更新法、<strong>GRPO</strong>は §9 の群内比較法である。</p>
-<div class="table-wrap"><table><thead><tr><th>戻る先</th><th>Lecture 9での役割</th><th>先に確認する問い</th></tr></thead><tbody><tr><td><a href="stanford-cme295-lecture4-llm-training-ja.html">Lecture 4: LLM Training</a></td><td>scaling、FlashAttention、SFT</td><td>学習costはどこで発生するか</td></tr><tr><td><a href="stanford-cme295-lecture5-llm-tuning-ja.html">Lecture 5: LLM Tuning</a></td><td>Bradley–Terry、RLHF、PPO</td><td>選好をどの損失でpolicyへ返すか</td></tr><tr><td><a href="stanford-cme295-lecture6-llm-reasoning-ja.html">Lecture 6: LLM Reasoning</a></td><td>CoT、GRPO、verifiable reward</td><td>良い推論を何で検証するか</td></tr><tr><td><a href="stanford-cme295-lecture7-agentic-llms-ja.html">Lecture 7: Agentic LLMs</a></td><td>RAG、tool calling、安全性</td><td>外部知識・操作をどう統制するか</td></tr><tr><td><a href="stanford-cme295-lecture8-llm-evaluation-ja.html">Lecture 8: LLM Evaluation</a></td><td>judge、benchmark、bias</td><td>何を測り、どのbiasを校正するか</td></tr></tbody></table></div>
-<p>表から読み取る要点は、関連レポートを読む順番を強制しないことだ。例えば「なぜ RAG に出典が要るのか」が疑問なら Lecture 7 と §10 へ、「Judge の数字を信じてよいか」が疑問なら Lecture 8 と §12 へ戻る。次のミニ索引では、本文の語を短く言い換え、どの節へ戻るべきかを添える。</p>
-<h3>用語ミニ索引：一文の定義と、戻る場所</h3>
+<h3 id="s28">戻り先と出典</h3>
+<p>基礎へ戻る場合は<a href="stanford-cme295-lecture1-transformer-ja.html">Lecture 1：Transformer</a>、<a href="stanford-cme295-lecture2-transformer-models-tricks-ja.html">Lecture 2：構成と工夫</a>、<a href="stanford-cme295-lecture3-large-language-models-ja.html">Lecture 3：LLMと生成</a>を参照できます。学習は<a href="stanford-cme295-lecture4-llm-training-ja.html">Lecture 4</a>、選好は<a href="stanford-cme295-lecture5-llm-tuning-ja.html">Lecture 5</a>、推論は<a href="stanford-cme295-lecture6-llm-reasoning-ja.html">Lecture 6</a>、外部接続は<a href="stanford-cme295-lecture7-agentic-llms-ja.html">Lecture 7</a>、評価は<a href="stanford-cme295-lecture8-llm-evaluation-ja.html">Lecture 8</a>です。</p>
+<details class="advanced"><summary>用語から本文へ戻る</summary>
 <ul>
-<li><strong>embedding（埋め込み）</strong>：token や画像 patch の特徴を表す数の並び。意味が近いものを近い表現にできる。まず §2、画像なら §14 へ戻る。</li>
-<li><strong>logit（ロジット）</strong>：次 token の確率へ変換する前にモデルが付ける生の点数。temperature がこの点数差をどう見せるかは §4。</li>
-<li><strong>KV cache</strong>：生成済み token の Key と Value を保存し、次 token で作り直さない記憶。長い会話でのメモリとの交換は §3 と §24。</li>
-<li><strong>causal mask</strong>：学習中でも未来 token を見えなくし、自己回帰の条件を守る覆い。学習と推論の違いは §16。</li>
-<li><strong>CLS token</strong>：ViT などで列全体の情報を集約するため先頭に置く特別な token。画像分類の流れは §14。</li>
-<li><strong>cross-attention</strong>：一方の列が Query を出し、別の列の Key/Value を読む仕組み。画像と言葉の接続は §15。</li>
-<li><strong>HBM / SRAM</strong>：大容量で比較的遠い GPU メモリと、小容量で高速なチップ内メモリ。data movement の問題は §6。</li>
-<li><strong>rollout</strong>：prompt を受けたモデルが最後まで生成した回答全体。複数 rollout を比べる GRPO は §9。</li>
-<li><strong>conditioning（条件付け）</strong>：prompt、画像、既知 token などを、生成内容を決めるため固定して与えること。MASK を埋める例は §18。</li>
-<li><strong>groundedness（根拠への接地）</strong>：回答が提示資料や確認可能な出典に裏付けられている度合い。RAG と実利用では §10、§25。</li>
-<li><strong>model collapse</strong>：低多様性の生成データを検証なしに繰り返し学び、まれな特徴が失われる懸念。データ選別の文脈は §22。</li>
-<li><strong>hallucination</strong>：根拠がない、または事実と異なる内容をもっともらしく生成する現象。外部資料、評価、人の確認を組み合わせる理由は §10、§12、§26。</li>
+  <li><a href="#s2">tokenizer・embedding</a>：文章を分割し、数値表現へ変換する。</li>
+  <li><a href="#attention-example">Q/K/V・内積</a>：参照先を照合し、情報を重み付きで集める。</li>
+  <li><a href="#decoding-prototype">softmax</a>：点数を合計1の重みにする。</li>
+  <li><a href="#temperature-example">logit・temperature</a>：次tokenの点数と選択確率を扱う。</li>
+  <li><a href="#learning-basics">loss・gradient</a>：予測誤差を測り、更新方向を求める。</li>
+  <li><a href="#s9">advantage</a>：報酬を比較基準からの差として評価する。</li>
+  <li><a href="#cache-gqa">KV cache・GQA</a>：過去のK/Vを保存し、head間で共有する。</li>
+  <li><a href="#s4">MoE</a>：選んだexpertを実行して出力を混ぜる。</li>
+  <li><a href="#s6">FlashAttention</a>：中間表全体の保存を避けてattentionを計算する。</li>
+  <li><a href="#s10">RAG・groundedness</a>：外部資料を使い、主張を根拠で裏付ける。</li>
+  <li><a href="#s14">patch・CLS</a>：画像をtoken列へ変え、全体の情報を集める。</li>
+  <li><a href="#s18">MASK・conditioning</a>：固定した条件の下で伏せた位置を予測する。</li>
+  <li><a href="#s23">Pareto frontier</a>：品質と費用の両面で劣らない候補を残す。</li>
 </ul>
-<p>この索引の最後の問いは、「この語を知っているか」ではなく「この語がどの問題を解き、どの制約を残すか」である。そこで答えられなければ、該当節の図の前後、表の前後、数式の前後を読み直す。Lecture 9 の全体像は、個別技術を覚えた後に初めて具体的な設計判断へ使えるようになる。</p>
+</details>
+<details class="source-gallery"><summary>講義画像：分野間の応用・設計・費用・回路・締めくくり</summary>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/17-cross-modal-pollination.jpg" alt="異なるmodality間で発想を交換するという講義スライド" loading="lazy"><figcaption>分野間の発想移植。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=5055s">1:24:15</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/18-architecture-open-choices.jpg" alt="Optimizer、normalization、attention、activation、MoE、層数の選択肢" loading="lazy"><figcaption>基礎設計も研究対象である。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=5340s">1:29:00</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/20-quality-cost-frontier.jpg" alt="Qualityとtoken価格を比べる講義の散布図" loading="lazy"><figcaption>講義時点の品質・費用比較。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=5800s">1:36:40</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/21-analog-attention-hardware.jpg" alt="Analog in-memory attentionの演算ブロックと回路図" loading="lazy"><figcaption>演算と保存の配置を変える研究。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=5940s">1:39:00</a></figcaption></figure>
+  <figure class="shot"><img src="../images/stanford-cme295-lecture9-recap-current-trends/24-thank-you-resources.jpg" alt="Thank you for this quarterとSuper Study Guideへの案内" loading="lazy"><figcaption>講義の締めくくり。<a class="ts" href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=6630s">1:50:30</a></figcaption></figure>
+</details>
+
+<h4 id="references">一次資料と補足の根拠</h4>
+<ul class="refs">
+  <li id="ref-lecture"><a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss">講義動画</a>・<a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture9.pdf">公式スライド</a>：講義の主張、順序、固有名、発表事項。</li>
+  <li id="ref-transformer"><a href="https://arxiv.org/abs/1706.03762">Attention Is All You Need</a>：Q/K/V、scaled dot-product attention、Transformer構成。</li>
+  <li id="ref-softmax"><a href="https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.softmax.html">PyTorch — softmax</a>：指数関数で変換して合計で割る定義。</li>
+  <li id="ref-generation"><a href="https://huggingface.co/docs/transformers/main/en/generation_strategies">Transformers — Generation strategies</a>：samplingとgreedy decodingの違い。</li>
+  <li id="ref-instructgpt"><a href="https://arxiv.org/abs/2203.02155">Training language models to follow instructions with human feedback</a>：SFT・比較データ・報酬モデル・RLHF。</li>
+  <li id="ref-grpo"><a href="https://arxiv.org/abs/2402.03300">DeepSeekMath</a>：GRPOの群内比較とPPOとの関係。</li>
+  <li id="ref-trl"><a href="https://huggingface.co/docs/trl/main/en/grpo_trainer">TRL — GRPO Trainer</a>：advantage、正規化、length biasなどの実装上の補足。現行実装は講義当時の原式と異なる部分がある。</li>
+  <li id="ref-chinchilla"><a href="https://arxiv.org/abs/2203.15556">Training Compute-Optimal Large Language Models</a>：モデル規模と学習tokenの配分。</li>
+  <li id="ref-flash"><a href="https://arxiv.org/pdf/2205.14135#page=4">FlashAttention原論文 §2.2・§3.1</a>・<a href="https://github.com/Dao-AILab/flash-attention">公式実装</a>：tiling、online softmax、再計算。図と数値例は本レポートの再構成。</li>
+  <li id="ref-vit"><a href="https://arxiv.org/abs/2010.11929">An Image is Worth 16x16 Words</a>：patch embedding、CLS、画像サイズと計算量。</li>
+  <li id="ref-llada"><a href="https://arxiv.org/html/2502.09992v1">Large Language Diffusion Models</a>：masked diffusionの学習・生成の区別とLLaDA。</li>
+  <li id="ref-ddpm"><a href="https://arxiv.org/abs/2006.11239">Denoising Diffusion Probabilistic Models</a>：画像のノイズ付与と逆過程。</li>
+  <li id="ref-analog"><a href="https://arxiv.org/html/2409.19315v2">Analog In-Memory Computing Attention Mechanism</a>：専用回路、モデル適応、attention演算の遅延・エネルギー評価。</li>
+  <li><a href="https://superstudy.guide">Super Study Guide</a>・<a href="https://github.com/afshinea/stanford-cme-295-transformers-large-language-models">CME295 Cheatsheet</a>：講義後の復習。</li>
+</ul>
+<details class="advanced"><summary>講義の時系列と、このガイドの対応</summary>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>動画の開始時刻</th><th>講義の主題</th><th>本ガイド</th></tr></thead>
+  <tbody>
+    <tr><td><a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=72s">01:12</a></td><td>Transformer・構成・LLM</td><td><a href="#part-1">第1部</a>、<a href="#part-3">第3部</a></td></tr>
+    <tr><td><a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=905s">15:05</a></td><td>学習・tuning・reasoning</td><td><a href="#part-2">第2部</a>、<a href="#s6">FlashAttention</a></td></tr>
+    <tr><td><a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=2317s">38:37</a></td><td>Agentic LLMs・評価</td><td><a href="#part-4">第4部</a></td></tr>
+    <tr><td><a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=2937s">48:57</a></td><td>ViT・VLM</td><td><a href="#part-5">第5部</a></td></tr>
+    <tr><td><a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=3842s">1:04:02</a></td><td>Diffusion-based LLMs</td><td><a href="#part-6">第6部</a></td></tr>
+    <tr><td><a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss&amp;t=5018s">1:23:38</a></td><td>現在の研究・応用・締めくくり</td><td><a href="#s22">データ</a>、<a href="#s25">応用と安全性</a>、<a href="#part-7">第7部</a></td></tr>
+  </tbody>
+</table>
+</div>
+</details>
 </section>
-<footer class="page">
-<p class="note"><strong>一次資料・注意事項。</strong> 本文の中心は公式動画・字幕・スライドである。ViT（Dosovitskiy et al., 2020）、FlashAttention（Dao et al., 2022）、Chinchilla（Hoffmann et al., 2022）、LLaVA、LLaDA、DeepSeek-OCR、Kimi K2、model collapse、analog attentionの性能値・構成は各原論文／technical reportを確認すること。製品発表とLLM Arena表示は講義内で紹介された時点のsnapshotであり、現在の提供状況を保証しない。</p>
-<p class="disclaimer">本レポートは、上記の出典元コンテンツを参照し、内容を省略せず日本語で要約・再構成した非公式まとめです。記述に誤りがある場合は出典元の表現が正となります。</p>
-<p class="disclaimer">講義映像からのキャプチャ23枚と、公式スライドPDFからの高解像度画像1枚は、内容理解に必要な範囲で引用し、各画像に出典を付記しています。破線枠の補足、数式の記号説明、用語索引、原論文・公式実装に基づく周辺情報は理解支援のための再構成であり、登壇者の発言そのものとは区別しています。</p>
-<p>出典: <a href="https://www.youtube.com/watch?v=Q86qzJ1K1Ss">公式動画</a> ／ <a href="https://cme295.stanford.edu/slides/fall25-cme295-lecture9.pdf">公式スライドPDF</a> ／ 取得手段: yt-dlp公式英語字幕＋ffmpeg動画フレーム抽出＋公式PDF照合＋FlashAttention原論文・公式実装 ／ 作成日: 2026年8月27日</p>
+
+<footer>
+  <p>本レポートは、上記の出典元コンテンツを参照し、内容を省略せず日本語で要約・再構成した非公式まとめです。記述に誤りがある場合は出典元の表現が正となります。</p>
+  <p>主要トピックを保持し、重複する説明は統合しています。途中計算・日本語の模式図・周辺情報は理解のための補足で、登壇内容そのものとは区別しています。画像は講義映像23枚と公式PDFの1枚を出典付きで引用しています。</p>
+  <p>取得手段：yt-dlp公式英語字幕、ffmpegフレーム抽出、公式PDF、原論文・公式ドキュメント。初版：2026年8月27日／再構成：2026年9月6日。<a href="../index.html">レポート一覧へ戻る</a></p>
 </footer>
-</main></div>
-<div id="diagramModal" class="modal" role="dialog" aria-modal="true" aria-label="図と講義画面の拡大ビューア"><div class="modal-toolbar"><button class="modal-button" type="button" onclick="zoomCmd('in')">拡大</button><button class="modal-button" type="button" onclick="zoomCmd('out')">縮小</button><button class="modal-button" type="button" onclick="zoomCmd('reset')">リセット</button><button class="modal-button" type="button" onclick="closeModal()">閉じる</button></div><div id="modalBody" class="modal-body"></div></div>
+</main>
+</div>
+
+<div id="diagramModal" class="modal" role="dialog" aria-modal="true" aria-label="図と講義画像の拡大表示">
+  <div class="modal-toolbar">
+    <button class="modal-button" type="button" data-zoom="in">拡大</button>
+    <button class="modal-button" type="button" data-zoom="out">縮小</button>
+    <button class="modal-button" type="button" data-zoom="reset">リセット</button>
+    <button class="modal-button" type="button" id="closeModal">閉じる</button>
+  </div>
+  <div id="modalBody" class="modal-body"></div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
 <script>
-  const themeAttr = document.documentElement.getAttribute('data-theme');
-  const isDark = themeAttr ? themeAttr === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-  mermaid.initialize({ startOnLoad: true, theme: isDark ? 'dark' : 'default', securityLevel: 'loose' });
-
   const tocPanel = document.querySelector('.toc-panel');
-  const mobileToc = window.matchMedia('(max-width: 900px)');
-  const syncTocState = (event) => {
-    if (!tocPanel) return;
-    if (event.matches) tocPanel.removeAttribute('open');
-    else tocPanel.setAttribute('open', '');
-  };
-  syncTocState(mobileToc);
-  mobileToc.addEventListener('change', syncTocState);
+  const mobile = matchMedia('(max-width: 900px)');
+  const syncToc = () => { tocPanel.open = !mobile.matches; };
+  syncToc();
+  mobile.addEventListener('change', syncToc);
 
   const toc = document.getElementById('toc');
-  const headings = [...document.querySelectorAll('main section[id] > h2, main section[id] > h3')];
-  if (toc && headings.length) {
-    toc.innerHTML = '';
-    headings.forEach((heading, index) => {
-      const section = heading.closest('section');
-      if (!heading.id) heading.id = section ? section.id + '-h' + index : 'heading-' + index;
-      const item = document.createElement('li');
-      item.className = heading.tagName === 'H3' ? 'lvl-3' : 'lvl-2';
+  const headings = [];
+  document.querySelectorAll('.part').forEach(part => {
+    const item = document.createElement('li');
+    const link = document.createElement('a');
+    const title = part.querySelector('h2');
+    title.id = part.id + '-heading';
+    link.href = '#' + part.id;
+    link.textContent = title.textContent;
+    link.dataset.heading = title.id;
+    item.append(link);
+    headings.push(title);
+    const children = document.createElement('ol');
+    part.querySelectorAll(':scope > h3[id]').forEach(heading => {
+      const child = document.createElement('li');
       const anchor = document.createElement('a');
       anchor.href = '#' + heading.id;
-      anchor.textContent = heading.textContent.trim();
-      item.appendChild(anchor);
-      toc.appendChild(item);
+      anchor.dataset.heading = heading.id;
+      anchor.textContent = heading.textContent;
+      child.append(anchor);
+      children.append(child);
+      headings.push(heading);
     });
-    const links = [...toc.querySelectorAll('a')];
-    const observer = new IntersectionObserver((entries) => {
-      const visible = entries.filter(entry => entry.isIntersecting)
-        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-      if (!visible) return;
-      links.forEach(link => link.classList.toggle('active', link.getAttribute('href') === '#' + visible.target.id));
-    }, { rootMargin: '-20% 0px -65% 0px', threshold: [0, 1] });
-    headings.forEach(heading => observer.observe(heading));
-  }
+    item.append(children);
+    toc.append(item);
+  });
+  const tocLinks = [...toc.querySelectorAll('a')];
+  const spy = new IntersectionObserver(entries => {
+    const visible = entries.filter(entry => entry.isIntersecting)
+      .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+    if (!visible) return;
+    tocLinks.forEach(link => {
+      const active = link.dataset.heading === visible.target.id;
+      link.classList.toggle('active', active);
+      if (active) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+  }, { rootMargin: '-10% 0px -65% 0px', threshold: 0 });
+  headings.forEach(heading => spy.observe(heading));
 
-  let panZoomInstance = null;
-  function tightenViewBox(svg) {
-    if (!svg || !svg.getBBox) return;
-    try {
-      const bbox = svg.getBBox();
-      if (!Number.isFinite(bbox.width) || !Number.isFinite(bbox.height) || bbox.width === 0 || bbox.height === 0) return;
-      const padding = 20;
-      svg.setAttribute('viewBox', [bbox.x-padding, bbox.y-padding, bbox.width+padding*2, bbox.height+padding*2].join(' '));
-    } catch (error) {
-      console.warn('Unable to tighten Mermaid viewBox', error);
+  // 古いリンクや折りたたみ内へのリンクでも、対象を隠したままにしない。
+  function revealHash() {
+    if (!location.hash) return;
+    const target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (!target) return;
+    let parent = target.parentElement;
+    while (parent) {
+      if (parent.tagName === 'DETAILS') parent.open = true;
+      parent = parent.parentElement;
     }
+    requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
   }
-  function openDiagramFromElement(diagram) {
-    const sourceSvg = diagram ? diagram.querySelector('svg') : null;
-    if (!sourceSvg) return;
-    const modal = document.getElementById('diagramModal');
-    const modalBody = document.getElementById('modalBody');
-    modalBody.innerHTML = '';
-    const clonedSvg = sourceSvg.cloneNode(true);
-    clonedSvg.removeAttribute('style');
-    clonedSvg.setAttribute('width', '100%');
-    clonedSvg.setAttribute('height', '100%');
-    modalBody.appendChild(clonedSvg);
-    tightenViewBox(clonedSvg);
-    modal.classList.add('is-open');
-    if (panZoomInstance) panZoomInstance.destroy();
-    panZoomInstance = svgPanZoom(clonedSvg, {
-      zoomEnabled: true, controlIconsEnabled: false, fit: true, center: true, minZoom: .4, maxZoom: 8
-    });
-    panZoomInstance.resize();
-    panZoomInstance.fit();
-    panZoomInstance.center();
-  }
-  function openImageFromElement(img) {
-    const modal = document.getElementById('diagramModal');
-    const modalBody = document.getElementById('modalBody');
-    modalBody.innerHTML = '';
-    const svgNamespace = 'http://www.w3.org/2000/svg';
-    const width = img.naturalWidth || 1280;
-    const height = img.naturalHeight || 720;
-    const svg = document.createElementNS(svgNamespace, 'svg');
-    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+  window.addEventListener('hashchange', revealHash);
+  window.addEventListener('load', revealHash);
+
+  const modal = document.getElementById('diagramModal');
+  const modalBody = document.getElementById('modalBody');
+  const closeButton = document.getElementById('closeModal');
+  let panZoom = null;
+  let opener = null;
+  let previousOverflow = '';
+  function openGraphic(element) {
+    let svg;
+    const ns = 'http://www.w3.org/2000/svg';
+    if (element.tagName === 'IMG') {
+      if (!element.complete || !element.naturalWidth) {
+        console.error('Image is not ready for zoom:', element.src);
+        return;
+      }
+      svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('viewBox', `0 0 ${element.naturalWidth} ${element.naturalHeight}`);
+      const image = document.createElementNS(ns, 'image');
+      image.setAttribute('href', element.currentSrc || element.src);
+      image.setAttribute('width', element.naturalWidth);
+      image.setAttribute('height', element.naturalHeight);
+      svg.append(image);
+    } else {
+      const source = element.querySelector('svg');
+      if (!source) {
+        console.error('Diagram has not rendered yet.');
+        return;
+      }
+      svg = source.cloneNode(true);
+      svg.removeAttribute('style');
+    }
+    if (panZoom) panZoom.destroy();
+    modalBody.replaceChildren(svg);
     svg.setAttribute('width', '100%');
     svg.setAttribute('height', '100%');
-    const image = document.createElementNS(svgNamespace, 'image');
-    image.setAttributeNS('http://www.w3.org/1999/xlink', 'href', img.src);
-    image.setAttribute('href', img.src);
-    image.setAttribute('x', '0');
-    image.setAttribute('y', '0');
-    image.setAttribute('width', width);
-    image.setAttribute('height', height);
-    svg.appendChild(image);
-    modalBody.appendChild(svg);
+    opener = element;
+    previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     modal.classList.add('is-open');
-    if (panZoomInstance) panZoomInstance.destroy();
-    panZoomInstance = svgPanZoom(svg, {
-      zoomEnabled: true, controlIconsEnabled: false, fit: true, center: true, minZoom: .4, maxZoom: 12
-    });
-    panZoomInstance.resize();
-    panZoomInstance.fit();
-    panZoomInstance.center();
-  }
-  function closeModal() {
-    const modal = document.getElementById('diagramModal');
-    const modalBody = document.getElementById('modalBody');
-    if (panZoomInstance) {
-      panZoomInstance.destroy();
-      panZoomInstance = null;
+    closeButton.focus();
+    if (typeof svgPanZoom !== 'function') {
+      const warning = document.createElement('p');
+      warning.setAttribute('role', 'alert');
+      warning.textContent = '拡大操作のライブラリを読み込めませんでした。ページを再読み込みしてください。';
+      modalBody.prepend(warning);
+      console.error(warning.textContent);
+      return;
     }
+    panZoom = svgPanZoom(svg, {
+      zoomEnabled: true, controlIconsEnabled: false, fit: true, center: true,
+      minZoom: 0.4, maxZoom: 12
+    });
+    panZoom.resize();
+    panZoom.fit();
+    panZoom.center();
+  }
+  function closeGraphic() {
+    if (!modal.classList.contains('is-open')) return;
+    if (panZoom) panZoom.destroy();
+    panZoom = null;
     modal.classList.remove('is-open');
-    modalBody.innerHTML = '';
+    modalBody.replaceChildren();
+    document.body.style.overflow = previousOverflow;
+    if (opener) opener.focus({ preventScroll: true });
   }
-  function zoomCmd(command) {
-    if (!panZoomInstance) return;
-    if (command === 'in') panZoomInstance.zoomIn();
-    if (command === 'out') panZoomInstance.zoomOut();
-    if (command === 'reset') {
-      panZoomInstance.resetZoom();
-      panZoomInstance.fit();
-      panZoomInstance.center();
+  document.querySelectorAll('.mermaid, .vector-figure, .shot img').forEach(element => {
+    element.tabIndex = 0;
+    element.setAttribute('role', 'button');
+    element.setAttribute('aria-label', (element.getAttribute('aria-label') || element.getAttribute('alt') || '図') + 'を拡大');
+    element.addEventListener('click', () => openGraphic(element));
+    element.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openGraphic(element);
+      }
+    });
+  });
+  closeButton.addEventListener('click', closeGraphic);
+  modal.addEventListener('click', event => { if (event.target === modal) closeGraphic(); });
+  document.querySelectorAll('[data-zoom]').forEach(button => {
+    button.addEventListener('click', () => {
+      if (!panZoom) return;
+      if (button.dataset.zoom === 'in') panZoom.zoomIn();
+      if (button.dataset.zoom === 'out') panZoom.zoomOut();
+      if (button.dataset.zoom === 'reset') { panZoom.resetZoom(); panZoom.fit(); panZoom.center(); }
+    });
+  });
+  document.addEventListener('keydown', event => {
+    if (!modal.classList.contains('is-open')) return;
+    if (event.key === 'Escape') closeGraphic();
+    if (event.key === 'Tab') {
+      const buttons = [...modal.querySelectorAll('button')];
+      const first = buttons[0], last = buttons[buttons.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     }
+  });
+  window.addEventListener('resize', () => { if (panZoom) { panZoom.resize(); panZoom.fit(); panZoom.center(); } });
+
+  const diagram = document.querySelector('.mermaid');
+  const diagramSource = diagram.innerHTML;
+  if (typeof mermaid === 'undefined') {
+    document.querySelectorAll('.mermaid').forEach(element => {
+      const warning = document.createElement('p');
+      warning.setAttribute('role', 'alert');
+      warning.textContent = '図の描画ライブラリを読み込めませんでした。定義をテキストで表示しています。';
+      element.before(warning);
+    });
+  } else {
+    let rendering = false;
+    let requested = false;
+    let renderedTheme = '';
+    let firstRender = true;
+    async function renderDiagram() {
+      requested = true;
+      if (rendering) return;
+      rendering = true;
+      try {
+        while (requested) {
+          requested = false;
+          renderedTheme = document.documentElement.dataset.theme;
+          const theme = renderedTheme === 'light' ? 'default' : 'dark';
+          diagram.removeAttribute('data-processed');
+          diagram.innerHTML = diagramSource;
+          mermaid.initialize({
+            startOnLoad: false, theme, securityLevel: 'loose', fontFamily: 'sans-serif',
+            themeVariables: { fontSize: '18px' }, flowchart: { rankSpacing: 26, nodeSpacing: 18 }
+          });
+          await mermaid.run({ nodes: [diagram] });
+          if (firstRender) {
+            firstRender = false;
+            revealHash();
+          }
+        }
+      } finally {
+        rendering = false;
+      }
+    }
+    function reportDiagramError(error) {
+      console.error('Diagram rendering failed:', error);
+      diagram.textContent = '図を描画できませんでした。ページを再読み込みしてください。';
+      diagram.setAttribute('role', 'alert');
+    }
+    renderDiagram().catch(reportDiagramError);
+    new MutationObserver(() => {
+      if (document.documentElement.dataset.theme !== renderedTheme) {
+        closeGraphic();
+        renderDiagram().catch(reportDiagramError);
+      }
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   }
-  window.closeModal = closeModal;
-  window.zoomCmd = zoomCmd;
-  document.querySelectorAll('.mermaid').forEach((diagram) => {
-    diagram.setAttribute('role', 'button');
-    diagram.setAttribute('aria-label', 'Mermaid図を拡大表示');
-    diagram.setAttribute('title', 'クリックで拡大表示');
-    if (!diagram.hasAttribute('tabindex')) diagram.tabIndex = 0;
-    diagram.addEventListener('click', () => openDiagramFromElement(diagram));
-    diagram.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        openDiagramFromElement(diagram);
-      }
-    });
-  });
-  document.querySelectorAll('figure.shot img').forEach((img) => {
-    img.setAttribute('role', 'button');
-    img.setAttribute('aria-label', '講義画面を拡大表示');
-    img.setAttribute('title', 'クリックで拡大表示');
-    if (!img.hasAttribute('tabindex')) img.tabIndex = 0;
-    img.addEventListener('click', () => openImageFromElement(img));
-    img.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        openImageFromElement(img);
-      }
-    });
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeModal();
-  });
-  document.getElementById('diagramModal').addEventListener('click', (event) => {
-    if (event.target.id === 'diagramModal') closeModal();
-  });
-</script></body></html>
+</script>
+</body>
+</html>
